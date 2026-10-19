@@ -401,7 +401,7 @@
     const cols = days.map((d, i) => {
       const list = lists[i];
       const kg = sumKg(list);
-      const blocks = list.slice().reverse().map((c, j, arr) => {
+      const blocks = list.slice().sort((a, b) => phase(b).p - phase(a).p || (a.eta_time || '99').localeCompare(b.eta_time || '99')).reverse().map((c, j, arr) => {
         const ph = phase(c);
         const late = lateInfo(c);
         return `
@@ -422,7 +422,7 @@
         </button>`;
     }).join('');
 
-    const legend = [['Tervben', 0, 'plan'], ['Megérkezett', 20, 'live'], ['Nyitás', 60, 'live'], ['Elengedve', 80, 'live'], ['Betárolva', 100, 'done']]
+    const legend = [['Tervben', 0, 'plan'], ['Megérkezett', 25, 'live'], ['Nyitás', 75, 'live'], ['Betárolva', 100, 'done']]
       .map(([t, p, g]) => `<span><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
     return `
       <section class="yard ${S.anim ? 'anim' : ''}" aria-label="Heti érkezések">
@@ -433,17 +433,17 @@
   }
 
   // ---------- folyamat, késés, rámpa ----------
-  const STAGES = ['request', 'approved', 'opened', 'released', 'stored'];
-  const STAGE_LABEL = { request: 'Érkezés', approved: 'Nyitható', opened: 'Nyitás', released: 'Elengedve', stored: 'Betárolva' };
+  const STAGES = ['request', 'approved', 'opened', 'stored'];
+  const STAGE_LABEL = { request: 'Érkezés', approved: 'Nyitható', opened: 'Nyitás', stored: 'Betárolva' };
   const PHASE = {
     pre: ['Tervben', 0, 'plan'], t1: ['Kamion + T1', 0, 'plan'], eta: ['ETA megvan', 0, 'plan'],
-    request: ['Megérkezett', 0.2, 'live'], approved: ['Nyitható', 0.4, 'live'], opened: ['Nyitás', 0.6, 'live'],
-    released: ['Elengedve', 0.8, 'live'], stored: ['Betárolva', 1, 'done']
+    request: ['Megérkezett', 0.25, 'live'], approved: ['Nyitható', 0.5, 'live'], opened: ['Nyitás', 0.75, 'live'],
+    released: ['Nyitás', 0.75, 'live'], stored: ['Betárolva', 1, 'done']
   };
   function phase(c) {
     if (c.stage === 'stored') return { key: 'stored', label: PHASE.stored[0], p: 1, grp: 'done' };
     if (c.storage && c.storage.done) {
-      return { key: 'storing', label: `Betárolás ${c.storage.done}/${c.storage.total}`, p: 0.8 + 0.2 * c.storage.done / Math.max(1, c.storage.total), grp: 'live' };
+      return { key: 'storing', label: `Betárolás ${c.storage.done}/${c.storage.total}`, p: 0.75 + 0.25 * c.storage.done / Math.max(1, c.storage.total), grp: 'live' };
     }
     const k = c.stage || (c.arrived ? 'request' : c.eta_time ? 'eta' : (c.plate || c.t1) ? 't1' : 'pre');
     const [label, p, grp] = PHASE[k];
@@ -492,7 +492,7 @@
           <span class="sp-dur">${dur ? '+' + esc(dur) : ''}</span>
         </li>`;
     }).join('');
-    const endAt = (st.stored && st.stored.at) || (st.released && st.released.at);
+    const endAt = st.stored && st.stored.at;
     const total = first && endAt ? fmtDur(minutesBetween(first, endAt)) : '';
     return `
       <section class="flow" aria-label="Mérföldkövek">
@@ -583,7 +583,6 @@
 
     const openT = span('request', 'approved');
     const waitT = span('approved', 'opened');
-    const loadT = span('opened', 'released');
     const openStore = span('opened', 'stored');
     const total = span('request', 'stored');
     const days = [...new Set(past.map(c => c.date))];
@@ -629,7 +628,6 @@
           <h2 class="sx-h">Időtartamok</h2>
           <dl class="kpis">
             ${kpi('Nyitási idő', openT, 'érkezéstől nyithatóig')}
-            ${kpi('Rakodási idő', loadT, 'nyitástól elengedésig')}
             ${kpi('Nyitás → betárolás', openStore, 'nyitástól az utolsó PDD betárolásáig')}
             ${kpi('Teljes átfutás', total, 'érkezéstől betárolásig')}
           </dl>
