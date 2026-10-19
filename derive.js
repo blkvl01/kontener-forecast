@@ -1,5 +1,5 @@
 // A pre-alert levelekből és a kézi adatokból levezeti a konténerek aktuális állapotát.
-window.KFDerive = function derive(messages, manual, arrivals) {
+window.KFDerive = function derive(messages, manual, arrivals, stored) {
   const C = {};
   const feed = [];
   const files = {};
@@ -134,6 +134,28 @@ window.KFDerive = function derive(messages, manual, arrivals) {
     });
   }
 
+  // Betárolás: a PDD (AWB) számok alapján, konténerenként
+  const byPdd = {};
+  all.forEach(x => (x.pdd || []).forEach(p => { if (p.no) byPdd[p.no.toUpperCase()] = x; }));
+  for (const s of (stored || []).slice().sort((a, b) => (a.stored_at < b.stored_at ? -1 : 1))) {
+    const x = byPdd[(s.awb || '').toUpperCase()];
+    if (!x) continue;
+    x.storedPdd = x.storedPdd || {};
+    if (x.storedPdd[s.awb.toUpperCase()]) continue;
+    x.storedPdd[s.awb.toUpperCase()] = s.stored_at;
+    x.history.push({ at: s.stored_at, kind: 'stored', awb: s.awb, ctns: s.ctns });
+    if (!x.auto_arrival || s.stored_at < x.auto_arrival.at) x.auto_arrival = x.auto_arrival || { at: s.stored_at, sender: 'Betárolás' };
+  }
+  all.forEach(x => {
+    const total = (x.pdd || []).filter(p => p.no).length;
+    const times = Object.values(x.storedPdd || {}).sort();
+    x.storage = times.length ? { done: times.length, total, first: times[0], last: times[times.length - 1] } : null;
+    if (x.storage && total && times.length >= total) {
+      x.stages = x.stages || {};
+      x.stages.stored = { at: x.storage.last, sender: 'Betárolás' };
+    }
+  });
+
   for (const x of Object.values(C)) {
     let man = manual[x.id] || {};
     const me = mailEta[x.id];
@@ -149,8 +171,8 @@ window.KFDerive = function derive(messages, manual, arrivals) {
     x.arrived = !!man.arrived || x.arrived_auto;
     x.arrived_at = man.arrived ? (man.arrived_at || '') : (x.arrived_auto ? x.auto_arrival.at : '');
     x.auto_dismissed = !!man.auto_dismissed;
-    x.stages = x.auto_dismissed ? {} : (x.stages || {});
-    x.stage = ['released', 'opened', 'approved', 'request'].find(k => x.stages[k]) || '';
+    x.stages = x.auto_dismissed ? (x.stages && x.stages.stored ? { stored: x.stages.stored } : {}) : (x.stages || {});
+    x.stage = ['stored', 'released', 'opened', 'approved', 'request'].find(k => x.stages[k]) || '';
     x.ramp = man.ramp || null;
     x.ramp_set = man.ramp_set || '';
     x.note = man.note || '';
