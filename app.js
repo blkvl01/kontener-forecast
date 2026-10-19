@@ -70,7 +70,7 @@
   let LOCAL = null;
   let channel = null;
 
-  const isExe = () => !!(window.pywebview && window.pywebview.api && window.pywebview.api.pending);
+  const isExe = () => !!(window.pywebview && window.pywebview.api && window.pywebview.api.auto_login);
   const exe = () => window.pywebview.api;
   const toLocal = ts => {
     if (!ts) return '';
@@ -168,62 +168,30 @@
     return true;
   }
 
-  // ---------- Outlook-feltöltés (csak az asztali programban) ----------
-  let agentBusy = false;
-  async function agentTick() {
-    if (!isExe() || !ME || ME.role !== 'admin' || agentBusy) return;
-    agentBusy = true;
-    try {
-      LOCAL = await exe().agent_status();
-      renderSync();
-      for (let round = 0; round < 30; round++) {
-        const batch = await exe().pending(8);
-        if (!batch || !batch.length) break;
-        for (const m of batch) {
-          const atts = [];
-          for (const a of m.attachments || []) {
-            const path = `${m.id}/${(a.name || 'T1.pdf').replace(/[^\w.\-]+/g, '_')}`;
-            if (a.b64) {
-              const bin = Uint8Array.from(atob(a.b64), ch => ch.charCodeAt(0));
-              const { error } = await sb.storage.from('t1').upload(path, new Blob([bin], { type: 'application/pdf' }), { upsert: true, contentType: 'application/pdf' });
-              if (error) throw error;
-            }
-            atts.push({ name: a.name, size: a.size, container: a.container, path });
-          }
-          const row = {
-            id: m.id,
-            received: new Date(m.received).toISOString(),
-            subject: m.subject || '',
-            dates: m.dates || [],
-            containers: m.containers || [],
-            attachments: atts
-          };
-          const { error } = await sb.from('messages').upsert(row, { onConflict: 'id' });
-          if (error) throw error;
-          await exe().mark_uploaded([m.id]);
-        }
-      }
-      const st = { id: 1, error: LOCAL.error || null, interval_min: LOCAL.interval_min || null };
-      if (LOCAL.last_ok) st.last_ok = new Date(LOCAL.last_ok).toISOString();
-      const { data } = await sb.from('sync_status').upsert(st, { onConflict: 'id' }).select().maybeSingle();
-      if (data) SYNC = data;
-    } catch (e) {
-      console.error(e);
-    } finally {
-      agentBusy = false;
-      renderSync();
-    }
-  }
-
   function editing() {
     const a = document.activeElement;
-    if ($('#settings').open) return true;
+    if ($('#settings').open || $('#paste').open) return true;
     return !!(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && a.closest('#view, #drawer'));
   }
 
   window.KF = {
-    reload() { agentTick(); }
+    async reload() {
+      if (!isExe()) return;
+      try { LOCAL = await exe().agent_status(); } catch (_) { LOCAL = null; }
+      renderSync();
+    }
   };
+
+  function waitExe(ms) {
+    return new Promise(resolve => {
+      const t0 = Date.now();
+      (function poll() {
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.auto_login) return resolve(true);
+        if (Date.now() - t0 > ms) return resolve(false);
+        setTimeout(poll, 100);
+      })();
+    });
+  }
 
   // ---------- belépés ----------
   async function usersFn(action, body = {}) {
@@ -263,7 +231,7 @@
     showAuth('app');
     await loadAll();
     subscribe();
-    agentTick();
+    window.KF.reload();
   }
 
   async function bootAuth() {
@@ -271,6 +239,13 @@
     try {
       const { data: { session } } = await sb.auth.getSession();
       if (session) { await enter(session); return; }
+      if (await waitExe(2500)) {
+        const r = await exe().auto_login();
+        if (r && r.token_hash) {
+          const { data, error } = await sb.auth.verifyOtp({ token_hash: r.token_hash, type: 'email' });
+          if (!error && data.session) { await enter(data.session); return; }
+        }
+      }
       const st = await usersFn('status');
       showAuth(st.initialized ? 'login' : 'boot');
     } catch (e) {
@@ -334,14 +309,15 @@
       <button type="button" class="ibtn" data-action="prev" aria-label="${S.view === 'week' ? 'Előző hét' : 'Előző hónap'}">${IC.left}</button>
       <div class="period-label">${label}</div>
       <button type="button" class="ibtn" data-action="next" aria-label="${S.view === 'week' ? 'Következő hét' : 'Következő hónap'}">${IC.right}</button>
-      <button type="button" class="tbtn" data-action="today">Ma</button>`;
+      <button type="button" class="tbtn" data-action="today">Ma</button>
+      <button type="button" class="tbtn" data-action="paste">ETA beillesztése</button>`;
   }
 
   function renderSync() {
     if (!S.data) return;
     const sy = SYNC || {};
     const last = toLocal(sy.last_ok);
-    const busy = !!(LOCAL && LOCAL.busy) || agentBusy;
+    const busy = !!(LOCAL && LOCAL.busy);
     let dot = '', text = 'Outlook · nincs adat', tcls = '', title = '';
     if (busy) { dot = 'busy'; text = 'Frissítés…'; }
     else if (sy.error) { dot = 'err'; text = sy.error; tcls = 'err'; }
@@ -743,6 +719,49 @@
       </aside>`;
   }
 
+  // ---------- ETA beillesztése ----------
+  function parseEtas(text) {
+    const out = [];
+    const re = /([A-Z]{4}\s?\d{7})\s*\/\/([\s\S]*?)(?=[A-Z]{4}\s?\d{7}\s*\/\/|$)/g;
+    let m;
+    while ((m = re.exec((text || '').toUpperCase()))) {
+      const t = /ETA\s*[:\-]?\s*(\d{1,2})\s*[:.]\s*(\d{2})/.exec(m[2]);
+      if (!t) continue;
+      const h = +t[1], mi = +t[2];
+      if (h > 23 || mi > 59) continue;
+      out.push({ container: m[1].replace(/\s/g, ''), time: `${pad(h)}:${pad(mi)}` });
+    }
+    return out;
+  }
+
+  function renderPaste() {
+    const items = parseEtas($('#paste-text').value);
+    $('#paste-save').disabled = !items.length;
+    $('#paste-list').innerHTML = items.map(it => {
+      const c = S.data.containers[it.container];
+      const day = c && c.state === 'active' ? `${DOW[dowIdx(c.date)]}, ${short(c.date)}` : 'nincs a tervben';
+      return `<div class="pl-row"><span>${esc(it.container)}</span><span class="pl-day ${c && c.state === 'active' ? '' : 'unk'}">${esc(day)}</span><b>${esc(it.time)}</b></div>`;
+    }).join('');
+  }
+
+  async function savePaste() {
+    const items = parseEtas($('#paste-text').value);
+    if (!items.length) return;
+    const now = new Date().toISOString();
+    const rows = items.map(it => {
+      const c = S.data.containers[it.container];
+      const d = c && c.state === 'active' ? c.date : null;
+      return { container: it.container, eta_date: d, eta_time: it.time, eta_for: d, eta_set: now };
+    });
+    const { data, error } = await sb.from('manual').upsert(rows, { onConflict: 'container' }).select();
+    if (error) { toast('A mentés nem sikerült'); console.error(error); return; }
+    data.forEach(r => { MAN[r.container] = normMan(r); });
+    rebuild();
+    $('#paste').close();
+    render();
+    toast(`${data.length} ETA rögzítve`);
+  }
+
   // ---------- műveletek ----------
   function toast(msg) {
     const t = document.createElement('div');
@@ -867,6 +886,9 @@
         }
         break;
       case 'settings': openSettings(); break;
+      case 'paste': $('#paste-text').value = ''; renderPaste(); $('#paste').showModal(); setTimeout(() => $('#paste-text').focus(), 30); break;
+      case 'paste-close': $('#paste').close(); break;
+      case 'paste-save': await savePaste(); break;
       case 'settings-close': $('#settings').close(); break;
       case 'logout': await sb.auth.signOut(); location.reload(); break;
       case 'resync':
@@ -917,6 +939,7 @@
   let noteTimer = null;
   document.addEventListener('input', e => {
     const el = e.target;
+    if (el.id === 'paste-text') { renderPaste(); return; }
     if (el.id === 'note') {
       clearTimeout(noteTimer);
       const id = el.dataset.id, val = el.value;
@@ -937,6 +960,9 @@
   });
 
   $('#settings').addEventListener('close', () => {
+    if (S.pending) { rebuild(); render(); }
+  });
+  $('#paste').addEventListener('close', () => {
     if (S.pending) { rebuild(); render(); }
   });
 
@@ -1004,7 +1030,7 @@
 
   setInterval(() => {
     if (!S.data) return;
-    agentTick();
+    window.KF.reload();
     if (editing() || S.drawer) return;
     const t = iso(new Date());
     if (t !== S.today) { rebuild(); render(); return; }
@@ -1016,6 +1042,5 @@
     if (ev === 'SIGNED_OUT' && ME) location.reload();
   });
 
-  window.addEventListener('pywebviewready', () => { agentTick(); });
   bootAuth();
 })();

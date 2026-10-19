@@ -4,13 +4,21 @@ window.KFDerive = function derive(messages, manual) {
   const feed = [];
   const files = {};
   const forecastDates = new Set();
-  const sorted = messages.slice().sort((a, b) => (a.received < b.received ? -1 : a.received > b.received ? 1 : 0));
+  const mails = messages.filter(m => m.kind !== 'quoted');
+  const dkey = m => (m.dates || []).join(',');
+  const dup = q => mails.some(m => dkey(m) === dkey(q) && Math.abs(new Date(m.received) - new Date(q.received)) < 180000);
+  const used = messages.filter(m => m.kind !== 'quoted' || !dup(m));
+  const sorted = used.sort((a, b) => (a.received < b.received ? -1 : a.received > b.received ? 1 : 0));
+  const mailEta = {};
 
   for (const m of sorted) {
     const at = m.received;
     for (const a of m.attachments || []) {
       if (!a.container) continue;
       (files[a.container] = files[a.container] || []).push({ name: a.name, path: a.path, size: a.size || 0, at });
+    }
+    for (const e of m.etas || []) {
+      if (e && e.container && e.time) mailEta[e.container] = { time: e.time, at };
     }
     const conts = m.containers || [];
     if (!conts.length) continue;
@@ -89,7 +97,11 @@ window.KFDerive = function derive(messages, manual) {
   }
 
   for (const x of Object.values(C)) {
-    const man = manual[x.id] || {};
+    let man = manual[x.id] || {};
+    const me = mailEta[x.id];
+    if (me && !(man.eta_time && man.eta_set && man.eta_set >= me.at)) {
+      man = { ...man, eta_time: me.time, eta_date: x.date, eta_for: x.date, eta_set: me.at, updated_by: 'ETA-levél', updated_at: me.at };
+    }
     x.files = files[x.id] || [];
     x.eta_date = man.eta_date || '';
     x.eta_time = man.eta_time || '';
@@ -113,6 +125,6 @@ window.KFDerive = function derive(messages, manual) {
     containers: C,
     forecast_dates: [...forecastDates].sort(),
     feed: feed.reverse().slice(0, 60),
-    message_count: messages.length
+    message_count: mails.length
   };
 };
