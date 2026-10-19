@@ -68,6 +68,8 @@
   let MAN = {};
   let ARR = [];
   let RAMPS = 10;
+  let MEMBERS = {};
+  const who = email => (email && MEMBERS[email]) || email || '';
   let SYNC = null;
   let LOCAL = null;
   let channel = null;
@@ -118,13 +120,15 @@
   }
 
   async function loadAll() {
-    const [msgs, man, arr, sync, cfg] = await Promise.all([
+    const [msgs, man, arr, sync, cfg, mem] = await Promise.all([
       fetchAll('messages', 'received'),
       fetchAll('manual'),
       fetchAll('arrivals', 'received'),
       sb.from('sync_status').select('*').eq('id', 1).maybeSingle(),
-      sb.from('app_settings').select('*').eq('id', 1).maybeSingle()
+      sb.from('app_settings').select('*').eq('id', 1).maybeSingle(),
+      sb.from('members').select('email, name')
     ]);
+    if (mem.data) MEMBERS = Object.fromEntries(mem.data.map(m => [m.email, m.name || m.email]));
     if (cfg.data) RAMPS = cfg.data.ramp_count || 10;
     MSGS = msgs.map(normMsg);
     MAN = Object.fromEntries(man.map(r => [r.container, normMan(r)]));
@@ -236,18 +240,16 @@
   function showAuth(mode, info) {
     $('#auth').hidden = mode === 'app';
     $('#app').hidden = mode !== 'app';
-    $('#login-form').hidden = mode !== 'login';
-    $('#boot-form').hidden = mode !== 'boot';
+    $('#invite').hidden = mode !== 'invite';
     $('#denied').hidden = mode !== 'denied';
     $('#auth-loading').hidden = mode !== 'loading';
-    if (mode === 'denied') $('#denied-text').textContent = `${info} nincs a felhasználók között. Kérj hozzáférést az admintól.`;
-    const first = mode === 'login' ? '#login-email' : mode === 'boot' ? '#boot-email' : null;
-    if (first) setTimeout(() => $(first).focus(), 30);
+    if (mode === 'invite' && info) $('#invite-text').textContent = info;
+    if (mode === 'denied') $('#denied-text').textContent = 'Ez a hozzáférés megszűnt. Kérj új meghívó linket az admintól.';
   }
 
   async function enter(session) {
     const email = (session.user.email || '').toLowerCase();
-    const { data, error } = await sb.from('members').select('email, role').eq('email', email).maybeSingle();
+    const { data, error } = await sb.from('members').select('email, role, name').eq('email', email).maybeSingle();
     if (error || !data) { showAuth('denied', email); return; }
     ME = data;
     showAuth('app');
@@ -259,6 +261,21 @@
   async function bootAuth() {
     showAuth('loading');
     try {
+      const key = (location.hash.match(/[#&]k=([\w-]{20,})/) || [])[1];
+      if (key) {
+        history.replaceState(null, '', location.pathname + location.search);
+        try {
+          const r = await usersFn('redeem', { key });
+          const { data, error } = await sb.auth.verifyOtp({ token_hash: r.token_hash, type: 'email' });
+          if (error || !data.session) throw error || new Error('');
+          await enter(data.session);
+          toast(`Üdv, ${r.name}!`);
+          return;
+        } catch (err) {
+          showAuth('invite', err && err.message ? err.message : 'Ez a link már nem érvényes. Kérj újat az admintól.');
+          return;
+        }
+      }
       const { data: { session } } = await sb.auth.getSession();
       if (session) { await enter(session); return; }
       if (await waitExe(2500)) {
@@ -268,12 +285,10 @@
           if (!error && data.session) { await enter(data.session); return; }
         }
       }
-      const st = await usersFn('status');
-      showAuth(st.initialized ? 'login' : 'boot');
+      showAuth('invite');
     } catch (e) {
       console.error(e);
-      showAuth('login');
-      $('#login-err').textContent = 'A szerver nem érhető el. Ellenőrizd az internetkapcsolatot.';
+      showAuth('invite', 'A szerver nem érhető el. Ellenőrizd az internetkapcsolatot.');
     }
   }
 
@@ -1040,7 +1055,7 @@
           ${active ? `
           <section class="etabox" aria-label="Pontos ETA">
             <div class="etabox-head"><b>Pontos ETA</b>${c.eta_time && c.eta_set ? `<span class="saved">${IC.check}Mentve · ${esc(stamp(c.eta_set))}</span>` : ''}</div>
-            ${c.updated_by ? `<div class="editor">Utoljára módosította: ${esc(c.updated_by)} · ${esc(stamp(c.updated_at))}</div>` : ''}
+            ${c.updated_by ? `<div class="editor">Utoljára módosította: ${esc(who(c.updated_by))} · ${esc(stamp(c.updated_at))}</div>` : ''}
             ${c.eta_stale ? `<div class="flag warn" style="margin-top:8px">${IC.warn}Az ETA a korábbi szállítási napra szólt.</div>` : ''}
             <div class="eta-grid">
               <label>Dátum<input type="date" class="field" id="eta-date" value="${esc(etaDate)}"></label>
@@ -1156,35 +1171,33 @@
     else window.open(data.signedUrl, '_blank', 'noopener');
   }
 
-  function tempPassword() {
-    const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-    const buf = new Uint32Array(12);
-    crypto.getRandomValues(buf);
-    return Array.from(buf, n => abc[n % abc.length]).join('');
+  function inviteUrl(key) {
+    return `${(window.KF_CONFIG && window.KF_CONFIG.site) || (location.origin + location.pathname)}#k=${key}`;
   }
 
-  function showNewPw(email, pw) {
+  function showLink(name, key) {
     const box = $('#newpw');
+    const url = inviteUrl(key);
     box.hidden = false;
-    box.innerHTML = `<span>${esc(email)} jelszava:</span><code>${esc(pw)}</code><button type="button" class="u-btn" data-action="copy-pw" data-pw="${esc(pw)}">Másolás</button>`;
+    box.innerHTML = `<span>${esc(name)} személyes linkje:</span><code class="link">${esc(url)}</code><button type="button" class="u-btn" data-action="copy-pw" data-pw="${esc(url)}">Másolás</button>`;
   }
 
   async function loadUsers() {
     const ul = $('#users');
-    const { data, error } = await sb.from('members').select('email, role').order('email');
+    const { data, error } = await sb.from('members').select('email, role, name').order('name');
     if (error) { ul.innerHTML = ''; return; }
     ul.innerHTML = data.map(u => `
       <li>
-        <span class="u-mail">${esc(u.email)}</span>
+        <span class="u-mail">${esc(u.name || u.email)}</span>
         <span class="u-role">${u.role === 'admin' ? 'Admin' : 'Szerkesztő'}</span>
-        ${u.email === ME.email ? '' : `
-          <button type="button" class="u-btn" data-action="user-pw" data-email="${esc(u.email)}">Új jelszó</button>
+        ${u.role === 'admin' ? '' : `
+          <button type="button" class="u-btn" data-action="user-link" data-email="${esc(u.email)}" data-name="${esc(u.name || '')}">Új link</button>
           <button type="button" class="u-btn danger" data-action="user-remove" data-email="${esc(u.email)}">Eltávolítás</button>`}
       </li>`).join('');
   }
 
   async function openSettings() {
-    $('#me').innerHTML = `${esc(ME.email)}<span>${ME.role === 'admin' ? 'Admin' : 'Szerkesztő'}</span>`;
+    $('#me').innerHTML = `${esc(ME.name || ME.email)}<span>${ME.role === 'admin' ? 'Admin' : 'Szerkesztő'}</span>`;
     $('#users-sec').hidden = ME.role !== 'admin';
     $('#yard-sec').hidden = ME.role !== 'admin';
     $('#ramp-count').value = RAMPS;
@@ -1283,11 +1296,10 @@
         break;
       }
       case 'copy-pw':
-        try { await navigator.clipboard.writeText(el.dataset.pw); toast('Jelszó másolva'); } catch (_) { /* kijelölhető marad */ }
+        try { await navigator.clipboard.writeText(el.dataset.pw); toast('Link másolva'); } catch (_) { /* kijelölhető marad */ }
         break;
-      case 'user-pw': {
-        const pw = tempPassword();
-        try { await usersFn('set_password', { email: el.dataset.email, password: pw }); showNewPw(el.dataset.email, pw); }
+      case 'user-link': {
+        try { const r = await usersFn('relink', { email: el.dataset.email }); showLink(el.dataset.name, r.key); toast('Új link készült, a régi megszűnt'); }
         catch (err) { toast(err.message); }
         break;
       }
@@ -1360,59 +1372,32 @@
   });
 
   // ---------- űrlapok ----------
-  $('#login-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const f = e.target, btn = f.querySelector('button');
-    $('#login-err').textContent = '';
-    btn.disabled = true;
-    const { data, error } = await sb.auth.signInWithPassword({ email: f.email.value.trim().toLowerCase(), password: f.password.value });
-    btn.disabled = false;
-    if (error) { $('#login-err').textContent = 'Hibás e-mail cím vagy jelszó.'; return; }
-    await enter(data.session);
-  });
-
-  $('#boot-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const f = e.target, btn = f.querySelector('button');
-    $('#boot-err').textContent = '';
-    if (f.password.value !== f.password2.value) { $('#boot-err').textContent = 'A két jelszó nem egyezik.'; return; }
-    btn.disabled = true;
-    try {
-      const email = f.email.value.trim().toLowerCase();
-      await usersFn('bootstrap', { email, password: f.password.value });
-      const { data, error } = await sb.auth.signInWithPassword({ email, password: f.password.value });
-      if (error) throw error;
-      await enter(data.session);
-    } catch (err) {
-      $('#boot-err').textContent = err.message || 'A létrehozás nem sikerült.';
-    } finally {
-      btn.disabled = false;
-    }
-  });
-
-  $('#pw-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const inp = $('#pw-new');
-    const { error } = await sb.auth.updateUser({ password: inp.value });
-    if (error) { toast('A jelszó legalább 8 karakter legyen'); return; }
-    inp.value = '';
-    toast('Jelszó módosítva');
-  });
-
   $('#user-form').addEventListener('submit', async e => {
     e.preventDefault();
-    const email = $('#user-email').value.trim().toLowerCase();
-    const role = $('#user-role').value;
-    const pw = tempPassword();
+    const name = $('#user-name').value.trim();
+    if (!name) return;
     try {
-      await usersFn('create', { email, password: pw, role });
-      $('#user-email').value = '';
-      showNewPw(email, pw);
+      const r = await usersFn('invite', { name });
+      $('#user-name').value = '';
+      showLink(name, r.key);
       loadUsers();
+      MEMBERS[r.email] = name;
     } catch (err) {
       toast(err.message);
     }
   });
+
+  // ---------- automatikus frissítés új verziónál ----------
+  async function checkVersion() {
+    try {
+      const r = await fetch('version.json', { cache: 'no-store' });
+      if (!r.ok) return;
+      const v = (await r.json()).v;
+      const mine = window.KF_CONFIG && window.KF_CONFIG.version;
+      if (v && mine && v !== mine && !editing() && !S.drawer) location.reload();
+    } catch (_) { /* hálózati hiba: később újra */ }
+  }
+  setInterval(checkVersion, 5 * 60000);
 
   $('#yard-form').addEventListener('submit', async e => {
     e.preventDefault();

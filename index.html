@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Konténer Forecast</title>
 <link rel="icon" href="icon.ico">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=20261019181229">
 </head>
 <body>
 <div class="app" id="app" hidden>
@@ -40,31 +40,14 @@
       <span>Konténer Forecast</span>
     </div>
 
-    <form id="login-form" class="auth-form" hidden>
-      <label for="login-email">E-mail</label>
-      <input id="login-email" name="email" type="email" autocomplete="username" required>
-      <label for="login-password">Jelszó</label>
-      <input id="login-password" name="password" type="password" autocomplete="current-password" required>
-      <p class="auth-err" id="login-err" role="alert"></p>
-      <button type="submit" class="auth-btn">Belépés</button>
-    </form>
-
-    <form id="boot-form" class="auth-form" hidden>
-      <h1>Első beállítás</h1>
-      <label for="boot-email">Admin e-mail címe</label>
-      <input id="boot-email" name="email" type="email" autocomplete="username" required>
-      <label for="boot-password">Jelszó</label>
-      <input id="boot-password" name="password" type="password" autocomplete="new-password" minlength="8" required>
-      <label for="boot-password2">Jelszó újra</label>
-      <input id="boot-password2" name="password2" type="password" autocomplete="new-password" minlength="8" required>
-      <p class="auth-err" id="boot-err" role="alert"></p>
-      <button type="submit" class="auth-btn">Létrehozás</button>
-    </form>
+    <div id="invite" class="auth-form" hidden>
+      <h1>Meghívó szükséges</h1>
+      <p class="auth-text" id="invite-text">Ezt az oldalt személyes meghívó linkkel lehet megnyitni. Kérj linket az admintól.</p>
+    </div>
 
     <div id="denied" class="auth-form" hidden>
       <h1>Nincs hozzáférés</h1>
       <p class="auth-text" id="denied-text"></p>
-      <button type="button" class="auth-btn" data-action="logout">Kijelentkezés</button>
     </div>
 
     <div id="auth-loading" class="auth-loading" hidden><span class="sync-dot busy"></span></div>
@@ -81,26 +64,15 @@
     <section class="set-sec">
       <h3>Fiók</h3>
       <div class="me" id="me"></div>
-      <form id="pw-form" class="row-form">
-        <label class="sr" for="pw-new">Új jelszó</label>
-        <input id="pw-new" type="password" autocomplete="new-password" minlength="8" placeholder="Új jelszó" required>
-        <button type="submit" class="btn-ghost sm">Jelszó módosítása</button>
-      </form>
-      <button type="button" class="btn-ghost sm" data-action="logout">Kijelentkezés</button>
     </section>
 
     <section class="set-sec" id="users-sec" hidden>
-      <h3>Felhasználók</h3>
+      <h3>Kollégák</h3>
       <ul class="users" id="users"></ul>
       <form id="user-form" class="user-form">
-        <label class="sr" for="user-email">E-mail</label>
-        <input id="user-email" type="email" placeholder="kolléga@hgllog.com" autocomplete="off" required>
-        <label class="sr" for="user-role">Szerepkör</label>
-        <select id="user-role">
-          <option value="editor">Szerkesztő</option>
-          <option value="admin">Admin</option>
-        </select>
-        <button type="submit" class="btn-primary sm">Hozzáadás</button>
+        <label class="sr" for="user-name">Név</label>
+        <input id="user-name" type="text" placeholder="Kolléga neve" autocomplete="off" maxlength="80" required>
+        <button type="submit" class="btn-primary sm">Meghívó link</button>
       </form>
       <div class="newpw" id="newpw" hidden></div>
     </section>
@@ -153,9 +125,9 @@
   </div>
 </dialog>
 
-<script src="vendor/supabase.min.js"></script>
-<script src="config.js"></script>
-<script src="derive.js"></script>
-<script src="app.js"></script>
+<script src="vendor/supabase.min.js?v=20261019181229"></script>
+<script src="config.js?v=20261019181229"></script>
+<script src="derive.js?v=20261019181229"></script>
+<script src="app.js?v=20261019181229"></script>
 </body>
 </html>
