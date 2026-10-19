@@ -351,7 +351,7 @@
       const kg = sumKg(list);
       const blocks = list.slice().reverse().map((c, j, arr) => `
         <div class="blk blk-${c.status}" style="height:${Math.max(minH, Math.round(c.kg * k))}px;animation-delay:${(arr.length - 1 - j) * 45}ms">
-          <span>${esc(c.id)}</span><span>${esc(c.eta_time || (c.ctns ? c.ctns + ' ctn' : ''))}</span>
+          <span>${esc(c.id)}</span><span>${esc(c.eta_time || fmtT(c.kg))}</span>
         </div>`).join('');
       const notes = [];
       const mo = movedOut(d);
@@ -369,6 +369,7 @@
           <div class="day-num">${parse(d).getDate()}</div>
           <div class="stack ${nodata ? 'nodata' : ''}">${blocks}${notes.length ? `<div class="stack-note">${notes.map(esc).join('<br>')}</div>` : ''}</div>
           <div class="day-foot"><span><b>${list.length}</b><small>db</small></span><span class="mono">${list.length ? fmtT(kg) : '—'}</span></div>
+          <div class="day-ctn">${list.length ? fmtInt(sumCt(list)) + ' karton' : ''}</div>
         </button>`;
     }).join('');
 
@@ -383,6 +384,63 @@
         <div class="yard-scroll"><div class="days">${cols}</div></div>
       </section>
       ${dayPanel()}`;
+  }
+
+  // ---------- konténer oldalnézet (40' HC) ----------
+  function containerSvg(c, opts = {}) {
+    const id = (c.id || '').replace(/\s/g, '');
+    const owner = id.slice(0, 4), serial = id.slice(4, 10), check = id.slice(10, 11);
+    const kgTxt = c.kg ? `${fmtInt(c.kg)} KG` : '';
+    const ctTxt = c.ctns ? `${fmtInt(c.ctns)} CTN` : '';
+    const ribs = [];
+    for (let x = 22; x < 384; x += 7) ribs.push(`<line x1="${x}" y1="13" x2="${x}" y2="83"/>`);
+    return `
+      <svg class="ct ct-${c.status}${opts.cls ? ' ' + opts.cls : ''}" viewBox="0 0 400 96" role="img" aria-label="${esc(id)}" preserveAspectRatio="xMidYMid meet">
+        <rect class="ct-body" x="2" y="6" width="396" height="84" rx="2"/>
+        <g class="ct-ribs">${ribs.join('')}</g>
+        <rect class="ct-rail" x="2" y="6" width="396" height="6"/>
+        <rect class="ct-rail" x="2" y="83" width="396" height="7"/>
+        <rect class="ct-post" x="2" y="6" width="8" height="84"/>
+        <rect class="ct-post" x="390" y="6" width="8" height="84"/>
+        <g class="ct-cast">
+          <rect x="2" y="6" width="14" height="11" rx="1"/><rect x="384" y="6" width="14" height="11" rx="1"/>
+          <rect x="2" y="79" width="14" height="11" rx="1"/><rect x="384" y="79" width="14" height="11" rx="1"/>
+        </g>
+        <g class="ct-hole">
+          <ellipse cx="9" cy="11.5" rx="3.6" ry="2.2"/><ellipse cx="391" cy="11.5" rx="3.6" ry="2.2"/>
+          <ellipse cx="9" cy="84.5" rx="3.6" ry="2.2"/><ellipse cx="391" cy="84.5" rx="3.6" ry="2.2"/>
+        </g>
+        <g class="ct-mark">
+          <text x="26" y="45" class="ct-id">${esc(owner)}</text>
+          <text x="102" y="45" class="ct-id">${esc(serial)}</text>
+          ${check ? `<rect class="ct-chk" x="204" y="24" width="20" height="27" rx="1.5"/><text x="214" y="45" class="ct-id" text-anchor="middle">${esc(check)}</text>` : ''}
+          <text x="26" y="71" class="ct-sub">${esc(kgTxt)}</text>
+          <text x="142" y="71" class="ct-sub">${esc(ctTxt)}</text>
+        </g>
+      </svg>`;
+  }
+
+  function fleet(d, list) {
+    if (!list.length) return '';
+    const cards = list.map(c => {
+      const etaCls = c.status === 'arrived' ? 'done' : (c.eta_time ? 'set' : 'none');
+      const etaTxt = c.status === 'arrived' ? 'Megérkezett' : (c.eta_time || 'ETA ?');
+      const moved = c.moved_from && c.moved_from !== c.date ? `<span class="cc-moved">${short(c.moved_from)} → ${short(c.date)}</span>` : '';
+      return `
+        <button type="button" class="ccard" data-action="open" data-id="${esc(c.id)}">
+          ${containerSvg(c)}
+          <span class="cc-top">
+            <span class="cc-w"><b>${fmtDec((c.kg || 0) / 1000, 1, 1)}</b><small>t</small></span>
+            <span class="cc-eta cc-eta-${etaCls}">${esc(etaTxt)}</span>
+          </span>
+          <span class="cc-sub">${fmtInt(c.ctns)} karton · ${c.pdd.length} PDD${moved}</span>
+          <span class="cc-plate ${c.plate ? '' : 'dim'}">${c.plate ? esc(plate(c.plate)) : 'kamion még nincs'}</span>
+        </button>`;
+    }).join('');
+    return `
+      <section class="fleet" aria-label="Érkező konténerek">
+        <div class="fleet-grid">${cards}</div>
+      </section>`;
   }
 
   function dayPanel() {
@@ -404,6 +462,7 @@
         </div>
         <div class="cols">
           <div class="col-main">
+            ${fleet(d, list)}
             ${timeline(d, list)}
             ${table(d, list)}
             ${removedBlock(d)}
@@ -673,7 +732,8 @@
               <button type="button" class="ibtn" data-action="dstep" data-step="1" aria-label="Következő konténer" ${idx >= dayList.length - 1 ? 'disabled style="opacity:.35"' : ''}>${IC.down}</button>
             </div>` : ''}
           </div>
-          <div class="sheet-id">${esc(c.id)}</div>
+          <h2 class="sr">${esc(c.id)}</h2>
+          <div class="sheet-ct">${containerSvg(c, { cls: 'ct-lg' })}</div>
           <div class="badges">${statusBadge}${moved}${where ? `<span class="badge b-out">${esc(where)}</span>` : ''}</div>
           <div class="corrugate" aria-hidden="true"></div>
         </div>
