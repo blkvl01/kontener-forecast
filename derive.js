@@ -1,5 +1,5 @@
 // A pre-alert levelekből és a kézi adatokból levezeti a konténerek aktuális állapotát.
-window.KFDerive = function derive(messages, manual) {
+window.KFDerive = function derive(messages, manual, arrivals) {
   const C = {};
   const feed = [];
   const files = {};
@@ -96,6 +96,43 @@ window.KFDerive = function derive(messages, manual) {
     feed.push(ev);
   }
 
+  // Nyitáskérő levelek párosítása: MRN, konténerszám, végül egy karakter eltérés
+  const dist1 = (a, b) => {
+    if (a === b) return 0;
+    if (Math.abs(a.length - b.length) > 1) return 2;
+    let i = 0, j = 0, diff = 0;
+    while (i < a.length && j < b.length) {
+      if (a[i] === b[j]) { i++; j++; continue; }
+      if (++diff > 1) return 2;
+      if (a.length > b.length) i++;
+      else if (b.length > a.length) j++;
+      else { i++; j++; }
+    }
+    return diff + (a.length - i) + (b.length - j);
+  };
+  const all = Object.values(C);
+  const byT1 = {};
+  all.forEach(x => { if (x.t1) byT1[x.t1.replace(/\s/g, '').toUpperCase()] = x; });
+  const arr = (arrivals || []).slice().sort((a, b) => (a.received < b.received ? -1 : 1));
+  for (const a of arr) {
+    const hits = new Set();
+    (a.mrns || []).forEach(m => { const x = byT1[m.toUpperCase()]; if (x) hits.add(x); });
+    if (!hits.size) {
+      for (const raw of a.containers || []) {
+        const r = raw.toUpperCase();
+        if (C[r]) { hits.add(C[r]); continue; }
+        const near = all.filter(x => dist1(x.id, r) <= 1);
+        if (near.length === 1) hits.add(near[0]);
+      }
+    }
+    hits.forEach(x => {
+      if (!x.auto_arrival) {
+        x.auto_arrival = { at: a.received, sender: a.sender || '' };
+        x.history.push({ at: a.received, kind: 'arrival', sender: a.sender || '' });
+      }
+    });
+  }
+
   for (const x of Object.values(C)) {
     let man = manual[x.id] || {};
     const me = mailEta[x.id];
@@ -107,11 +144,14 @@ window.KFDerive = function derive(messages, manual) {
     x.eta_time = man.eta_time || '';
     x.eta_set = man.eta_set || '';
     x.eta_stale = !!(man.eta_for && x.eta_time && man.eta_for !== x.date);
-    x.arrived = !!man.arrived;
-    x.arrived_at = man.arrived_at || '';
+    x.arrived_auto = !!(x.auto_arrival && !man.auto_dismissed && !man.arrived);
+    x.arrived = !!man.arrived || x.arrived_auto;
+    x.arrived_at = man.arrived ? (man.arrived_at || '') : (x.arrived_auto ? x.auto_arrival.at : '');
+    x.auto_dismissed = !!man.auto_dismissed;
     x.note = man.note || '';
     x.updated_by = man.updated_by || '';
     x.updated_at = man.updated_at || '';
+    x.history.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
     x.history = x.history.slice(-30);
     if (x.state === 'removed') x.status = 'removed';
     else if (x.arrived) x.status = 'arrived';

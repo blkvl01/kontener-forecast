@@ -66,6 +66,7 @@
   let ME = null;
   let MSGS = [];
   let MAN = {};
+  let ARR = [];
   let SYNC = null;
   let LOCAL = null;
   let channel = null;
@@ -82,11 +83,13 @@
   const normMan = r => ({
     eta_date: r.eta_date || '', eta_time: r.eta_time || '', eta_for: r.eta_for || '',
     eta_set: toLocal(r.eta_set), arrived: !!r.arrived, arrived_at: toLocal(r.arrived_at),
-    note: r.note || '', updated_by: r.updated_by || '', updated_at: toLocal(r.updated_at)
+    note: r.note || '', updated_by: r.updated_by || '', updated_at: toLocal(r.updated_at),
+    auto_dismissed: !!r.auto_dismissed
   });
+  const normArr = r => ({ ...r, received: toLocal(r.received) });
 
   function rebuild() {
-    const d = window.KFDerive(MSGS, MAN);
+    const d = window.KFDerive(MSGS, MAN, ARR);
     d.now = nowIso();
     S.data = d;
     S.today = d.now.slice(0, 10);
@@ -113,13 +116,15 @@
   }
 
   async function loadAll() {
-    const [msgs, man, sync] = await Promise.all([
+    const [msgs, man, arr, sync] = await Promise.all([
       fetchAll('messages', 'received'),
       fetchAll('manual'),
+      fetchAll('arrivals', 'received'),
       sb.from('sync_status').select('*').eq('id', 1).maybeSingle()
     ]);
     MSGS = msgs.map(normMsg);
     MAN = Object.fromEntries(man.map(r => [r.container, normMan(r)]));
+    ARR = arr.map(normArr);
     SYNC = sync.data || null;
     rebuild();
     render();
@@ -149,6 +154,15 @@
           const m = normMsg(p.new);
           const i = MSGS.findIndex(x => x.id === m.id);
           if (i >= 0) MSGS[i] = m; else MSGS.push(m);
+        }
+        scheduleRender();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'arrivals' }, p => {
+        if (p.eventType === 'DELETE') ARR = ARR.filter(a => a.id !== p.old.id);
+        else {
+          const a = normArr(p.new);
+          const i = ARR.findIndex(x => x.id === a.id);
+          if (i >= 0) ARR[i] = a; else ARR.push(a);
         }
         scheduleRender();
       })
@@ -686,6 +700,7 @@
       case 'truck': return ['T1 és kamion', 'st', `<span class="h-v">${esc(plate(h.plate) || h.t1)}</span>`, 'hl truck'];
       case 'changed': return [h.field === 'plate' ? 'Rendszám módosult' : 'T1 módosult', 'or', `<span class="h-v">${esc(h.field === 'plate' ? plate(h.to) : h.to)}</span>`, ''];
       case 'weight': return ['Súly módosult', 'or', `<span class="h-v">${fmtInt(h.to)} kg</span>`, ''];
+      case 'arrival': return ['Nyitáskérés', 'ink', `<span class="h-v">${esc(h.sender)}</span>`, 'hl arr'];
       default: return [esc(h.kind), '', '', ''];
     }
   }
@@ -701,7 +716,7 @@
       pre: '<span class="badge b-pre">Bejelentve</span>',
       t1: '<span class="badge b-t1">Kamion + T1</span>',
       eta: `<span class="badge b-eta">ETA · ${esc(c.eta_time)}</span>`,
-      arrived: `<span class="badge b-arrived">${IC.check}Megérkezett${c.arrived_at ? ' · ' + esc(stamp(c.arrived_at)) : ''}</span>`,
+      arrived: `<span class="badge b-arrived">${IC.check}Megérkezett${c.arrived_at ? ' · ' + esc(stamp(c.arrived_at)) : ''}${c.arrived_auto ? ' · nyitáskérés' : ''}</span>`,
       removed: '<span class="badge b-removed">Kikerült a tervből</span>'
     }[c.status];
     const where = [c.port, c.customs].filter(Boolean).join(' · ');
@@ -966,8 +981,13 @@
       case 'clear-eta': if (await saveEta(S.drawer, '', '')) toast('ETA törölve'); break;
       case 'arrived': {
         const c = S.data.containers[S.drawer];
-        const on = !c.arrived;
-        await upsertManual({ container: c.id, arrived: on, arrived_at: on ? new Date().toISOString() : null });
+        if (c.arrived_auto) {
+          await upsertManual({ container: c.id, auto_dismissed: true, arrived: false, arrived_at: null });
+        } else if (c.arrived) {
+          await upsertManual({ container: c.id, arrived: false, arrived_at: null, auto_dismissed: !!c.auto_arrival });
+        } else {
+          await upsertManual({ container: c.id, arrived: true, arrived_at: new Date().toISOString() });
+        }
         break;
       }
       case 'copy-pw':

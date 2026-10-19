@@ -373,6 +373,7 @@ button{cursor:pointer}
 .hist li.hl.move{background:oklch(0.97 0.025 65)}
 .hist li.hl.truck{background:var(--steel-soft)}
 .hist li.hl.rem{background:oklch(0.965 0.02 25)}
+.hist li.hl.arr{background:oklch(0.95 0.006 255)}
 .hd{width:11px;height:11px;margin-top:4px;border-radius:3px;background:var(--surface);box-shadow:inset 0 0 0 1.5px oklch(0.6 0.015 255)}
 .hd.ink{background:var(--ink);box-shadow:none}
 .hd.or{background:var(--surface);box-shadow:inset 0 0 0 2px oklch(0.62 0.16 48)}
