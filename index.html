@@ -17,7 +17,13 @@
     <nav class="tabs" aria-label="Nézet">
       <button type="button" class="tab" data-action="view" data-view="week">Hét</button>
       <button type="button" class="tab" data-action="view" data-view="month">Naptár</button>
+      <button type="button" class="tab" data-action="view" data-view="stats">Statisztika</button>
     </nav>
+    <div class="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Konténer, MRN, rendszám, PDD" aria-label="Keresés">
+      <div class="qres" id="qres" hidden></div>
+    </div>
     <div class="spacer"></div>
     <div class="period" id="period"></div>
     <div class="sync" id="sync"></div>
@@ -25,6 +31,7 @@
   <div id="view"></div>
 </div>
 <div id="drawer"></div>
+<div id="tip" class="tip" role="tooltip" hidden></div>
 
 <section class="auth" id="auth" hidden aria-live="polite">
   <div class="auth-card">
@@ -96,6 +103,15 @@
         <button type="submit" class="btn-primary sm">Hozzáadás</button>
       </form>
       <div class="newpw" id="newpw" hidden></div>
+    </section>
+
+    <section class="set-sec" id="yard-sec" hidden>
+      <h3>Raktár</h3>
+      <form id="yard-form" class="row-form">
+        <label class="sr" for="ramp-count">Rámpák száma</label>
+        <input id="ramp-count" type="number" min="1" max="99" step="1" required>
+        <button type="submit" class="btn-ghost sm">Rámpák száma: mentés</button>
+      </form>
     </section>
 
     <section class="set-sec" id="outlook-sec" hidden>

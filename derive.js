@@ -125,11 +125,12 @@ window.KFDerive = function derive(messages, manual, arrivals) {
         if (near.length === 1) hits.add(near[0]);
       }
     }
+    const st = a.stage || 'request';
     hits.forEach(x => {
-      if (!x.auto_arrival) {
-        x.auto_arrival = { at: a.received, sender: a.sender || '' };
-        x.history.push({ at: a.received, kind: 'arrival', sender: a.sender || '' });
-      }
+      if (!x.auto_arrival || a.received < x.auto_arrival.at) x.auto_arrival = { at: a.received, sender: a.sender || '' };
+      x.stages = x.stages || {};
+      if (st !== 'other' && (!x.stages[st] || a.received < x.stages[st].at)) x.stages[st] = { at: a.received, sender: a.sender || '' };
+      x.history.push({ at: a.received, kind: 'stage', stage: st, sender: a.sender || '', snippet: a.snippet || '' });
     });
   }
 
@@ -148,6 +149,10 @@ window.KFDerive = function derive(messages, manual, arrivals) {
     x.arrived = !!man.arrived || x.arrived_auto;
     x.arrived_at = man.arrived ? (man.arrived_at || '') : (x.arrived_auto ? x.auto_arrival.at : '');
     x.auto_dismissed = !!man.auto_dismissed;
+    x.stages = x.auto_dismissed ? {} : (x.stages || {});
+    x.stage = ['released', 'opened', 'approved', 'request'].find(k => x.stages[k]) || '';
+    x.ramp = man.ramp || null;
+    x.ramp_set = man.ramp_set || '';
     x.note = man.note || '';
     x.updated_by = man.updated_by || '';
     x.updated_at = man.updated_at || '';
