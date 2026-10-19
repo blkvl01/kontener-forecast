@@ -8,6 +8,7 @@
   const ST_LABEL = { pre: 'Bejelentve', t1: 'Kamion + T1', eta: 'ETA rögzítve', arrived: 'Megérkezett', removed: 'Kikerült' };
 
   const IC = {
+    copy: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>',
     left: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>',
     right: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>',
     up: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>',
@@ -421,8 +422,8 @@
         </button>`;
     }).join('');
 
-    const legend = [['Tervben', 5], ['Megérkezett', 36], ['Nyitás', 66], ['Elengedve', 82], ['Betárolva', 100]]
-      .map(([t, p]) => `<span><i class="lg-ct" style="--p:${p}%"></i>${t}</span>`).join('');
+    const legend = [['Tervben', 0, 'plan'], ['Megérkezett', 20, 'live'], ['Nyitás', 60, 'live'], ['Elengedve', 80, 'live'], ['Betárolva', 100, 'done']]
+      .map(([t, p, g]) => `<span><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
     return `
       <section class="yard ${S.anim ? 'anim' : ''}" aria-label="Heti érkezések">
         <div class="legend">${legend}</div>
@@ -435,14 +436,14 @@
   const STAGES = ['request', 'approved', 'opened', 'released', 'stored'];
   const STAGE_LABEL = { request: 'Érkezés', approved: 'Nyitható', opened: 'Nyitás', released: 'Elengedve', stored: 'Betárolva' };
   const PHASE = {
-    pre: ['Tervben', 0.05, 'plan'], t1: ['Kamion + T1', 0.14, 'plan'], eta: ['ETA megvan', 0.22, 'plan'],
-    request: ['Megérkezett', 0.36, 'live'], approved: ['Nyitható', 0.5, 'live'], opened: ['Nyitás', 0.66, 'live'],
-    released: ['Elengedve', 0.82, 'live'], stored: ['Betárolva', 1, 'done']
+    pre: ['Tervben', 0, 'plan'], t1: ['Kamion + T1', 0, 'plan'], eta: ['ETA megvan', 0, 'plan'],
+    request: ['Megérkezett', 0.2, 'live'], approved: ['Nyitható', 0.4, 'live'], opened: ['Nyitás', 0.6, 'live'],
+    released: ['Elengedve', 0.8, 'live'], stored: ['Betárolva', 1, 'done']
   };
   function phase(c) {
     if (c.stage === 'stored') return { key: 'stored', label: PHASE.stored[0], p: 1, grp: 'done' };
     if (c.storage && c.storage.done) {
-      return { key: 'storing', label: `Betárolás ${c.storage.done}/${c.storage.total}`, p: 0.82 + 0.18 * c.storage.done / Math.max(1, c.storage.total), grp: 'live' };
+      return { key: 'storing', label: `Betárolás ${c.storage.done}/${c.storage.total}`, p: 0.8 + 0.2 * c.storage.done / Math.max(1, c.storage.total), grp: 'live' };
     }
     const k = c.stage || (c.arrived ? 'request' : c.eta_time ? 'eta' : (c.plate || c.t1) ? 't1' : 'pre');
     const [label, p, grp] = PHASE[k];
@@ -510,15 +511,13 @@
 
   function rampPicker(c) {
     const used = rampUse(c.day, c.id);
-    const btns = [];
-    for (let n = 1; n <= RAMPS; n++) {
-      const other = used[n];
-      btns.push(`<button type="button" class="rp ${c.ramp === n ? 'sel' : ''} ${other ? 'busy' : ''}" data-action="ramp" data-ramp="${n}" aria-pressed="${c.ramp === n}" title="${other ? 'Foglalt: ' + esc(other) : ''}"><b>${n}</b>${other ? `<small>${esc(other.slice(0, 4))}</small>` : ''}</button>`);
-    }
+    const busy = Object.keys(used).sort((a, b) => a - b).map(n => `${n} (${used[n]})`).join(', ');
     return `
       <section class="rampbox" aria-label="Rámpa">
-        <div class="flow-head"><b>Rámpa</b>${c.ramp && c.ramp_set ? `<span>${esc(stamp(c.ramp_set))}</span>` : ''}</div>
-        <div class="rp-grid">${btns.join('')}</div>
+        <label class="ramp-line" for="ramp-input"><b>Rámpa</b>
+          <input id="ramp-input" class="field ramp-in" type="number" min="1" max="99" step="1" inputmode="numeric" value="${c.ramp || ''}" data-id="${esc(c.id)}" placeholder="—">
+        </label>
+        ${busy ? `<div class="ramp-busy">Foglalt: ${esc(busy)}</div>` : ''}
       </section>`;
   }
 
@@ -580,54 +579,87 @@
     const kg = sumKg(past), ct = sumCt(past);
     const at = (c, k) => { const st = c.stages || {}; return k === 'request' ? ((st.request && st.request.at) || c.arrived_at || null) : (st[k] && st[k].at) || null; };
     const span = (a, b) => past.map(c => { const x = at(c, a), y = at(c, b); return x && y ? minutesBetween(x, y) : null; }).filter(v => v != null && v >= 0);
-    const avg = l => (l.length ? l.reduce((s, x) => s + x, 0) / l.length : null);
-    const fd = l => (avg(l) != null ? fmtDur(avg(l)) : '—');
+    const avg = l => (l.length ? l.reduce((t, x) => t + x, 0) / l.length : null);
 
     const openT = span('request', 'approved');
+    const waitT = span('approved', 'opened');
     const loadT = span('opened', 'released');
     const openStore = span('opened', 'stored');
     const total = span('request', 'stored');
     const days = [...new Set(past.map(c => c.date))];
     const perDay = days.length ? past.length / days.length : 0;
-    const peak = days.map(d => [d, past.filter(c => c.date === d).length]).sort((a, b) => b[1] - a[1])[0];
 
-    const devs = past.filter(c => c.eta_time && at(c, 'request')).map(c => ({
-      c, d: minutesBetween(`${c.eta_date || c.date}T${c.eta_time}:00`, at(c, 'request'))
-    }));
-    const onTime = devs.filter(x => Math.abs(x.d) <= 30).length;
+    const devs = past.filter(c => c.eta_time && at(c, 'request')).map(c => minutesBetween(`${c.eta_date || c.date}T${c.eta_time}:00`, at(c, 'request')));
+    const early = devs.filter(d => d < -30).length, ok = devs.filter(d => Math.abs(d) <= 30).length, lateN = devs.filter(d => d > 30).length;
 
-    const tiles = [
-      ['Konténer', `${past.length}`, `${arrived.length} megérkezett · ${storedL.length} betárolva`],
-      ['Bruttó súly', fmtT(kg), `${fmtInt(ct)} karton`],
-      ['Napi átlag', perDay ? fmtDec(perDay, 0, 1) : '—', peak ? `csúcs: ${short(peak[0])} · ${peak[1]} db` : ''],
-      ['Nyitási idő', fd(openT), `érkezéstől nyithatóig · ${openT.length} mérés`],
-      ['Rakodási idő', fd(loadT), `nyitástól elengedésig · ${loadT.length} mérés`],
-      ['Nyitás → betárolás', fd(openStore), `${openStore.length} mérés`],
-      ['Teljes átfutás', fd(total), `érkezéstől betárolásig · ${total.length} mérés`],
-      ['ETA-pontosság', devs.length ? `${Math.round(onTime / devs.length * 100)}%` : '—', devs.length ? `±30 percen belül · ${devs.length} mérés` : 'még nincs mérés']
-    ].map(([k, v, sub]) => `<div class="tile"><dt>${k}</dt><dd>${esc(v)}</dd><span>${esc(sub)}</span></div>`).join('');
+    const kpi = (title, l, sub) => {
+      const v = avg(l);
+      const sorted = l.slice().sort((a, b) => a - b);
+      const mn = sorted[0], mx = sorted[sorted.length - 1];
+      const pos = x => (mx > mn ? ((x - mn) / (mx - mn)) * 100 : 50);
+      return `<div class="kpi">
+        <dt>${title}</dt><dd>${v != null ? esc(fmtDur(v)) : '—'}</dd><span class="kpi-sub">${esc(sub)}</span>
+        ${l.length > 1 ? `<div class="rng" data-tip="${esc(`legrövidebb ${fmtDur(mn)} · átlag ${fmtDur(v)} · leghosszabb ${fmtDur(mx)} · ${l.length} konténer`)}"><i class="rng-track"></i>${sorted.map(x => `<i class="rng-dot" style="left:${pos(x)}%"></i>`).join('')}<i class="rng-avg" style="left:${pos(v)}%"></i><span class="rng-lo">${esc(fmtDur(mn))}</span><span class="rng-hi">${esc(fmtDur(mx))}</span></div>` : `<div class="kpi-n">${l.length} mérés</div>`}
+      </div>`;
+    };
+
+    const segs = [['Érkezés → Nyitható', avg(openT) || 0, 's1'], ['Nyitható → Nyitás', avg(waitT) || 0, 's2'], ['Nyitás → Betárolva', avg(openStore) || 0, 's3']];
+    const segSum = segs.reduce((t, x) => t + x[1], 0);
 
     return `
       <div class="statsv">
-        <dl class="tiles">${tiles}</dl>
-        <section class="panel chart" aria-label="Napi érkezések">
-          <div class="chart-head"><b>Napi konténerszám</b>
-            <span class="lg"><i class="lg-done"></i>Megvalósult</span><span class="lg"><i class="lg-plan"></i>Tervezett</span></div>
-          ${dayBars(from, to, act)}
+        <section class="sx">
+          <h2 class="sx-h">Áttekintés</h2>
+          <div class="hero">
+            <div class="hero-main">
+              ${ring(storedL.length, past.length, 'done', 132)}
+              <div><div class="hero-n">${past.length}<small> konténer</small></div>
+                <div class="hero-sub">${arrived.length} megérkezett · ${storedL.length} betárolva</div>
+                <div class="hero-sub">${fmtT(kg)} · ${fmtInt(ct)} karton</div></div>
+            </div>
+            <div class="hero-side">
+              <div class="mini"><dt>Napi átlag</dt><dd>${perDay ? fmtDec(perDay, 0, 1) : '—'}</dd><span>konténer / nap</span></div>
+              <div class="mini"><dt>Átlagos súly</dt><dd>${past.length ? fmtT(kg / past.length) : '—'}</dd><span>konténerenként</span></div>
+              <div class="mini mini-ring">${ring(ok, devs.length, 'live', 56)}<span><dt>ETA-pontosság</dt><dd>${devs.length ? `${ok}/${devs.length}` : '—'}</dd><span>${devs.length ? `${early} korábban · ${lateN} később` : 'még nincs mérés'}</span></span></div>
+            </div>
+          </div>
         </section>
-        <div class="chart-row">
-          <section class="panel chart" aria-label="Lépésidők">
-            <div class="chart-head"><b>Átlagos lépésidők</b></div>
-            ${durBars([['Érkezés → Nyitható', openT], ['Nyitható → Nyitás', span('approved', 'opened')], ['Nyitás → Elengedve', loadT], ['Elengedve → Betárolva', span('released', 'stored')], ['Teljes átfutás', total]])}
-          </section>
-          <section class="panel chart" aria-label="Érkezések óránként">
-            <div class="chart-head"><b>Érkezések óránként</b><span class="chart-sub">nyitáskérés ideje</span></div>
-            ${hourBars(past.map(c => at(c, 'request')).filter(Boolean))}
-          </section>
-        </div>
-        <section class="panel chart" aria-label="ETA-eltérés">
-          <div class="chart-head"><b>Érkezés az ETA-hoz képest</b><span class="chart-sub">perc</span></div>
-          ${devDots(devs)}
+
+        <section class="sx">
+          <h2 class="sx-h">Időtartamok</h2>
+          <dl class="kpis">
+            ${kpi('Nyitási idő', openT, 'érkezéstől nyithatóig')}
+            ${kpi('Rakodási idő', loadT, 'nyitástól elengedésig')}
+            ${kpi('Nyitás → betárolás', openStore, 'nyitástól az utolsó PDD betárolásáig')}
+            ${kpi('Teljes átfutás', total, 'érkezéstől betárolásig')}
+          </dl>
+          <div class="panel chart">
+            <div class="chart-head"><b>Egy átlagos konténer útja</b><span class="chart-sub">${segSum ? esc(fmtDur(segSum)) : ''}</span></div>
+            ${segSum ? `<div class="flowbar">${segs.map(([k, v, cl]) => `<div class="fb fb-${cl}" style="flex:${Math.max(v, segSum * 0.06)}" data-tip="${esc(`${k}: ${fmtDur(v)}`)}"><b>${esc(fmtDur(v))}</b><span>${esc(k)}</span></div>`).join('')}</div>` : '<div class="empty">Még nincs elég adat.</div>'}
+          </div>
+          <div class="panel chart">
+            <div class="chart-head"><b>Konténerenként</b><span class="lg"><i class="fb-s1"></i>Érkezés → Nyitható</span><span class="lg"><i class="fb-s2"></i>Nyitható → Nyitás</span><span class="lg"><i class="fb-s3"></i>Nyitás → Betárolva</span></div>
+            ${gantt(past, at)}
+          </div>
+        </section>
+
+        <section class="sx">
+          <h2 class="sx-h">Mennyiség</h2>
+          <div class="panel chart">
+            <div class="chart-head"><b>Napi konténerszám</b>
+              <span class="lg"><i class="lg-done"></i>Megvalósult</span><span class="lg"><i class="lg-plan"></i>Tervezett</span></div>
+            ${dayBars(from, to, act)}
+          </div>
+          <div class="chart-row">
+            <div class="panel chart">
+              <div class="chart-head"><b>Átfutás naponta</b><span class="chart-sub">átlag, érkezéstől betárolásig</span></div>
+              ${dayTrend(past, at)}
+            </div>
+            <div class="panel chart">
+              <div class="chart-head"><b>Érkezések óránként</b><span class="chart-sub">nyitáskérés ideje</span></div>
+              ${hourBars(past.map(c => at(c, 'request')).filter(Boolean))}
+            </div>
+          </div>
         </section>
       </div>`;
   }
@@ -662,6 +694,41 @@
     return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Napi konténerszám">${grid}${bars}</svg>`;
   }
 
+  function gantt(list, at) {
+    const rows = list.map(c => ({ c, r: at(c, 'request'), a: at(c, 'approved'), o: at(c, 'opened'), s: at(c, 'stored') }))
+      .filter(x => x.r && (x.s || x.o || x.a)).sort((p, q) => (p.r < q.r ? 1 : -1)).slice(0, 14);
+    if (!rows.length) return '<div class="empty">Még nincs elég adat.</div>';
+    const span = x => minutesBetween(x.r, x.s || x.o || x.a);
+    const max = Math.max(60, ...rows.map(span));
+    return `<div class="gantt">${rows.map(x => {
+      const seg = (from, to, cl, lab) => (from && to ? `<i class="fb-${cl}" style="width:${(minutesBetween(from, to) / max) * 100}%" data-tip="${esc(`${x.c.id} · ${lab}: ${fmtDur(minutesBetween(from, to))}`)}"></i>` : '');
+      return `<div class="g-row"><button type="button" class="g-id" data-action="open" data-id="${esc(x.c.id)}">${esc(x.c.id)}</button><span class="g-day">${esc(short(x.c.date))}</span>
+        <div class="g-track">${seg(x.r, x.a, 's1', 'Érkezés → Nyitható')}${seg(x.a, x.o, 's2', 'Nyitható → Nyitás')}${seg(x.o, x.s, 's3', 'Nyitás → Betárolva')}</div>
+        <span class="g-tot">${esc(fmtDur(span(x)))}</span></div>`;
+    }).join('')}</div>`;
+  }
+
+  function dayTrend(list, at) {
+    const by = {};
+    list.forEach(c => { const r = at(c, 'request'), s = at(c, 'stored'); if (r && s) (by[c.date] = by[c.date] || []).push(minutesBetween(r, s)); });
+    const days = Object.keys(by).sort();
+    if (!days.length) return '<div class="empty">Még nincs betárolt konténer.</div>';
+    const vals = days.map(d => by[d].reduce((t, x) => t + x, 0) / by[d].length);
+    const max = Math.max(60, ...vals);
+    const W = 600, H = 200, L = 46, B = 24, T = 12;
+    const bw = (W - L) / days.length;
+    const y = v => T + (H - T - B) * (1 - v / max);
+    let grid = '';
+    for (let i = 0; i <= 3; i++) {
+      const v = (max / 3) * i;
+      grid += `<line x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}" class="g-line"/><text x="${L - 6}" y="${y(v) + 4}" class="g-lab" text-anchor="end">${Math.round(v / 60)} ó</text>`;
+    }
+    const pts = vals.map((v, i) => [L + i * bw + bw / 2, y(v)]);
+    const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+    const dots = pts.map((p, i) => `<g data-tip="${esc(`${short(days[i])} · ${fmtDur(vals[i])} · ${by[days[i]].length} konténer`)}"><circle cx="${p[0]}" cy="${p[1]}" r="12" class="hit"/><circle cx="${p[0]}" cy="${p[1]}" r="5" class="t-dot"/></g><text x="${p[0]}" y="${H - 7}" class="g-lab" text-anchor="middle">${short(days[i])}</text>`).join('');
+    return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Átfutás naponta">${grid}<path d="${line}" class="t-line"/>${dots}</svg>`;
+  }
+
   function hourBars(times) {
     if (!times.length) return '<div class="empty">Még nincs érkezési adat.</div>';
     const cnt = Array(24).fill(0);
@@ -685,38 +752,6 @@
     return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Érkezések óránként">${grid}${bars}</svg>`;
   }
 
-  function durBars(rows) {
-    const vals = rows.map(([, l]) => (l.length ? l.reduce((s, x) => s + x, 0) / l.length : 0));
-    const max = Math.max(30, ...vals);
-    return `<div class="hbars">${rows.map(([k, l], i) => `
-      <div class="hb" data-tip="${esc(`${k}: ${l.length ? fmtDur(vals[i]) : 'nincs adat'} · ${l.length} konténer`)}">
-        <span class="hb-k">${esc(k)}</span>
-        <span class="hb-track"><i class="${i === rows.length - 1 ? 'tot' : ''}" style="width:${l.length ? Math.max(2, vals[i] / max * 100) : 0}%"></i></span>
-        <span class="hb-v">${l.length ? esc(fmtDur(vals[i])) : '—'}</span>
-      </div>`).join('')}</div>`;
-  }
-
-  function devDots(devs) {
-    if (!devs.length) return '<div class="empty">Még nincs olyan konténer, amelynél ETA és nyitáskérés is van.</div>';
-    const W = 600, H = 150, M = 24;
-    const lim = 240;
-    const x = v => M + (W - 2 * M) * ((Math.max(-lim, Math.min(lim, v)) + lim) / (2 * lim));
-    let ticks = '';
-    [-240, -120, -60, 0, 60, 120, 240].forEach(v => {
-      ticks += `<line x1="${x(v)}" x2="${x(v)}" y1="18" y2="${H - 30}" class="${v === 0 ? 'g-zero' : 'g-line'}"/><text x="${x(v)}" y="${H - 10}" class="g-lab" text-anchor="middle">${v > 0 ? '+' : ''}${v}</text>`;
-    });
-    const rows = {};
-    const dots = devs.map(({ c, d }) => {
-      const bx = Math.round(x(d) / 10);
-      rows[bx] = (rows[bx] || 0) + 1;
-      const cy = H - 40 - (rows[bx] - 1) * 14;
-      const cls = Math.abs(d) <= 30 ? 'd-ok' : d > 0 ? 'd-late' : 'd-early';
-      return `<circle cx="${x(d)}" cy="${Math.max(24, cy)}" r="6" class="${cls}" data-tip="${esc(`${c.id} · ETA ${c.eta_time} · ${d > 0 ? '+' : ''}${Math.round(d)} perc`)}"/>`;
-    }).join('');
-    return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="ETA-eltérés">${ticks}${dots}</svg>
-      <div class="dev-legend"><span><i class="d-early"></i>korábban</span><span><i class="d-ok"></i>±30 perc</span><span><i class="d-late"></i>később</span></div>`;
-  }
-
   // ---------- konténer oldalnézet (40' HC) ----------
   function containerSvg(c, opts = {}) {
     const id = (c.id || '').replace(/\s/g, '');
@@ -732,10 +767,11 @@
     const r = ribs.join('');
     return `
       <svg class="ct${late ? ' ct-late' : ''}${opts.cls ? ' ' + opts.cls : ''}" viewBox="0 0 400 96" role="img" aria-label="${esc(id)} · ${esc(ph.label)}" preserveAspectRatio="xMidYMid meet">
-        <defs><clipPath id="${uid}"><rect x="6" y="8" width="${fw}" height="80"/></clipPath></defs>
-        <rect class="ct-shell" x="2" y="6" width="396" height="84" rx="2"/>
+        <defs><clipPath id="${uid}"><rect x="6" y="8" width="${fw}" height="80"/></clipPath>
+          <linearGradient id="${uid}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="gd-a"/><stop offset="1" class="gd-b"/></linearGradient></defs>
+        <rect class="ct-shell${ph.grp === 'plan' ? ' ct-shell-plan' : ''}" x="2" y="6" width="396" height="84" rx="2"/>
         <g class="ct-ribs">${r}</g>
-        <g clip-path="url(#${uid})"><rect class="ct-fill ct-fill-${ph.grp}" x="2" y="6" width="396" height="84"/><g class="ct-ribs-f">${r}</g></g>
+        ${fw ? `<g clip-path="url(#${uid})"><rect class="ct-fill ct-fill-${ph.grp}" x="2" y="6" width="396" height="84"${ph.grp === 'done' ? ` fill="url(#${uid}g)"` : ''}/><g class="ct-ribs-f">${r}</g></g>` : ''}
         ${ph.p > 0 && ph.p < 1 ? `<line class="ct-level" x1="${6 + fw}" x2="${6 + fw}" y1="12" y2="84"/>` : ''}
         <rect class="ct-rail" x="2" y="6" width="396" height="6"/>
         <rect class="ct-rail" x="2" y="83" width="396" height="7"/>
@@ -755,7 +791,7 @@
           ${check ? `<rect class="ct-chk" x="186" y="25" width="21" height="28" rx="1.5"/><text x="196.5" y="47" class="ct-id" text-anchor="middle">${esc(check)}</text>` : ''}
           <text x="26" y="72" class="ct-sub">${esc(kgTxt)}</text>
           <text x="128" y="72" class="ct-sub">${esc(ctTxt)}</text>
-          <text x="372" y="72" class="ct-pct" text-anchor="end">${Math.round(ph.p * 100)}%</text>
+          ${ph.p ? `<text x="372" y="72" class="ct-pct" text-anchor="end">${Math.round(ph.p * 100)}%</text>` : ''}
         </g>
       </svg>`;
   }
@@ -783,10 +819,19 @@
       </section>`;
   }
 
+  function ring(v, total, cls, size = 40) {
+    const r = size / 2 - 4, C = 2 * Math.PI * r, f = total ? Math.min(1, v / total) : 0;
+    return `<svg class="ring ring-${cls}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
+      <circle class="ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}"/>
+      <circle class="ring-fg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-dasharray="${(C * f).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
+      <text x="50%" y="50%" dy=".35em" text-anchor="middle">${total ? Math.round(f * 100) : 0}%</text>
+    </svg>`;
+  }
+
   function dayPanel() {
     const d = S.sel;
     const list = onDay(d);
-    const withTruck = list.filter(c => c.plate || c.t1).length;
+    const withEta = list.filter(c => c.eta_time || c.arrived).length;
     const arrived = list.filter(c => c.arrived).length;
     const stored = list.filter(c => phase(c).key === 'stored').length;
     const late = list.filter(c => lateInfo(c)).length;
@@ -798,10 +843,10 @@
             <div><dt>Konténer</dt><dd>${list.length}</dd></div>
             <div><dt>Bruttó súly</dt><dd>${fmtT(sumKg(list))}</dd></div>
             <div><dt>Karton</dt><dd>${fmtInt(sumCt(list))}</dd></div>
-            <div><dt>Kamion + T1</dt><dd>${withTruck}<span class="of"> / ${list.length}</span></dd></div>
-            <div><dt>Megérkezett</dt><dd>${arrived}<span class="of"> / ${list.length}</span></dd></div>
-            <div><dt>Betárolva</dt><dd>${stored}<span class="of"> / ${list.length}</span></dd></div>
-            ${late ? `<div class="st-late"><dt>Késik</dt><dd>${late}</dd></div>` : ''}
+            <div class="st-ring">${ring(withEta, list.length, 'eta')}<span><dt>ETA</dt><dd>${withEta}<span class="of"> / ${list.length}</span></dd></span></div>
+            <div class="st-ring">${ring(arrived, list.length, 'live')}<span><dt>Megérkezett</dt><dd>${arrived}<span class="of"> / ${list.length}</span></dd></span></div>
+            <div class="st-ring">${ring(stored, list.length, 'done')}<span><dt>Betárolva</dt><dd>${stored}<span class="of"> / ${list.length}</span></dd></span></div>
+            ${late ? `<div class="st-late st-ring">${ring(late, list.length, 'late')}<span><dt>Késik</dt><dd>${late}</dd></span></div>` : ''}
           </dl>
         </div>
         ${rampStrip(d, list)}
@@ -966,6 +1011,8 @@
   }
 
   // ---------- adatlap ----------
+  const cp = v => (v ? `<button type="button" class="cpy" data-action="copy" data-v="${esc(v)}" aria-label="Másolás" title="Másolás">${IC.copy}</button>` : '');
+
   function renderDrawer() {
     const root = $('#drawer');
     const c = S.drawer && S.data.containers[S.drawer];
@@ -979,7 +1026,7 @@
     const stored = c.storedPdd || {};
     const pddRows = c.pdd.map(p => {
       const at = p.no && stored[p.no.toUpperCase()];
-      return `<div class="tr2"><span>${esc(p.no || '—')}</span><span class="r">${fmtKg(p.kg)}</span><span class="r">${fmtInt(p.ctns)}</span><span class="r ${at ? 'ok' : 'dim'}">${at ? esc(stamp(at)) : '—'}</span></div>`;
+      return `<div class="tr2"><span>${esc(p.no || '—')}${cp(p.no)}</span><span class="r">${fmtKg(p.kg)}${cp(String(p.kg).replace('.', ','))}</span><span class="r">${fmtInt(p.ctns)}${cp(String(p.ctns))}</span><span class="r ${at ? 'ok' : 'dim'}">${at ? esc(stamp(at)) : '—'}</span></div>`;
     }).join('');
     const etaDate = c.eta_date || c.date;
     const active = c.state === 'active';
@@ -1002,14 +1049,15 @@
         </div>
         <div class="sheet-body">
           <dl class="facts">
-            <div><dt>Rendszám</dt><dd>${c.plate ? esc(plate(c.plate)) : '<span class="dim">várható</span>'}</dd></div>
-            <div><dt>T1 / MRN</dt><dd>${c.t1 ? esc(c.t1) : '<span class="dim">várható</span>'}</dd></div>
-            <div><dt>Bruttó súly</dt><dd>${fmtKg(c.kg)} kg</dd></div>
-            <div><dt>Karton</dt><dd>${fmtInt(c.ctns)}</dd></div>
-            <div><dt>Szállítási nap</dt><dd>${c.date ? `${c.date.replace(/-/g, '.')}.` : '—'}<small>${c.date ? DOW[dowIdx(c.date)] : ''}</small></dd></div>
-            <div><dt>ETA</dt><dd>${c.eta_time ? esc(c.eta_time) : '<span class="dim">nincs</span>'}${c.eta_time && c.eta_date && c.eta_date !== c.date ? `<small>${esc(short(c.eta_date))}</small>` : ''}</dd></div>
-            <div><dt>Rámpa</dt><dd>${c.ramp ? c.ramp : '<span class="dim">—</span>'}</dd></div>
-            <div><dt>Sofőr</dt><dd class="plain">${c.driver ? esc(c.driver) : '<span class="dim">nincs megadva</span>'}${c.phone ? `<small>${esc(c.phone)}</small>` : ''}</dd></div>
+            <div><dt>Konténer</dt><dd>${esc(c.id)}${cp(c.id)}</dd></div>
+            <div><dt>Rendszám</dt><dd>${c.plate ? esc(plate(c.plate)) + cp(plate(c.plate)) : '<span class="dim">várható</span>'}</dd></div>
+            <div><dt>T1 / MRN</dt><dd>${c.t1 ? esc(c.t1) + cp(c.t1) : '<span class="dim">várható</span>'}</dd></div>
+            <div><dt>Bruttó súly</dt><dd>${fmtKg(c.kg)} kg${cp(String(c.kg).replace('.', ','))}</dd></div>
+            <div><dt>Karton</dt><dd>${fmtInt(c.ctns)}${cp(String(c.ctns))}</dd></div>
+            <div><dt>Szállítási nap</dt><dd>${c.date ? `${c.date.replace(/-/g, '.')}.` + cp(c.date.replace(/-/g, '.') + '.') : '—'}<small>${c.date ? DOW[dowIdx(c.date)] : ''}</small></dd></div>
+            <div><dt>ETA</dt><dd>${c.eta_time ? esc(c.eta_time) + cp(c.eta_time) : '<span class="dim">nincs</span>'}${c.eta_time && c.eta_date && c.eta_date !== c.date ? `<small>${esc(short(c.eta_date))}</small>` : ''}</dd></div>
+            <div><dt>Rámpa</dt><dd>${c.ramp ? c.ramp + cp(String(c.ramp)) : '<span class="dim">—</span>'}</dd></div>
+            <div><dt>Sofőr</dt><dd class="plain">${c.driver ? esc(c.driver) + cp(c.driver) : '<span class="dim">nincs megadva</span>'}${c.phone ? `<small>${esc(c.phone)}${cp(c.phone)}</small>` : ''}</dd></div>
           </dl>
 
           ${active && (c.arrived || c.stage || c.storage) ? stepper(c) : ''}
@@ -1264,6 +1312,10 @@
         }
         break;
       }
+      case 'copy':
+        try { await navigator.clipboard.writeText(el.dataset.v); toast('Másolva'); }
+        catch (_) { toast('A másolás nem sikerült'); }
+        break;
       case 'copy-pw':
         try { await navigator.clipboard.writeText(el.dataset.pw); toast('Link másolva'); } catch (_) { /* kijelölhető marad */ }
         break;
@@ -1289,8 +1341,14 @@
     }
   });
 
-  document.addEventListener('change', e => {
+  document.addEventListener('change', async e => {
     const el = e.target;
+    if (el.id === 'ramp-input') {
+      const n = el.value === '' ? null : Math.max(1, Math.min(99, Math.round(Number(el.value))));
+      const c = S.data.containers[el.dataset.id];
+      if (c && (c.ramp || null) !== n && await upsertManual({ container: c.id, ramp: n, ramp_set: n ? new Date().toISOString() : null })) toast(n ? `Rámpa ${n}` : 'Rámpa törölve');
+      return;
+    }
     if (el.matches('input.eta[data-eta]')) {
       const c = S.data.containers[el.dataset.eta];
       if (c) saveEta(c.id, c.eta_date || c.date, el.value);
