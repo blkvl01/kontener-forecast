@@ -59,7 +59,7 @@
   const nowIso = () => { const d = new Date(); return `${iso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
 
   // ---------- állapot ----------
-  const S = { statsDays: 28, q: '', data: null, view: 'week', week: null, sel: null, month: null, calSel: null, drawer: null, anim: false, pending: false, today: null };
+  const S = { statsDays: 28, q: '', data: null, view: 'week', week: null, sel: null, month: null, calSel: null, drawer: null, pending: false, today: null };
   const CFG = window.KF_CONFIG;
   const sb = window.supabase.createClient(CFG.url, CFG.key, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
@@ -73,6 +73,7 @@
   let MEMBERS = {};
   const who = email => (email && MEMBERS[email]) || email || '';
   let SYNC = null;
+  let LAST_OK = null;
   let LOCAL = null;
   let channel = null;
 
@@ -104,8 +105,86 @@
       S.week = mondayOf(S.today);
       S.month = S.today.slice(0, 7);
       S.calSel = S.today;
-      S.anim = true;
     }
+  }
+
+  // ---------- mozgás ----------
+  const RM = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const VIEWS = ['week', 'month', 'stats'];
+  const ZONES = { week: 'yard main', month: 'cal side', stats: 'stats' };
+  const canVT = () => !!document.startViewTransition && !RM.matches && !document.hidden;
+  let vtSeq = 0;
+
+  // Nézetváltás View Transitions API-val; a kind/dir a CSS-ben választja ki a mozgást.
+  function vt(kind, dir, update) {
+    if (!canVT()) { update(); return null; }
+    const root = document.documentElement;
+    const my = ++vtSeq;
+    root.dataset.vt = kind;
+    root.dataset.dir = dir > 0 ? 'fwd' : dir < 0 ? 'back' : 'none';
+    let t;
+    try { t = document.startViewTransition(update); } catch (_) { delete root.dataset.vt; update(); return null; }
+    t.finished.finally(() => { if (vtSeq === my) { delete root.dataset.vt; delete root.dataset.dir; } });
+    return t;
+  }
+
+  const FMT = { int: v => fmtInt(v), t: v => fmtT(v), d1: v => fmtDec(v, 0, 1), dur: v => fmtDur(v), pct: v => `${Math.round(v)}%` };
+  const num = (v, f = 'int', d = 0) => `<span class="cnt" data-n="${v}" data-f="${f}" data-d="${d}">${FMT[f](v)}</span>`;
+
+  // Számlálás nulláról a végértékig; az alapállapot a végérték, így hiba esetén is helyes szám látszik.
+  function countUp(root, offset = 0) {
+    if (RM.matches || document.hidden) return;
+    root.querySelectorAll('[data-n]').forEach(el => {
+      if (el.closest('.await')) return;
+      const to = Number(el.dataset.n), f = FMT[el.dataset.f] || FMT.int;
+      if (!to) return;
+      const t0 = performance.now() + offset + Number(el.dataset.d || 0), dur = 900;
+      el.textContent = f(0);
+      const step = now => {
+        const k = Math.min(1, Math.max(0, (now - t0) / dur));
+        el.textContent = f(k >= 1 ? to : to * (1 - Math.pow(2, -10 * k)));
+        if (k < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  // A hajtás alatti diagramok, táblák csak láthatóvá váláskor indulnak.
+  let revealIO = null;
+  function awaitReveal(root) {
+    if (!('IntersectionObserver' in window) || RM.matches) return;
+    if (revealIO) revealIO.disconnect();
+    revealIO = new IntersectionObserver(es => es.forEach(e => {
+      if (!e.isIntersecting) return;
+      e.target.classList.remove('await');
+      revealIO.unobserve(e.target);
+      countUp(e.target);
+    }), { rootMargin: '0px 0px -6% 0px' });
+    root.querySelectorAll('[data-reveal]').forEach(el => {
+      if (el.getBoundingClientRect().top > window.innerHeight * 0.94) { el.classList.add('await'); revealIO.observe(el); }
+    });
+  }
+
+  // Élő frissítésnél a megváltozott konténerek felvillannak.
+  let LAST_SIG = null;
+  const PREV_P = {};
+  const sigOf = c => [phase(c).key, c.eta_time, c.arrived ? 1 : 0, lateInfo(c) ? 1 : 0, c.ramp || '', c.day, c.state].join('|');
+  function diffFlash(entering) {
+    const now = {};
+    all().forEach(c => { now[c.id] = sigOf(c); });
+    const prev = LAST_SIG;
+    LAST_SIG = now;
+    if (!prev || entering) return;
+    Object.keys(now).forEach(id => {
+      if (prev[id] === now[id]) return;
+      const late = now[id].split('|')[3] === '1' && (!prev[id] || prev[id].split('|')[3] !== '1');
+      document.querySelectorAll(`#view [data-id="${CSS.escape(id)}"]:is(.blk, .ccard, .tr, .side-item, .dock, .pill, .pl)`).forEach(el => {
+        el.classList.add(late ? 'flash-late' : 'flash');
+      });
+    });
+  }
+  function rememberP() {
+    all().forEach(c => { PREV_P[c.id] = phase(c).p; });
   }
 
   async function fetchAll(table, order) {
@@ -121,7 +200,9 @@
     return out;
   }
 
-  async function loadAll() {
+  async function loadAll(enter) {
+    let done = 0;
+    const tick = p => Promise.resolve(p).then(v => { bootProgress(0.25 + 0.6 * (++done / 7)); return v; });
     const [msgs, man, arr, sync, cfg, mem, sto] = await Promise.all([
       fetchAll('messages', 'received'),
       fetchAll('manual'),
@@ -130,7 +211,7 @@
       sb.from('app_settings').select('*').eq('id', 1).maybeSingle(),
       sb.from('members').select('email, name'),
       fetchAll('storage_events', 'stored_at')
-    ]);
+    ].map(tick));
     STO = sto.map(r => ({ ...r, stored_at: toLocal(r.stored_at) }));
     if (mem.data) MEMBERS = Object.fromEntries(mem.data.map(m => [m.email, m.name || m.email]));
     if (cfg.data) RAMPS = cfg.data.ramp_count || 10;
@@ -139,7 +220,7 @@
     ARR = arr.map(normArr);
     SYNC = sync.data || null;
     rebuild();
-    render();
+    render(enter);
   }
 
   let renderTimer = null;
@@ -245,31 +326,81 @@
     return out;
   }
 
+  // ---------- nyitó animáció ----------
+  let booted = false;
+  let BOOT_SEEN = false;
+  try { BOOT_SEEN = sessionStorage.getItem('kf-boot') === '1'; } catch (_) { /* privát mód */ }
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  // A töltöttség a betöltés ütemét követi, de az első nyitáskor legfeljebb az idővel arányosan nő,
+  // így gyors hálózaton sem ugrik egyből tele a konténer. (performance.now() a lapbetöltés óta eltelt idő.)
+  let bootTarget = 0, bootShown = 0, bootRaf = 0;
+  function bootProgress(f) {
+    bootTarget = Math.max(bootTarget, f);
+    if (!bootRaf) bootRaf = requestAnimationFrame(bootTick);
+  }
+  function bootTick(now) {
+    bootRaf = 0;
+    const b = $('#boot');
+    if (!b) return;
+    const ramp = BOOT_SEEN || RM.matches ? 1 : Math.min(1, 0.1 + 0.9 * Math.max(0, (now - 420) / 900));
+    const goal = Math.min(bootTarget, ramp);
+    bootShown += (goal - bootShown) * 0.16;
+    if (goal - bootShown < 0.002) bootShown = goal;
+    b.style.setProperty('--prog', bootShown.toFixed(4));
+    if (bootShown < bootTarget) bootRaf = requestAnimationFrame(bootTick);
+  }
+
+  // A konténer a betöltés ütemében telik meg, utána a daru kiemeli, a redőnykapu felgördül.
+  async function bootExit(apply, mode) {
+    const b = $('#boot');
+    if (booted || !b) { apply(); return; }
+    booted = true;
+    try { sessionStorage.setItem('kf-boot', '1'); } catch (_) { /* privát mód */ }
+    const fast = RM.matches || document.hidden;
+    bootProgress(1);
+    await sleep(Math.max(fast ? 0 : 200, (fast ? 0 : BOOT_SEEN ? 600 : 1380) - performance.now()));
+    for (let k = 0; k < 30 && !fast && !document.hidden && bootShown < 0.99; k++) await sleep(30);
+    apply();
+    b.classList.add('out');
+    if (mode === 'app') {
+      const app = $('#app');
+      app.classList.add('boot-in');
+      awaitReveal($('#view'));
+      countUp($('#view'), fast ? 0 : 320);
+      setTimeout(() => app.classList.remove('boot-in'), 2400);
+    }
+    setTimeout(() => b.remove(), fast ? 0 : 1100);
+  }
+
   function showAuth(mode, info) {
-    $('#auth').hidden = mode === 'app';
-    $('#app').hidden = mode !== 'app';
-    $('#invite').hidden = mode !== 'invite';
-    $('#denied').hidden = mode !== 'denied';
-    $('#auth-loading').hidden = mode !== 'loading';
-    if (mode === 'invite' && info) $('#invite-text').textContent = info;
-    if (mode === 'denied') $('#denied-text').textContent = 'Ez a hozzáférés megszűnt. Kérj új meghívó linket az admintól.';
+    if (mode === 'loading') return;
+    bootExit(() => {
+      $('#auth').hidden = mode === 'app';
+      $('#app').hidden = mode !== 'app';
+      $('#invite').hidden = mode !== 'invite';
+      $('#denied').hidden = mode !== 'denied';
+      if (mode === 'invite' && info) $('#invite-text').textContent = info;
+      if (mode === 'denied') $('#denied-text').textContent = 'Ez a hozzáférés megszűnt. Kérj új meghívó linket az admintól.';
+    }, mode);
   }
 
   async function enter(session) {
+    bootProgress(0.2);
     const email = (session.user.email || '').toLowerCase();
     const { data, error } = await sb.from('members').select('email, role, name').eq('email', email).maybeSingle();
     if (error || !data) { showAuth('denied', email); return; }
     ME = data;
     sb.rpc('touch_me').then(() => {}, () => {});
     setInterval(() => sb.rpc('touch_me').then(() => {}, () => {}), 5 * 60000);
+    await loadAll('boot ' + ZONES[S.view]);
     showAuth('app');
-    await loadAll();
     subscribe();
     window.KF.reload();
   }
 
   async function bootAuth() {
-    showAuth('loading');
+    bootProgress(0.08);
     try {
       const key = (location.hash.match(/[#&]k=([\w-]{20,})/) || [])[1];
       if (key) {
@@ -321,14 +452,24 @@
   const sumCt = l => l.reduce((s, c) => s + (c.ctns || 0), 0);
 
   // ---------- render ----------
-  function render() {
+  // enter: belépő zónák szóközzel ('boot', 'yard', 'main', 'cal', 'side', 'stats'); üresen nincs belépő animáció.
+  function render(enter) {
     if (!S.data) return;
     renderTabs();
     renderPeriod();
     renderSync();
-    $('#view').innerHTML = S.view === 'week' ? weekView() : S.view === 'month' ? monthView() : statsView();
+    const v = $('#view');
+    v.className = enter ? enter.split(' ').map(z => `ev-${z}`).join(' ') : '';
+    v.innerHTML = S.view === 'week' ? weekView() : S.view === 'month' ? monthView() : statsView();
     renderDrawer();
-    S.anim = false;
+    if (enter && !$('#app').hidden) {
+      awaitReveal(v);
+      // Csak a belépő zónák számai számolnak fel; a helyben maradó részek nem villannak.
+      const roots = { yard: '.yard', main: '.main', cal: '.month-main', side: '.side', stats: '.statsv' };
+      enter.split(' ').forEach(z => { if (roots[z]) v.querySelectorAll(roots[z]).forEach(r => countUp(r)); });
+    }
+    diffFlash(!!enter);
+    rememberP();
     S.pending = false;
   }
 
@@ -342,7 +483,7 @@
   function renderPeriod() {
     let label;
     if (S.view === 'stats') {
-      $('#period').innerHTML = `<div class="seg" role="group" aria-label="Időszak">${[7, 28, 90].map(n => `<button type="button" class="seg-btn" data-action="stats-range" data-days="${n}" aria-pressed="${S.statsDays === n}">${n} nap</button>`).join('')}</div>`;
+      $('#period').innerHTML = `<div class="seg" role="group" aria-label="Időszak">${[7, 28, 90].map(n => `<button type="button" class="seg-btn" data-action="stats-range" data-days="${n}" aria-pressed="${S.statsDays === n}"><i class="tab-bg" aria-hidden="true"></i>${n} nap</button>`).join('')}</div>`;
       return;
     }
     if (S.view === 'week') {
@@ -380,9 +521,11 @@
       title = `Utolsó frissítés: ${stamp(last)}`;
     } else { dot = 'warn'; tcls = 'warn'; }
     const initial = ME ? esc(ME.email.slice(0, 1)) : '';
+    const fresh = LAST_OK !== null && sy.last_ok && sy.last_ok !== LAST_OK && !busy;
+    if (!busy) LAST_OK = sy.last_ok || '';
     $('#sync').innerHTML = `
-      <span class="sync-dot ${dot}" aria-hidden="true"></span>
-      <span class="sync-text ${tcls}" title="${esc(title)}">${esc(text)}</span>
+      <span class="sync-dot ${dot}${fresh ? ' ping' : ''}" aria-hidden="true"></span>
+      <span class="sync-text ${tcls}${fresh ? ' fresh' : ''}" title="${esc(title)}">${esc(text)}</span>
       <button type="button" class="ibtn ${busy ? 'spin' : ''}" data-action="refresh" aria-label="Frissítés">${IC.refresh}</button>
       <button type="button" class="ibtn" data-action="settings" aria-label="Beállítások">${IC.sliders}</button>
       <span class="avatar" title="${esc(ME ? ME.email : '')}" aria-hidden="true">${initial}</span>`;
@@ -392,11 +535,16 @@
   function weekView() {
     const days = [...Array(7)].map((_, i) => addDays(S.week, i));
     const lists = days.map(onDay);
-    const maxKg = Math.max(1, ...lists.map(sumKg));
     const maxN = Math.max(1, ...lists.map(l => l.length));
-    const H = 380;
-    const minH = maxN > 10 ? 22 : 34;
-    const k = Math.max(0, (H - 12 - (maxN - 1) * 5)) / maxKg;
+    const H = window.matchMedia('(max-width: 760px)').matches ? 300 : 380;
+    const GAP = 5;
+    const avail = H - 12;
+    const minH = Math.max(16, Math.min(maxN > 10 ? 22 : 34, Math.floor((avail - (maxN - 1) * GAP) / maxN)));
+    // A legnagyobb arány, amelynél minden nap oszlopa (minimum magassággal együtt) belefér a sávba.
+    const fits = k => lists.every(l => l.reduce((s, c) => s + Math.max(minH, Math.round((c.kg || 0) * k)), 0) + Math.max(0, l.length - 1) * GAP <= avail);
+    let lo = 0, hi = avail / Math.max(1, ...lists.map(l => Math.max(0, ...l.map(c => c.kg || 0))));
+    for (let n = 0; n < 24; n++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
+    const k = lo;
 
     const cols = days.map((d, i) => {
       const list = lists[i];
@@ -405,7 +553,7 @@
         const ph = phase(c);
         const late = lateInfo(c);
         return `
-        <div class="blk blk-${ph.grp}${late ? ' late' : ''}" style="--p:${Math.round(ph.p * 100)}%;height:${Math.max(minH, Math.round(c.kg * k))}px;animation-delay:${(arr.length - 1 - j) * 45}ms" title="${esc(c.id)} · ${esc(ph.label)}">
+        <div class="blk blk-${ph.grp}${late ? ' late' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)} · ${esc(ph.label)}">
           <span class="blk-id">${esc(c.id)}</span><span class="blk-r">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span>
         </div>`;
       }).join('');
@@ -413,19 +561,20 @@
       const note = nodata && d >= S.today ? '<div class="stack-note">Még nincs előrejelzés</div>' : '';
       const done = list.filter(c => phase(c).key === 'stored').length;
       return `
-        <button type="button" class="day" data-action="day" data-date="${d}" aria-pressed="${d === S.sel}">
+        <button type="button" class="day${d === S.today ? ' is-today' : ''}" data-action="day" data-date="${d}" aria-pressed="${d === S.sel}" style="--i:${i}">
+          <span class="day-sel" aria-hidden="true"></span>
           <div class="day-top"><span class="day-dow">${DOW[i]}</span>${d === S.today ? '<span class="today-tag">MA</span>' : ''}</div>
-          <div class="day-num">${parse(d).getDate()}</div>
+          <div class="day-num"><span>${parse(d).getDate()}</span></div>
           <div class="stack ${nodata ? 'nodata' : ''}" style="height:${H}px">${blocks}${note}</div>
-          <div class="day-foot"><span><b>${list.length}</b><small>konténer</small></span><span class="day-t">${list.length ? fmtT(kg) : '—'}</span></div>
-          <div class="day-ctn">${list.length ? `${fmtInt(sumCt(list))} karton${done ? ` · ${done} betárolva` : ''}` : ''}</div>
+          <div class="day-foot"><span><b>${num(list.length, 'int', 120 + i * 40)}</b><small>konténer</small></span><span class="day-t">${list.length ? num(kg, 't', 120 + i * 40) : '—'}</span></div>
+          <div class="day-ctn">${list.length ? `<span>${fmtInt(sumCt(list))} karton</span>${done ? `<span class="day-sto"><i style="--p:${Math.round(done / list.length * 100)}%"></i>${done}/${list.length} betárolva</span>` : ''}` : ''}</div>
         </button>`;
     }).join('');
 
     const legend = [['Tervben', 0, 'plan'], ['Megérkezett', 25, 'live'], ['Nyitás', 75, 'live'], ['Betárolva', 100, 'done']]
-      .map(([t, p, g]) => `<span><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
+      .map(([t, p, g], i) => `<span style="--i:${i}"><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
     return `
-      <section class="yard ${S.anim ? 'anim' : ''}" aria-label="Heti érkezések">
+      <section class="yard" aria-label="Heti érkezések">
         <div class="legend">${legend}</div>
         <div class="yard-scroll"><div class="days">${cols}</div></div>
       </section>
@@ -478,14 +627,14 @@
     const st = c.stages || {};
     const first = (st.request && st.request.at) || c.arrived_at;
     const atOf = k => (k === 'request' ? first : st[k] && st[k].at);
-    let prev = null;
-    const items = STAGES.map(k => {
+    let prev = null, last = -1;
+    const items = STAGES.map((k, i) => {
       const at = atOf(k);
       const dur = at && prev ? fmtDur(minutesBetween(prev, at)) : '';
-      if (at) prev = at;
+      if (at) { prev = at; last = i; }
       const lab = k === 'stored' && !st.stored && c.storage ? `Betárolás ${c.storage.done}/${c.storage.total}` : STAGE_LABEL[k];
       return `
-        <li class="${at ? 'done' : ''}">
+        <li class="${at ? 'done' : ''}" style="--i:${i}">
           <span class="sp-dot" aria-hidden="true"></span>
           <span class="sp-lab">${esc(lab)}</span>
           <span class="sp-at">${at ? esc(hm(at)) : '—'}</span>
@@ -497,7 +646,7 @@
     return `
       <section class="flow" aria-label="Mérföldkövek">
         <div class="flow-head"><b>Mérföldkövek</b>${total ? `<span>Átfutás: ${esc(total)}</span>` : ''}</div>
-        <ol class="steps">${items}</ol>
+        <ol class="steps" style="--sp:${Math.max(0, last) / (STAGES.length - 1)}">${items}</ol>
       </section>`;
   }
 
@@ -525,9 +674,9 @@
     if (d !== S.today) return '';
     const busy = list.filter(x => x.ramp && x.stage !== 'released' && x.stage !== 'stored').sort((a, b) => a.ramp - b.ramp);
     if (!busy.length) return '';
-    const tiles = busy.map(x => {
+    const tiles = busy.map((x, i) => {
       const ph = phase(x);
-      return `<button type="button" class="dock" data-action="open" data-id="${esc(x.id)}">
+      return `<button type="button" class="dock" data-action="open" data-id="${esc(x.id)}" style="--i:${Math.min(i, 9)}">
         <span class="dock-n"><small>Rámpa</small>${x.ramp}</span>
         <span class="dock-body"><span class="dock-id">${esc(x.id)}</span><span class="dock-bar" style="--p:${Math.round(ph.p * 100)}%"></span><span class="dock-st">${esc(ph.label)}</span></span>
       </button>`;
@@ -541,14 +690,28 @@
     if (n.length < 3) return [];
     const out = [];
     for (const c of all()) {
-      let where = '';
+      let where = '', val = '';
+      const pd = c.pdd.find(p => (p.no || '').toUpperCase().includes(n));
       if (c.id.includes(n)) where = 'Konténer';
-      else if ((c.t1 || '').toUpperCase().includes(n)) where = 'MRN';
-      else if ((c.plate || '').toUpperCase().replace(/\s+/g, '').includes(n)) where = 'Rendszám';
-      else if (c.pdd.some(p => (p.no || '').toUpperCase().includes(n))) where = 'PDD';
-      if (where) out.push({ c, where });
+      else if ((c.t1 || '').toUpperCase().includes(n)) { where = 'MRN'; val = c.t1; }
+      else if ((c.plate || '').toUpperCase().replace(/\s+/g, '').includes(n)) { where = 'Rendszám'; val = plate(c.plate); }
+      else if (pd) { where = 'PDD'; val = pd.no; }
+      if (where) out.push({ c, where, val });
     }
     return out.sort((a, b) => (a.c.date < b.c.date ? 1 : -1)).slice(0, 12);
+  }
+
+  // A keresett részlet kiemelése (a szóközöket figyelmen kívül hagyva).
+  function mark(text, q) {
+    const t = String(text || '');
+    const n = q.toUpperCase().replace(/\s+/g, '');
+    const map = [];
+    let flat = '';
+    [...t].forEach((ch, i) => { if (!/\s/.test(ch)) { map.push(i); flat += ch.toUpperCase(); } });
+    const at = flat.indexOf(n);
+    if (!n || at < 0) return esc(t);
+    const a = map[at], b = map[at + n.length - 1] + 1;
+    return `${esc(t.slice(0, a))}<mark>${esc(t.slice(a, b))}</mark>${esc(t.slice(b))}`;
   }
 
   function renderSearch() {
@@ -556,15 +719,21 @@
     const q = $('#q').value.trim();
     if (q.length < 3) { box.hidden = true; box.innerHTML = ''; return; }
     const hits = searchHits(q);
+    const opening = box.hidden;
     box.hidden = false;
-    box.innerHTML = hits.length ? hits.map(({ c, where }) => {
+    box.innerHTML = hits.length ? hits.map(({ c, where, val }, i) => {
       const day = c.state === 'active' ? c.day : c.removed_from;
-      return `<button type="button" class="qhit" data-action="qopen" data-id="${esc(c.id)}">
-        <span class="qhit-id">${esc(c.id)}</span>
-        <span class="qhit-meta">${day ? `${DOW_S[dowIdx(day)]} ${short(day)}` : ''} · ${esc(where)}</span>
-        <span class="ph ph-${phase(c).grp}">${esc(stageText(c))}</span>
+      const out = c.state === 'removed';
+      return `<button type="button" class="qhit" data-action="qopen" data-id="${esc(c.id)}" style="--i:${i}">
+        <span class="qhit-id">${mark(c.id, q)}</span>
+        <span class="qhit-meta">${day ? `${DOW_S[dowIdx(day)]} ${short(day)}` : ''} · ${val ? `${esc(where)} ${mark(val, q)}` : esc(where)}</span>
+        <span class="ph ph-${out ? 'out' : phase(c).grp}">${esc(out ? ST_LABEL.removed : stageText(c))}</span>
       </button>`;
     }).join('') : '<div class="qnone">Nincs találat</div>';
+    if (opening) {
+      box.classList.add('opening');
+      setTimeout(() => box.classList.remove('opening'), 600);
+    }
   }
 
   // ---------- statisztika ----------
@@ -591,14 +760,14 @@
     const devs = past.filter(c => c.eta_time && at(c, 'request')).map(c => minutesBetween(`${c.eta_date || c.date}T${c.eta_time}:00`, at(c, 'request')));
     const early = devs.filter(d => d < -30).length, ok = devs.filter(d => Math.abs(d) <= 30).length, lateN = devs.filter(d => d > 30).length;
 
-    const kpi = (title, l, sub) => {
+    const kpi = (title, l, sub, i) => {
       const v = avg(l);
       const sorted = l.slice().sort((a, b) => a - b);
       const mn = sorted[0], mx = sorted[sorted.length - 1];
       const pos = x => (mx > mn ? ((x - mn) / (mx - mn)) * 100 : 50);
-      return `<div class="kpi">
-        <dt>${title}</dt><dd>${v != null ? esc(fmtDur(v)) : '—'}</dd><span class="kpi-sub">${esc(sub)}</span>
-        ${l.length > 1 ? `<div class="rng" data-tip="${esc(`legrövidebb ${fmtDur(mn)} · átlag ${fmtDur(v)} · leghosszabb ${fmtDur(mx)} · ${l.length} konténer`)}"><i class="rng-track"></i>${sorted.map(x => `<i class="rng-dot" style="left:${pos(x)}%"></i>`).join('')}<i class="rng-avg" style="left:${pos(v)}%"></i><span class="rng-lo">${esc(fmtDur(mn))}</span><span class="rng-hi">${esc(fmtDur(mx))}</span></div>` : `<div class="kpi-n">${l.length} mérés</div>`}
+      return `<div class="kpi" style="--i:${i}">
+        <dt>${title}</dt><dd>${v != null ? num(v, 'dur', 200 + i * 90) : '—'}</dd><span class="kpi-sub">${esc(sub)}</span>
+        ${l.length > 1 ? `<div class="rng" data-tip="${esc(`legrövidebb ${fmtDur(mn)} · átlag ${fmtDur(v)} · leghosszabb ${fmtDur(mx)} · ${l.length} konténer`)}"><i class="rng-track"></i>${sorted.map((x, k) => `<i class="rng-dot" style="left:${pos(x)}%;--k:${Math.min(k, 16)}"></i>`).join('')}<i class="rng-avg" style="left:${pos(v)}%"></i><span class="rng-lo">${esc(fmtDur(mn))}</span><span class="rng-hi">${esc(fmtDur(mx))}</span></div>` : `<div class="kpi-n">${l.length} mérés</div>`}
       </div>`;
     };
 
@@ -612,14 +781,14 @@
           <div class="hero">
             <div class="hero-main">
               ${ring(storedL.length, past.length, 'done', 132)}
-              <div><div class="hero-n">${past.length}<small> konténer</small></div>
+              <div><div class="hero-n">${num(past.length, 'int', 150)}<small> konténer</small></div>
                 <div class="hero-sub">${arrived.length} megérkezett · ${storedL.length} betárolva</div>
                 <div class="hero-sub">${fmtT(kg)} · ${fmtInt(ct)} karton</div></div>
             </div>
             <div class="hero-side">
-              <div class="mini"><dt>Napi átlag</dt><dd>${perDay ? fmtDec(perDay, 0, 1) : '—'}</dd><span>konténer / nap</span></div>
-              <div class="mini"><dt>Átlagos súly</dt><dd>${past.length ? fmtT(kg / past.length) : '—'}</dd><span>konténerenként</span></div>
-              <div class="mini mini-ring">${ring(ok, devs.length, 'live', 56)}<span><dt>ETA-pontosság</dt><dd>${devs.length ? `${ok}/${devs.length}` : '—'}</dd><span>${devs.length ? `${early} korábban · ${lateN} később` : 'még nincs mérés'}</span></span></div>
+              <div class="mini" style="--i:1"><dt>Napi átlag</dt><dd>${perDay ? num(perDay, 'd1', 200) : '—'}</dd><span>konténer / nap</span></div>
+              <div class="mini" style="--i:2"><dt>Átlagos súly</dt><dd>${past.length ? num(kg / past.length, 't', 260) : '—'}</dd><span>konténerenként</span></div>
+              <div class="mini mini-ring" style="--i:3">${ring(ok, devs.length, 'live', 56)}<span><dt>ETA-pontosság</dt><dd>${devs.length ? `${ok}/${devs.length}` : '—'}</dd><span>${devs.length ? `${early} korábban · ${lateN} később` : 'még nincs mérés'}</span></span></div>
             </div>
           </div>
         </section>
@@ -627,15 +796,15 @@
         <section class="sx">
           <h2 class="sx-h">Időtartamok</h2>
           <dl class="kpis">
-            ${kpi('Nyitási idő', openT, 'érkezéstől nyithatóig')}
-            ${kpi('Nyitás → betárolás', openStore, 'nyitástól az utolsó PDD betárolásáig')}
-            ${kpi('Teljes átfutás', total, 'érkezéstől betárolásig')}
+            ${kpi('Nyitási idő', openT, 'érkezéstől nyithatóig', 0)}
+            ${kpi('Nyitás → betárolás', openStore, 'nyitástól az utolsó PDD betárolásáig', 1)}
+            ${kpi('Teljes átfutás', total, 'érkezéstől betárolásig', 2)}
           </dl>
-          <div class="panel chart">
+          <div class="panel chart" data-reveal>
             <div class="chart-head"><b>Egy átlagos konténer útja</b><span class="chart-sub">${segSum ? esc(fmtDur(segSum)) : ''}</span></div>
-            ${segSum ? `<div class="flowbar">${segs.map(([k, v, cl]) => `<div class="fb fb-${cl}" style="flex:${Math.max(v, segSum * 0.06)}" data-tip="${esc(`${k}: ${fmtDur(v)}`)}"><b>${esc(fmtDur(v))}</b><span>${esc(k)}</span></div>`).join('')}</div>` : '<div class="empty">Még nincs elég adat.</div>'}
+            ${segSum ? `<div class="flowbar">${segs.map(([k, v, cl], i) => `<div class="fb fb-${cl}" style="flex:${Math.max(v, segSum * 0.06)};--i:${i}" data-tip="${esc(`${k}: ${fmtDur(v)}`)}"><b>${esc(fmtDur(v))}</b><span>${esc(k)}</span></div>`).join('')}</div>` : '<div class="empty">Még nincs elég adat.</div>'}
           </div>
-          <div class="panel chart">
+          <div class="panel chart" data-reveal>
             <div class="chart-head"><b>Konténerenként</b><span class="lg"><i class="fb-s1"></i>Érkezés → Nyitható</span><span class="lg"><i class="fb-s2"></i>Nyitható → Nyitás</span><span class="lg"><i class="fb-s3"></i>Nyitás → Betárolva</span></div>
             ${gantt(past, at)}
           </div>
@@ -643,17 +812,17 @@
 
         <section class="sx">
           <h2 class="sx-h">Mennyiség</h2>
-          <div class="panel chart">
+          <div class="panel chart" data-reveal>
             <div class="chart-head"><b>Napi konténerszám</b>
-              <span class="lg"><i class="lg-done"></i>Megvalósult</span><span class="lg"><i class="lg-plan"></i>Tervezett</span></div>
+              <span class="lg"><i class="lg-done"></i>Megvalósult</span><span class="lg"><i class="lg-today"></i>Ma</span><span class="lg"><i class="lg-plan"></i>Tervezett</span></div>
             ${dayBars(from, to, act)}
           </div>
           <div class="chart-row">
-            <div class="panel chart">
+            <div class="panel chart" data-reveal>
               <div class="chart-head"><b>Átfutás naponta</b><span class="chart-sub">átlag, érkezéstől betárolásig</span></div>
               ${dayTrend(past, at)}
             </div>
-            <div class="panel chart">
+            <div class="panel chart" data-reveal>
               <div class="chart-head"><b>Érkezések óránként</b><span class="chart-sub">nyitáskérés ideje</span></div>
               ${hourBars(past.map(c => at(c, 'request')).filter(Boolean))}
             </div>
@@ -687,7 +856,7 @@
       const h = x.n ? Math.max(3, y(0) - y(x.n)) : 0;
       const tip = `${DOW[dowIdx(x.d)]}, ${short(x.d)} · ${x.n} konténer · ${fmtT(x.kg)} · ${fmtInt(x.ct)} karton`;
       const lab = i % every === 0 ? `<text x="${cx + bw / 2}" y="${H - 8}" class="g-lab" text-anchor="middle">${short(x.d)}</text>` : '';
-      return `<g class="bar-hit" data-tip="${esc(tip)}"><rect x="${cx}" y="${T}" width="${bw}" height="${H - T - B}" class="hit"/>${h ? `<rect x="${cx + 1.5}" y="${y(x.n)}" width="${w}" height="${h}" rx="3" class="${cls}"/>` : ''}</g>${lab}`;
+      return `<g class="bar-hit" data-tip="${esc(tip)}"><rect x="${cx}" y="${T}" width="${bw}" height="${H - T - B}" class="hit"/>${h ? `<rect x="${cx + 1.5}" y="${y(x.n)}" width="${w}" height="${h}" rx="3" class="bar ${cls}" style="--i:${Math.round(i * 40 / data.length)}"/>` : ''}</g>${lab}`;
     }).join('');
     return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Napi konténerszám">${grid}${bars}</svg>`;
   }
@@ -698,10 +867,17 @@
     if (!rows.length) return '<div class="empty">Még nincs elég adat.</div>';
     const span = x => minutesBetween(x.r, x.s || x.o || x.a);
     const max = Math.max(60, ...rows.map(span));
-    return `<div class="gantt">${rows.map(x => {
-      const seg = (from, to, cl, lab) => (from && to ? `<i class="fb-${cl}" style="width:${(minutesBetween(from, to) / max) * 100}%" data-tip="${esc(`${x.c.id} · ${lab}: ${fmtDur(minutesBetween(from, to))}`)}"></i>` : '');
-      return `<div class="g-row"><button type="button" class="g-id" data-action="open" data-id="${esc(x.c.id)}">${esc(x.c.id)}</button><span class="g-day">${esc(short(x.c.date))}</span>
-        <div class="g-track">${seg(x.r, x.a, 's1', 'Érkezés → Nyitható')}${seg(x.a, x.o, 's2', 'Nyitható → Nyitás')}${seg(x.o, x.s, 's3', 'Nyitás → Betárolva')}</div>
+    const LAB = { r: 'Érkezés', a: 'Nyitható', o: 'Nyitás', s: 'Betárolva' };
+    const CL = { a: 's1', o: 's2', s: 's3' };
+    return `<div class="gantt">${rows.map((x, i) => {
+      // Ha egy mérföldkő hiányzik, a szakasz a következő meglévőig tart, így a sáv nem marad üresen.
+      const pts = ['r', 'a', 'o', 's'].filter(k => x[k]);
+      const segs = pts.slice(1).map((k, j) => {
+        const from = pts[j], m = minutesBetween(x[from], x[k]);
+        return `<i class="fb-${CL[k]}" style="width:${(Math.max(0, m) / max) * 100}%;--k:${j}" data-tip="${esc(`${x.c.id} · ${LAB[from]} → ${LAB[k]}: ${fmtDur(m)}`)}"></i>`;
+      }).join('');
+      return `<div class="g-row" style="--i:${i}"><button type="button" class="g-id" data-action="open" data-id="${esc(x.c.id)}">${esc(x.c.id)}</button><span class="g-day">${esc(short(x.c.date))}</span>
+        <div class="g-track"><span class="g-bar">${segs}</span></div>
         <span class="g-tot">${esc(fmtDur(span(x)))}</span></div>`;
     }).join('')}</div>`;
   }
@@ -712,19 +888,21 @@
     const days = Object.keys(by).sort();
     if (!days.length) return '<div class="empty">Még nincs betárolt konténer.</div>';
     const vals = days.map(d => by[d].reduce((t, x) => t + x, 0) / by[d].length);
-    const max = Math.max(60, ...vals);
+    // Egész órás rácsvonalak: a lépés az a legkisebb, amellyel legfeljebb 4 sáv lesz.
+    const maxH = Math.max(1, ...vals) / 60;
+    const stepH = [1, 2, 3, 4, 6, 8, 12, 24, 48].find(s => Math.ceil(maxH / s) <= 4) || 48;
+    const max = Math.max(1, Math.ceil(maxH / stepH)) * stepH * 60;
     const W = 600, H = 200, L = 46, B = 24, T = 12;
     const bw = (W - L) / days.length;
     const y = v => T + (H - T - B) * (1 - v / max);
     let grid = '';
-    for (let i = 0; i <= 3; i++) {
-      const v = (max / 3) * i;
-      grid += `<line x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}" class="g-line"/><text x="${L - 6}" y="${y(v) + 4}" class="g-lab" text-anchor="end">${Math.round(v / 60)} ó</text>`;
+    for (let v = 0; v <= max; v += stepH * 60) {
+      grid += `<line x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}" class="g-line"/><text x="${L - 6}" y="${y(v) + 4}" class="g-lab" text-anchor="end">${v / 60} ó</text>`;
     }
     const pts = vals.map((v, i) => [L + i * bw + bw / 2, y(v)]);
     const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
-    const dots = pts.map((p, i) => `<g data-tip="${esc(`${short(days[i])} · ${fmtDur(vals[i])} · ${by[days[i]].length} konténer`)}"><circle cx="${p[0]}" cy="${p[1]}" r="12" class="hit"/><circle cx="${p[0]}" cy="${p[1]}" r="5" class="t-dot"/></g><text x="${p[0]}" y="${H - 7}" class="g-lab" text-anchor="middle">${short(days[i])}</text>`).join('');
-    return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Átfutás naponta">${grid}<path d="${line}" class="t-line"/>${dots}</svg>`;
+    const dots = pts.map((p, i) => `<g class="t-pt" style="--t:${pts.length > 1 ? (i / (pts.length - 1)).toFixed(3) : 0}" data-tip="${esc(`${short(days[i])} · ${fmtDur(vals[i])} · ${by[days[i]].length} konténer`)}"><circle cx="${p[0]}" cy="${p[1]}" r="12" class="hit"/><circle cx="${p[0]}" cy="${p[1]}" r="5" class="t-dot"/></g><text x="${p[0]}" y="${H - 7}" class="g-lab" text-anchor="middle">${short(days[i])}</text>`).join('');
+    return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Átfutás naponta">${grid}<path d="${line}" class="t-line" pathLength="1"/>${dots}</svg>`;
   }
 
   function hourBars(times) {
@@ -745,7 +923,7 @@
     }
     const bars = hrs.map((h, i) => {
       const v = cnt[h], cx = L + i * bw, hh = v ? Math.max(3, y(0) - y(v)) : 0;
-      return `<g class="bar-hit" data-tip="${pad(h)}:00–${pad(h)}:59 · ${v} konténer"><rect x="${cx}" y="${T}" width="${bw}" height="${H - T - B}" class="hit"/>${hh ? `<rect x="${cx + 2}" y="${y(v)}" width="${Math.max(2, bw - 4)}" height="${hh}" rx="3" class="b-done"/>` : ''}</g>${h % 2 === 0 ? `<text x="${cx + bw / 2}" y="${H - 7}" class="g-lab" text-anchor="middle">${pad(h)}</text>` : ''}`;
+      return `<g class="bar-hit" data-tip="${pad(h)}:00–${pad(h)}:59 · ${v} konténer"><rect x="${cx}" y="${T}" width="${bw}" height="${H - T - B}" class="hit"/>${hh ? `<rect x="${cx + 2}" y="${y(v)}" width="${Math.max(2, bw - 4)}" height="${hh}" rx="3" class="bar b-done" style="--i:${i}"/>` : ''}</g>${h % 2 === 0 ? `<text x="${cx + bw / 2}" y="${H - 7}" class="g-lab" text-anchor="middle">${pad(h)}</text>` : ''}`;
     }).join('');
     return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Érkezések óránként">${grid}${bars}</svg>`;
   }
@@ -763,14 +941,17 @@
     const ribs = [];
     for (let x = 22; x < 384; x += 7) ribs.push(`<line x1="${x}" y1="13" x2="${x}" y2="83"/>`);
     const r = ribs.join('');
+    // Élő változásnál a töltés az előző szintről nő a mostanira.
+    const was = PREV_P[c.id];
+    const grow = was !== undefined && was < ph.p;
     return `
-      <svg class="ct${late ? ' ct-late' : ''}${opts.cls ? ' ' + opts.cls : ''}" viewBox="0 0 400 96" role="img" aria-label="${esc(id)} · ${esc(ph.label)}" preserveAspectRatio="xMidYMid meet">
-        <defs><clipPath id="${uid}"><rect x="6" y="8" width="${fw}" height="80"/></clipPath>
+      <svg class="ct${late ? ' ct-late' : ''}${opts.cls ? ' ' + opts.cls : ''}${grow ? ' ct-grow' : ''}"${grow ? ` style="--f0:${(was / ph.p).toFixed(3)}"` : ''} viewBox="0 0 400 96" role="img" aria-label="${esc(id)} · ${esc(ph.label)}" preserveAspectRatio="xMidYMid meet">
+        <defs><clipPath id="${uid}"><rect class="ct-clip" x="6" y="8" width="${fw}" height="80"/></clipPath>
           <linearGradient id="${uid}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="gd-a"/><stop offset="1" class="gd-b"/></linearGradient></defs>
         <rect class="ct-shell${ph.grp === 'plan' ? ' ct-shell-plan' : ''}" x="2" y="6" width="396" height="84" rx="2"/>
         <g class="ct-ribs">${r}</g>
         ${fw ? `<g clip-path="url(#${uid})"><rect class="ct-fill ct-fill-${ph.grp}" x="2" y="6" width="396" height="84"${ph.grp === 'done' ? ` fill="url(#${uid}g)"` : ''}/><g class="ct-ribs-f">${r}</g></g>` : ''}
-        ${ph.p > 0 && ph.p < 1 ? `<line class="ct-level" x1="${6 + fw}" x2="${6 + fw}" y1="12" y2="84"/>` : ''}
+        ${ph.p > 0 && ph.p < 1 ? `<line class="ct-level" x1="${6 + fw}" x2="${6 + fw}" y1="12" y2="84" style="--lv:${fw}"/>` : ''}
         <rect class="ct-rail" x="2" y="6" width="396" height="6"/>
         <rect class="ct-rail" x="2" y="83" width="396" height="7"/>
         <rect class="ct-post" x="2" y="6" width="8" height="84"/>
@@ -796,13 +977,13 @@
 
   function fleet(d, list) {
     if (!list.length) return '';
-    const cards = list.map(c => {
+    const cards = list.map((c, i) => {
       const ph = phase(c);
       const late = lateInfo(c);
       const eta = !c.arrived && c.eta_time ? `<span class="cc-eta">ETA ${esc(c.eta_time)}</span>` : '';
       return `
-        <button type="button" class="ccard${late ? ' is-late' : ''}" data-action="open" data-id="${esc(c.id)}">
-          ${containerSvg(c)}
+        <button type="button" class="ccard${late ? ' is-late' : ''}" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 11)}">
+          <span class="ct-wrap">${containerSvg(c)}</span>
           <span class="cc-top">
             <span class="cc-w"><b>${fmtDec((c.kg || 0) / 1000, 1, 1)}</b><small>t</small></span>
             <span class="ph ph-${late ? 'late' : ph.grp}">${esc(late ? late.label : ph.label)}</span>
@@ -812,39 +993,43 @@
         </button>`;
     }).join('');
     return `
-      <section class="fleet" aria-label="Érkező konténerek">
+      <section class="fleet" aria-label="Érkező konténerek" data-reveal>
         <div class="fleet-grid">${cards}</div>
       </section>`;
   }
 
   function ring(v, total, cls, size = 40) {
     const r = size / 2 - 4, C = 2 * Math.PI * r, f = total ? Math.min(1, v / total) : 0;
-    return `<svg class="ring ring-${cls}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true">
+    return `<svg class="ring ring-${cls}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" style="--c:${C.toFixed(1)}">
       <circle class="ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}"/>
       <circle class="ring-fg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-dasharray="${(C * f).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
-      <text x="50%" y="50%" dy=".35em" text-anchor="middle">${total ? Math.round(f * 100) : 0}%</text>
+      <text x="50%" y="50%" dy=".35em" text-anchor="middle"><tspan class="cnt" data-n="${total ? Math.round(f * 100) : 0}" data-f="pct" data-d="250">${total ? Math.round(f * 100) : 0}%</tspan></text>
     </svg>`;
   }
+
+  // ETA-lefedettség: van ETA, vagy már megérkezett (akkor az ETA már nem kérdés). Minden nézet ezt használja.
+  const etaDone = c => !!(c.eta_time || c.arrived);
 
   function dayPanel() {
     const d = S.sel;
     const list = onDay(d);
-    const withEta = list.filter(c => c.eta_time || c.arrived).length;
+    const withEta = list.filter(etaDone).length;
     const arrived = list.filter(c => c.arrived).length;
     const stored = list.filter(c => phase(c).key === 'stored').length;
     const late = list.filter(c => lateInfo(c)).length;
+    const of = n => `<span class="of"> / ${n}</span>`;
     return `
       <main class="main">
         <div class="dayhead">
-          <div class="title-row"><h1>${DOW[dowIdx(d)]}</h1><span class="sub">${longLabel(d)}</span></div>
+          <div class="title-row"><h1><span class="slot">${DOW[dowIdx(d)]}</span></h1><span class="sub">${longLabel(d)}</span></div>
           <dl class="stats">
-            <div><dt>Konténer</dt><dd>${list.length}</dd></div>
-            <div><dt>Bruttó súly</dt><dd>${fmtT(sumKg(list))}</dd></div>
-            <div><dt>Karton</dt><dd>${fmtInt(sumCt(list))}</dd></div>
-            <div class="st-ring">${ring(withEta, list.length, 'eta')}<span><dt>ETA</dt><dd>${withEta}<span class="of"> / ${list.length}</span></dd></span></div>
-            <div class="st-ring">${ring(arrived, list.length, 'live')}<span><dt>Megérkezett</dt><dd>${arrived}<span class="of"> / ${list.length}</span></dd></span></div>
-            <div class="st-ring">${ring(stored, list.length, 'done')}<span><dt>Betárolva</dt><dd>${stored}<span class="of"> / ${list.length}</span></dd></span></div>
-            ${late ? `<div class="st-late st-ring">${ring(late, list.length, 'late')}<span><dt>Késik</dt><dd>${late}</dd></span></div>` : ''}
+            <div style="--i:0"><dt>Konténer</dt><dd>${num(list.length, 'int', 140)}</dd></div>
+            <div style="--i:1"><dt>Bruttó súly</dt><dd>${num(sumKg(list), 't', 190)}</dd></div>
+            <div style="--i:2"><dt>Karton</dt><dd>${num(sumCt(list), 'int', 240)}</dd></div>
+            <div class="st-ring" style="--i:3">${ring(withEta, list.length, 'eta')}<span><dt>ETA</dt><dd>${num(withEta, 'int', 290)}${of(list.length)}</dd></span></div>
+            <div class="st-ring" style="--i:4">${ring(arrived, list.length, 'live')}<span><dt>Megérkezett</dt><dd>${num(arrived, 'int', 340)}${of(list.length)}</dd></span></div>
+            <div class="st-ring" style="--i:5">${ring(stored, list.length, 'done')}<span><dt>Betárolva</dt><dd>${num(stored, 'int', 390)}${of(list.length)}</dd></span></div>
+            ${late ? `<div class="st-late st-ring" style="--i:6">${ring(late, list.length, 'late')}<span><dt>Késik</dt><dd>${num(late, 'int', 440)}</dd></span></div>` : ''}
           </dl>
         </div>
         ${rampStrip(d, list)}
@@ -857,52 +1042,52 @@
   function timeline(d, list) {
     const timed = list.filter(c => c.eta_time).sort((a, b) => (a.eta_time < b.eta_time ? -1 : 1));
     const hs = timed.map(c => toH(c.eta_time));
+    const n = new Date();
+    const nh = d === S.today ? n.getHours() + n.getMinutes() / 60 : null;
+    // A „most” jelölő este és hajnalban is a skálán marad.
+    if (nh !== null) hs.push(nh);
     const lo = Math.max(0, Math.min(6, Math.floor(Math.min(...hs, 24))));
-    const hi = Math.min(24, Math.max(20, Math.ceil(Math.max(...hs, 0) + 1)));
+    const hi = Math.min(24, Math.max(20, Math.ceil(Math.max(...hs, 0) + (nh !== null && Math.max(...hs) === nh ? 0.25 : 1))));
     const pos = h => (h - lo) / (hi - lo) * 100;
     const span = 15;
     const lanes = [];
-    const pills = timed.map(c => {
+    const pills = timed.map((c, i) => {
       const p = pos(toH(c.eta_time));
       let lane = lanes.findIndex(end => end <= p);
       if (lane < 0) { lane = lanes.length; lanes.push(0); }
       lanes[lane] = p + span;
       const left = Math.min(p, 84);
-      return `<button type="button" class="pill pill-${c.status === 'arrived' ? 'arrived' : 'eta'}" style="left:${left}%;top:${6 + lane * 44}px" data-action="open" data-id="${esc(c.id)}"><b>${esc(c.eta_time)}</b><span>${esc(c.id)}</span></button>`;
+      return `<button type="button" class="pill pill-${c.status === 'arrived' ? 'arrived' : 'eta'}" style="left:${left}%;top:${6 + lane * 44}px;--i:${Math.min(i, 12)}" data-action="open" data-id="${esc(c.id)}"><b>${esc(c.eta_time)}</b><span>${esc(c.id)}</span></button>`;
     }).join('');
     const h = Math.max(1, lanes.length) * 44 + 34;
     let ticks = '';
     for (let x = lo; x <= hi; x++) {
       const major = x % 2 === 0;
-      ticks += `<div class="tl-tick ${major ? 'major' : ''}" style="left:${pos(x)}%"></div>`;
-      if (major) ticks += `<span class="tl-lab" style="left:${pos(x)}%">${pad(x)}</span>`;
+      ticks += `<div class="tl-tick ${major ? 'major' : ''}" style="left:${pos(x)}%;--i:${x - lo}"></div>`;
+      if (major) ticks += `<span class="tl-lab" style="left:${pos(x)}%;--i:${x - lo}">${pad(x)}</span>`;
     }
     let now = '';
-    if (d === S.today) {
-      const n = new Date();
-      const nh = n.getHours() + n.getMinutes() / 60;
-      if (nh >= lo && nh <= hi) now = `<div class="tl-now" style="left:${pos(nh)}%"></div><span class="tl-now-lab" style="left:${pos(nh)}%">${pad(n.getHours())}:${pad(n.getMinutes())}</span>`;
-    }
+    if (nh !== null && nh >= lo && nh <= hi) now = `<div class="tl-now" style="left:${pos(nh)}%"></div><span class="tl-now-lab" style="left:${pos(nh)}%">${pad(n.getHours())}:${pad(n.getMinutes())}</span>`;
     const noEta = list.filter(c => !c.eta_time && c.status !== 'arrived');
     return `
-      <section class="panel timeline" aria-label="Idővonal">
+      <section class="panel timeline" aria-label="Idővonal" data-reveal>
         <div class="tl-track"><div class="tl-area" style="height:${h}px">${ticks}${now}${pills}${timed.length ? '' : '<div class="tl-empty">Nincs rögzített ETA</div>'}</div></div>
         <div class="tray">
           <div class="tray-head"><span>ETA nélkül</span><span class="mono">${noEta.length}</span></div>
-          <div class="tray-list">${noEta.map(c => `<button type="button" class="tray-item" data-action="open" data-id="${esc(c.id)}"><span>${esc(c.id)}</span><span>${fmtT(c.kg)}</span></button>`).join('') || '<span class="dim" style="font-size:13px">—</span>'}</div>
+          <div class="tray-list">${noEta.map((c, i) => `<button type="button" class="tray-item" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 8)}"><span>${esc(c.id)}</span><span>${fmtT(c.kg)}</span></button>`).join('') || '<span class="dim" style="font-size:13px">—</span>'}</div>
         </div>
       </section>`;
   }
 
   function table(d, list) {
-    const rows = list.map(c => {
+    const rows = list.map((c, i) => {
       const flags = [];
       if (c.eta_stale) flags.push(`<div class="flag warn">${IC.warn}ETA korábbi napra</div>`);
       const lt = lateInfo(c);
       if (lt) flags.push(`<div class="flag late">${IC.warn}${esc(lt.label)}</div>`);
       const drv = [c.driver, c.phone].filter(Boolean).join(' · ');
       return `
-        <div class="tr row">
+        <div class="tr row" data-id="${esc(c.id)}" style="--i:${Math.min(i, 12)}">
           <div><button type="button" class="cid" data-action="open" data-id="${esc(c.id)}">${esc(c.id)}</button><div class="sub2">${c.pdd.length} PDD</div></div>
           <div><div class="cell-mono ${c.plate ? '' : 'dim'}">${c.plate ? esc(plate(c.plate)) : 'várható'}</div>${drv ? `<div class="sub2">${esc(drv)}</div>` : ''}</div>
           <span class="cell-mono ${c.t1 ? '' : 'dim'}" style="font-size:12.5px">${esc(c.t1 || '—')}</span>
@@ -914,7 +1099,7 @@
     }).join('');
     const emptyText = hasForecast(d) ? 'Erre a napra nincs bejelentett konténer.' : 'Erre a napra még nem jött előrejelzés.';
     return `
-      <section class="panel" aria-label="Konténerek">
+      <section class="panel" aria-label="Konténerek" data-reveal>
         ${list.length ? `<div class="tbl-scroll"><div class="tbl">
           <div class="tr head"><span>Konténer</span><span>Rendszám · sofőr</span><span>T1 / MRN</span><span class="r">Karton</span><span class="r">Súly (kg)</span><span>ETA</span><span>Állapot</span></div>
           ${rows}
@@ -937,7 +1122,7 @@
     const mN = inMonth.reduce((s, d) => s + lists[d].length, 0);
     const maxKg = Math.max(60000, ...days.map(d => sumKg(lists[d])));
 
-    const cells = days.map(d => {
+    const cells = days.map((d, idx) => {
       const list = lists[d];
       const kg = sumKg(list);
       const out = d.slice(0, 7) !== S.month;
@@ -948,9 +1133,10 @@
       if (kg) bg = `oklch(${(0.995 - 0.035 * r).toFixed(3)} ${(0.035 * r).toFixed(3)} 60)`;
       const numCls = d === S.today ? 'today' : (out ? 'out' : '');
       return `
-        <button type="button" class="cell ${nodata ? 'nodata' : ''}" style="background-color:${bg}" data-action="cell" data-date="${d}" aria-pressed="${d === S.calSel}" aria-label="${longLabel(d)}, ${list.length} konténer">
+        <button type="button" class="cell ${nodata ? 'nodata' : ''}" style="background-color:${bg};--w:${Math.floor(idx / 7) + (idx % 7)}" data-action="cell" data-date="${d}" aria-pressed="${d === S.calSel}" aria-label="${longLabel(d)}, ${list.length} konténer">
+          <span class="cell-sel" aria-hidden="true"></span>
           <div class="cell-top"><span class="cell-num ${numCls}">${parse(d).getDate()}</span>${list.length ? `<span class="cell-count">${list.length} db</span>` : ''}</div>
-          <div class="pips">${list.map(c => `<i class="pip" style="--p:${Math.round(phase(c).p * 100)}%"></i>`).join('')}</div>
+          <div class="pips">${list.map((c, k) => { const ph = phase(c); return `<i class="pip pip-${ph.grp}" style="--p:${Math.round(ph.p * 100)}%;--k:${Math.min(k, 9)}"></i>`; }).join('')}</div>
           ${list.length ? `<div class="cell-foot"><div class="bar"><i class="${d < S.today ? 'past' : ''}" style="width:${Math.round(r * 100)}%"></i></div><div class="cell-t">${fmtT(kg)}</div></div>` : ''}
         </button>`;
     }).join('');
@@ -960,11 +1146,11 @@
       <div class="month">
         <section class="month-main" aria-label="Havi naptár">
           <div class="month-head">
-            <h1>${MON[m.getMonth()].replace(/^./, ch => ch.toUpperCase())} <span>${m.getFullYear()}</span></h1>
-            <div class="month-sum"><span><b>${mN}</b> db</span><span><b>${fmtT(mKg)}</b></span></div>
+            <h1><span class="slot">${MON[m.getMonth()].replace(/^./, ch => ch.toUpperCase())} <span>${m.getFullYear()}</span></span></h1>
+            <div class="month-sum"><span><b>${num(mN, 'int', 120)}</b> db</span><span><b>${num(mKg, 't', 170)}</b></span></div>
           </div>
-          <div class="tbl-scroll"><div class="panel cal">
-            <div class="cal-dow">${DOW.map(x => `<span>${x}</span>`).join('')}</div>
+          <div class="cal-wrap"><div class="panel cal">
+            <div class="cal-dow">${DOW.map((x, i) => `<span style="--i:${i}" data-s="${DOW_S[i]}">${x}</span>`).join('')}</div>
             <div class="cal-grid">${cells}</div>
           </div></div>
         </section>
@@ -975,11 +1161,12 @@
   function monthSide() {
     const d = S.calSel;
     const list = onDay(d);
-    const rows = list.map(c => {
+    const rows = list.map((c, i) => {
+      const ph = phase(c);
       const etaCls = c.arrived ? 'arrived' : (c.eta_time ? 'eta' : '');
       return `
-        <button type="button" class="side-item" data-action="open" data-id="${esc(c.id)}">
-          <span class="side-l"><i class="pip side-pip" style="--p:${Math.round(phase(c).p * 100)}%" aria-hidden="true"></i><span style="min-width:0"><span class="mono" style="display:block">${esc(c.id)}</span><span class="sub2" style="display:block">${esc(c.plate ? plate(c.plate) : 'rendszám nélkül')} · ${fmtInt(c.kg)} kg</span></span></span>
+        <button type="button" class="side-item" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 10)}">
+          <span class="side-l"><i class="pip pip-${ph.grp} side-pip" style="--p:${Math.round(ph.p * 100)}%" aria-hidden="true"></i><span class="side-txt"><span class="mono">${esc(c.id)}</span><span class="sub2">${esc(c.plate ? plate(c.plate) : 'rendszám nélkül')} · ${fmtInt(c.kg)} kg</span></span></span>
           <span class="side-eta ${etaCls}">${esc(c.arrived ? stageText(c) : (c.eta_time || '—'))}</span>
         </button>`;
     }).join('');
@@ -991,19 +1178,19 @@
     return `
       <aside class="side" aria-label="Kiválasztott nap">
         <div class="side-day">
-          <div class="title-row"><h2>${DOW[dowIdx(d)]}</h2><span class="sub">${longLabel(d)}</span></div>
+          <div class="title-row"><h2><span class="slot">${DOW[dowIdx(d)]}</span></h2><span class="sub">${longLabel(d)}</span></div>
           <div class="side-stats">
-            <span><b>${list.length}</b> db</span>
-            <span><b>${fmtInt(sumKg(list))}</b> kg</span>
-            <span><b>${fmtInt(sumCt(list))}</b> karton</span>
-            <span>ETA <b>${list.filter(c => c.eta_time).length}</b>/${list.length}</span>
+            <span style="--i:0"><b>${num(list.length, 'int', 120)}</b> db</span>
+            <span style="--i:1"><b>${num(sumKg(list), 'int', 160)}</b> kg</span>
+            <span style="--i:2"><b>${num(sumCt(list), 'int', 200)}</b> karton</span>
+            <span style="--i:3">ETA <b>${num(list.filter(etaDone).length, 'int', 240)}</b>/${list.length}</span>
           </div>
           <div class="side-list">${rows || `<div class="side-empty">${hasForecast(d) ? 'Nincs érkezés.' : 'Nincs előrejelzés.'}</div>`}</div>
           <button type="button" class="go" data-action="goto" data-date="${d}">Heti nézet${IC.go}</button>
         </div>
         <div class="weekbars">
           <div class="weekbars-head"><b>${isoWeek(wk)}. hét</b><span>${wn} db · ${fmtT(wl.reduce((a, b) => a + b, 0))}</span></div>
-          ${wd.map((x, i) => `<div class="wb"><span>${DOW_S[i]}</span><div class="wb-track"><i class="${x < S.today ? 'past' : ''}" style="width:${Math.round(wl[i] / wmax * 100)}%"></i></div><span>${wl[i] ? fmtT(wl[i]) : '—'}</span></div>`).join('')}
+          ${wd.map((x, i) => `<div class="wb" style="--i:${i}"><span>${DOW_S[i]}</span><div class="wb-track"><i class="${x < S.today ? 'past' : ''}" style="width:${Math.round(wl[i] / wmax * 100)}%"></i></div><span>${wl[i] ? fmtT(wl[i]) : '—'}</span></div>`).join('')}
         </div>
       </aside>`;
   }
@@ -1011,10 +1198,21 @@
   // ---------- adatlap ----------
   const cp = v => (v ? `<button type="button" class="cpy" data-action="copy" data-v="${esc(v)}" aria-label="Másolás" title="Másolás">${IC.copy}</button>` : '');
 
-  function renderDrawer() {
+  // mode: 'enter' (CSS-sel becsúszik), 'vt' (View Transition hozza), 'step' (lapozás), üres: frissítés helyben, görgetés megtartva.
+  let drawerTimer = null;
+  let drawerFrom = null;
+  function renderDrawer(mode) {
     const root = $('#drawer');
     const c = S.drawer && S.data.containers[S.drawer];
-    if (!c) { S.drawer = null; root.innerHTML = ''; return; }
+    if (!c) {
+      S.drawer = null;
+      if (!root.classList.contains('leaving')) root.innerHTML = '';
+      return;
+    }
+    clearTimeout(drawerTimer);
+    root.classList.remove('leaving');
+    const prevSheet = root.querySelector('.sheet');
+    const keepScroll = !mode && prevSheet && prevSheet.dataset.id === c.id ? prevSheet.scrollTop : 0;
     const dayList = c.state === 'active' ? onDay(c.day) : removedOn(c.removed_from);
     const idx = dayList.findIndex(x => x.id === c.id);
     const refDay = c.state === 'active' ? c.day : c.removed_from;
@@ -1022,16 +1220,18 @@
     const late = lateInfo(c);
     const where = [c.port, c.customs].filter(Boolean).join(' · ');
     const stored = c.storedPdd || {};
-    const pddRows = c.pdd.map(p => {
+    const pddRows = c.pdd.map((p, i) => {
       const at = p.no && stored[p.no.toUpperCase()];
-      return `<div class="tr2"><span>${esc(p.no || '—')}${cp(p.no)}</span><span class="r">${fmtKg(p.kg)}${cp(String(p.kg).replace('.', ','))}</span><span class="r">${fmtInt(p.ctns)}${cp(String(p.ctns))}</span><span class="r ${at ? 'ok' : 'dim'}">${at ? esc(stamp(at)) : '—'}</span></div>`;
+      return `<div class="tr2" style="--i:${Math.min(i, 8)}"><span>${esc(p.no || '—')}${cp(p.no)}</span><span class="r">${fmtKg(p.kg)}${cp(String(p.kg).replace('.', ','))}</span><span class="r">${fmtInt(p.ctns)}${cp(String(p.ctns))}</span><span class="r ${at ? 'ok' : 'dim'}">${at ? esc(stamp(at)) : '—'}</span></div>`;
     }).join('');
     const etaDate = c.eta_date || c.date;
     const active = c.state === 'active';
+    const badge = !active ? `<span class="ph ph-out ph-lg">${esc(ST_LABEL.removed)}</span>` : `<span class="ph ph-${late ? 'late' : ph.grp} ph-lg">${esc(late ? late.label : ph.label)}</span>`;
+    const anim = mode === 'enter' || mode === 'vt' || mode === 'step' ? ` ${mode}` : '';
 
     root.innerHTML = `
-      <div class="scrim" data-action="close"></div>
-      <aside class="sheet" role="dialog" aria-modal="true" aria-label="${esc(c.id)}">
+      <div class="scrim${mode === 'enter' ? ' enter' : ''}" data-action="close"></div>
+      <aside class="sheet${anim}" role="dialog" aria-modal="true" aria-label="${esc(c.id)}" tabindex="-1" data-id="${esc(c.id)}">
         <div class="sheet-head">
           <div class="sheet-bar">
             <button type="button" class="back" data-action="close">${IC.back}${DOW[dowIdx(refDay)]}, ${short(refDay)}</button>
@@ -1043,19 +1243,19 @@
           </div>
           <h2 class="sr">${esc(c.id)}</h2>
           <div class="sheet-ct">${containerSvg(c, { cls: 'ct-lg' })}</div>
-          <div class="badges"><span class="ph ph-${late ? 'late' : ph.grp} ph-lg">${esc(late ? late.label : ph.label)}</span>${where ? `<span class="badge b-out">${esc(where)}</span>` : ''}</div>
+          <div class="badges">${badge}${where ? `<span class="badge b-out">${esc(where)}</span>` : ''}</div>
         </div>
         <div class="sheet-body">
           <dl class="facts">
-            <div><dt>Konténer</dt><dd>${esc(c.id)}${cp(c.id)}</dd></div>
-            <div><dt>Rendszám</dt><dd>${c.plate ? esc(plate(c.plate)) + cp(plate(c.plate)) : '<span class="dim">várható</span>'}</dd></div>
-            <div><dt>T1 / MRN</dt><dd>${c.t1 ? esc(c.t1) + cp(c.t1) : '<span class="dim">várható</span>'}</dd></div>
-            <div><dt>Bruttó súly</dt><dd>${fmtKg(c.kg)} kg${cp(String(c.kg).replace('.', ','))}</dd></div>
-            <div><dt>Karton</dt><dd>${fmtInt(c.ctns)}${cp(String(c.ctns))}</dd></div>
-            <div><dt>Szállítási nap</dt><dd>${c.date ? `${c.date.replace(/-/g, '.')}.` + cp(c.date.replace(/-/g, '.') + '.') : '—'}<small>${c.date ? DOW[dowIdx(c.date)] : ''}</small></dd></div>
-            <div><dt>ETA</dt><dd>${c.eta_time ? esc(c.eta_time) + cp(c.eta_time) : '<span class="dim">nincs</span>'}${c.eta_time && c.eta_date && c.eta_date !== c.date ? `<small>${esc(short(c.eta_date))}</small>` : ''}</dd></div>
-            <div><dt>Rámpa</dt><dd>${c.ramp ? c.ramp + cp(String(c.ramp)) : '<span class="dim">—</span>'}</dd></div>
-            <div><dt>Sofőr</dt><dd class="plain">${c.driver ? esc(c.driver) + cp(c.driver) : '<span class="dim">nincs megadva</span>'}${c.phone ? `<small>${esc(c.phone)}${cp(c.phone)}</small>` : ''}</dd></div>
+            <div style="--i:0"><dt>Konténer</dt><dd>${esc(c.id)}${cp(c.id)}</dd></div>
+            <div style="--i:1"><dt>Rendszám</dt><dd>${c.plate ? esc(plate(c.plate)) + cp(plate(c.plate)) : '<span class="dim">várható</span>'}</dd></div>
+            <div style="--i:2"><dt>T1 / MRN</dt><dd>${c.t1 ? esc(c.t1) + cp(c.t1) : '<span class="dim">várható</span>'}</dd></div>
+            <div style="--i:3"><dt>Bruttó súly</dt><dd>${fmtKg(c.kg)} kg${cp(String(c.kg).replace('.', ','))}</dd></div>
+            <div style="--i:4"><dt>Karton</dt><dd>${fmtInt(c.ctns)}${cp(String(c.ctns))}</dd></div>
+            <div style="--i:5"><dt>Szállítási nap</dt><dd>${c.date ? `${c.date.replace(/-/g, '.')}.` + cp(c.date.replace(/-/g, '.') + '.') : '—'}<small>${c.date ? DOW[dowIdx(c.date)] : ''}</small></dd></div>
+            <div style="--i:6"><dt>ETA</dt><dd>${c.eta_time ? esc(c.eta_time) + cp(c.eta_time) : '<span class="dim">nincs</span>'}${c.eta_time && c.eta_date && c.eta_date !== c.date ? `<small>${esc(short(c.eta_date))}</small>` : ''}</dd></div>
+            <div style="--i:7"><dt>Rámpa</dt><dd>${c.ramp ? c.ramp + cp(String(c.ramp)) : '<span class="dim">—</span>'}</dd></div>
+            <div class="wide" style="--i:8"><dt>Sofőr</dt><dd class="plain">${c.driver ? esc(c.driver) + cp(c.driver) : '<span class="dim">nincs megadva</span>'}${c.phone ? `<small>${esc(c.phone)}${cp(c.phone)}</small>` : ''}</dd></div>
           </dl>
 
           ${active && (c.arrived || c.stage || c.storage) ? stepper(c) : ''}
@@ -1085,6 +1285,49 @@
           </label>
         </div>
       </aside>`;
+    const sh = root.querySelector('.sheet');
+    if (keepScroll) sh.scrollTop = keepScroll;
+    if (mode === 'enter' || mode === 'vt') sh.focus({ preventScroll: true });
+  }
+
+  // Kártyáról nyitva a konténerrajz átrepül az adatlap fejlécébe.
+  function openDrawer(id, fromEl) {
+    const wasOpen = !!(S.drawer && $('#drawer .sheet'));
+    drawerFrom = fromEl ? fromEl.dataset.id : drawerFrom;
+    const svg = !wasOpen && fromEl && fromEl.querySelector('.ct');
+    if (svg && canVT()) {
+      svg.style.viewTransitionName = 'cthero';
+      vt('drawer', 0, () => { svg.style.viewTransitionName = ''; S.drawer = id; renderDrawer('vt'); });
+      return;
+    }
+    S.drawer = id;
+    renderDrawer(wasOpen ? 'step' : 'enter');
+  }
+
+  function closeDrawer() {
+    if (!S.drawer) return;
+    const id = S.drawer;
+    const root = $('#drawer');
+    const back = () => {
+      const el = drawerFrom && document.querySelector(`#view [data-id="${CSS.escape(drawerFrom)}"][data-action="open"]`);
+      if (el) el.focus({ preventScroll: true });
+      drawerFrom = null;
+    };
+    S.drawer = null;
+    // Ha a kártya látszik, a rajz visszarepül a helyére.
+    const card = document.querySelector(`#view .ccard[data-id="${CSS.escape(id)}"] .ct`);
+    const r = card && card.getBoundingClientRect();
+    if (card && canVT() && r.bottom > 0 && r.top < window.innerHeight) {
+      const t = vt('drawer-close', 0, () => { root.innerHTML = ''; card.style.viewTransitionName = 'cthero'; });
+      if (t) t.finished.finally(() => { card.style.viewTransitionName = ''; });
+      back();
+      return;
+    }
+    if (!root.firstChild || RM.matches) { root.innerHTML = ''; back(); return; }
+    root.classList.add('leaving');
+    clearTimeout(drawerTimer);
+    drawerTimer = setTimeout(() => { root.classList.remove('leaving'); if (!S.drawer) root.innerHTML = ''; }, 260);
+    back();
   }
 
   // ---------- ETA beillesztése ----------
@@ -1102,14 +1345,20 @@
     return out;
   }
 
+  let pasteSeen = new Set();
   function renderPaste() {
     const items = parseEtas($('#paste-text').value);
     $('#paste-save').disabled = !items.length;
+    // Csak az újonnan felismert sorok csúsznak be, a már látottak helyben maradnak.
+    let k = 0;
     $('#paste-list').innerHTML = items.map(it => {
       const c = S.data.containers[it.container];
       const day = c && c.state === 'active' ? `${DOW[dowIdx(c.date)]}, ${short(c.date)}` : 'nincs a tervben';
-      return `<div class="pl-row"><span>${esc(it.container)}</span><span class="pl-day ${c && c.state === 'active' ? '' : 'unk'}">${esc(day)}</span><b>${esc(it.time)}</b></div>`;
+      const key = it.container + it.time;
+      const fresh = !pasteSeen.has(key);
+      return `<div class="pl-row${fresh ? ' new' : ''}" style="--i:${fresh ? k++ : 0}"><span>${esc(it.container)}</span><span class="pl-day ${c && c.state === 'active' ? '' : 'unk'}">${esc(day)}</span><b>${esc(it.time)}</b></div>`;
     }).join('');
+    pasteSeen = new Set(items.map(it => it.container + it.time));
   }
 
   async function savePaste() {
@@ -1131,35 +1380,67 @@
   }
 
   // ---------- műveletek ----------
+  // Egyszerre egy értesítés látszik; az új kiszorítja a régit, alul fogyó csík jelzi az időt.
+  let toastEl = null, toastTimer = null;
   function toast(msg) {
-    const t = document.createElement('div');
+    if (toastEl) { const old = toastEl; old.classList.add('out'); setTimeout(() => old.remove(), 200); }
+    clearTimeout(toastTimer);
+    const t = toastEl = document.createElement('div');
     t.className = 'toast';
     t.setAttribute('role', 'status');
     t.textContent = msg;
     document.body.appendChild(t);
-    setTimeout(() => t.remove(), 2400);
+    toastTimer = setTimeout(() => {
+      t.classList.add('out');
+      setTimeout(() => { t.remove(); if (toastEl === t) toastEl = null; }, 220);
+    }, 2400);
   }
 
   function nav(step) {
     if (S.view === 'week') {
-      S.week = addDays(S.week, step * 7);
-      S.sel = addDays(S.sel, step * 7);
-      S.anim = true;
+      vt('week', step, () => {
+        S.week = addDays(S.week, step * 7);
+        S.sel = addDays(S.sel, step * 7);
+        render(`yard main ${step > 0 ? 'fwd' : 'back'}`);
+      });
     } else {
-      const d = parse(S.month + '-01');
-      d.setMonth(d.getMonth() + step);
-      S.month = iso(d).slice(0, 7);
-      if (S.calSel.slice(0, 7) !== S.month) S.calSel = S.month + '-01';
+      vt('month', step, () => {
+        const d = parse(S.month + '-01');
+        d.setMonth(d.getMonth() + step);
+        S.month = iso(d).slice(0, 7);
+        if (S.calSel.slice(0, 7) !== S.month) S.calSel = S.month + '-01';
+        render(`cal side ${step > 0 ? 'fwd' : 'back'}`);
+      });
     }
-    render();
   }
 
   function goToday() {
-    S.today = iso(new Date());
-    S.sel = S.today; S.week = mondayOf(S.today);
-    S.month = S.today.slice(0, 7); S.calSel = S.today;
-    S.anim = true;
-    render();
+    const t = iso(new Date());
+    if (S.view === 'week' && S.sel === t && S.week === mondayOf(t)) {
+      // Már a mai napon állunk: csak jelezzük, hol van.
+      const el = document.querySelector('#view .day.is-today');
+      if (el) { el.classList.remove('ping'); void el.offsetWidth; el.classList.add('ping'); }
+      window.scrollTo({ top: 0, behavior: RM.matches ? 'auto' : 'smooth' });
+      return;
+    }
+    const ref = S.view === 'month' ? S.month + '-01' : S.week;
+    const dir = t < ref ? -1 : t > (S.view === 'month' ? S.month + '-31' : addDays(S.week, 6)) ? 1 : 0;
+    vt(S.view === 'month' ? 'month' : 'week', dir, () => {
+      S.today = t;
+      S.sel = S.today; S.week = mondayOf(S.today);
+      S.month = S.today.slice(0, 7); S.calSel = S.today;
+      render(`${S.view === 'month' ? 'cal side' : 'yard main'}${dir > 0 ? ' fwd' : dir < 0 ? ' back' : ''}`);
+    });
+  }
+
+  function switchView(next) {
+    if (next === S.view) return;
+    const dir = VIEWS.indexOf(next) - VIEWS.indexOf(S.view);
+    vt('view', dir, () => {
+      S.view = next;
+      if (next === 'month') { S.month = S.sel.slice(0, 7); S.calSel = S.sel; }
+      render(ZONES[next]);
+    });
   }
 
   async function saveEta(id, d, t) {
@@ -1235,20 +1516,35 @@
     if (!el || el.disabled) return;
     const a = el.dataset.action;
     switch (a) {
-      case 'view': S.view = el.dataset.view; if (S.view === 'month') { S.month = S.sel.slice(0, 7); S.calSel = S.sel; } else { S.anim = true; } render(); break;
+      case 'view': switchView(el.dataset.view); break;
       case 'prev': nav(-1); break;
       case 'next': nav(1); break;
       case 'today': goToday(); break;
-      case 'day': S.sel = el.dataset.date; render(); break;
-      case 'cell': S.calSel = el.dataset.date; render(); break;
-      case 'goto': S.view = 'week'; S.sel = el.dataset.date; S.week = mondayOf(S.sel); S.anim = true; S.drawer = null; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); break;
-      case 'open': S.drawer = el.dataset.id; renderDrawer(); break;
-      case 'close': S.drawer = null; renderDrawer(); break;
+      case 'day': {
+        const d = el.dataset.date;
+        if (d !== S.sel) vt('day', d < S.sel ? -1 : 1, () => { S.sel = d; render('main'); });
+        break;
+      }
+      case 'cell': {
+        const d = el.dataset.date;
+        if (d !== S.calSel) vt('cal', d < S.calSel ? -1 : 1, () => { S.calSel = d; render('side'); });
+        break;
+      }
+      case 'goto': {
+        const d = el.dataset.date;
+        S.drawer = null;
+        vt('view', -1, () => { S.view = 'week'; S.sel = d; S.week = mondayOf(d); render('yard main'); });
+        window.scrollTo({ top: 0, behavior: RM.matches ? 'auto' : 'smooth' });
+        break;
+      }
+      case 'open': openDrawer(el.dataset.id, el); break;
+      case 'close': closeDrawer(); break;
       case 'dstep': {
         const c = S.data.containers[S.drawer];
         const list = c.state === 'active' ? onDay(c.day) : removedOn(c.removed_from);
-        const i = list.findIndex(x => x.id === c.id) + Number(el.dataset.step);
-        if (list[i]) { S.drawer = list[i].id; renderDrawer(); }
+        const step = Number(el.dataset.step);
+        const i = list.findIndex(x => x.id === c.id) + step;
+        if (list[i]) vt('dstep', step, () => { S.drawer = list[i].id; renderDrawer('step'); });
         break;
       }
       case 'refresh':
@@ -1257,20 +1553,32 @@
           renderSync();
           await exe().refresh();
         } else {
+          el.classList.add('spin-once');
           await loadAll();
           toast('Frissítve');
         }
         break;
       case 'settings': openSettings(); break;
-      case 'stats-range': S.statsDays = Number(el.dataset.days); render(); break;
+      case 'stats-range': {
+        const n = Number(el.dataset.days);
+        if (n !== S.statsDays) vt('range', n > S.statsDays ? 1 : -1, () => { S.statsDays = n; render('stats'); });
+        break;
+      }
       case 'qopen': {
         const c = S.data.containers[el.dataset.id];
         $('#q').value = ''; renderSearch();
+        $('#q').blur();
         if (c) {
           const day = c.state === 'active' ? c.day : c.removed_from;
-          if (day) { S.view = 'week'; S.sel = day; S.week = mondayOf(day); }
-          S.drawer = c.id;
-          render();
+          const sameWeek = S.view === 'week' && day && S.week === mondayOf(day);
+          const enter = !day ? '' : !sameWeek ? 'yard main' : S.sel !== day ? 'main' : '';
+          const go = () => {
+            if (day) { S.view = 'week'; S.sel = day; S.week = mondayOf(day); }
+            S.drawer = c.id;
+            render(enter);
+            renderDrawer('enter');
+          };
+          if (enter) vt(sameWeek ? 'day' : 'view', 0, go); else go();
         }
         break;
       }
@@ -1281,7 +1589,7 @@
         if (await upsertManual({ container: c.id, ramp: val, ramp_set: val ? new Date().toISOString() : null })) toast(val ? `Rámpa ${val}` : 'Rámpa törölve');
         break;
       }
-      case 'paste': $('#paste-text').value = ''; renderPaste(); $('#paste').showModal(); setTimeout(() => $('#paste-text').focus(), 30); break;
+      case 'paste': $('#paste-text').value = ''; pasteSeen = new Set(); renderPaste(); $('#paste').showModal(); setTimeout(() => $('#paste-text').focus(), 30); break;
       case 'paste-close': $('#paste').close(); break;
       case 'paste-save': await savePaste(); break;
       case 'settings-close': $('#settings').close(); break;
@@ -1295,24 +1603,40 @@
       case 'file': await openFile(el.dataset.path); break;
       case 'save-eta': {
         const t = $('#eta-time').value, d = $('#eta-date').value;
-        if (await saveEta(S.drawer, d, t)) toast(t ? 'ETA mentve' : 'ETA törölve');
+        if (await saveEta(S.drawer, d, t)) {
+          toast(t ? 'ETA mentve' : 'ETA törölve');
+          const box = $('#drawer .etabox');
+          if (box && t) box.classList.add('just-saved');
+        }
         break;
       }
       case 'clear-eta': if (await saveEta(S.drawer, '', '')) toast('ETA törölve'); break;
       case 'arrived': {
         const c = S.data.containers[S.drawer];
+        let ok;
         if (c.arrived_auto) {
-          await upsertManual({ container: c.id, auto_dismissed: true, arrived: false, arrived_at: null });
+          ok = await upsertManual({ container: c.id, auto_dismissed: true, arrived: false, arrived_at: null });
         } else if (c.arrived) {
-          await upsertManual({ container: c.id, arrived: false, arrived_at: null, auto_dismissed: !!c.auto_arrival });
+          ok = await upsertManual({ container: c.id, arrived: false, arrived_at: null, auto_dismissed: !!c.auto_arrival });
         } else {
-          await upsertManual({ container: c.id, arrived: true, arrived_at: new Date().toISOString() });
+          ok = await upsertManual({ container: c.id, arrived: true, arrived_at: new Date().toISOString() });
+          const b = ok && $('#drawer [data-action="arrived"]');
+          if (b) b.classList.add('just-on');
         }
         break;
       }
       case 'copy':
-        try { await navigator.clipboard.writeText(el.dataset.v); toast('Másolva'); }
-        catch (_) { toast('A másolás nem sikerült'); }
+        try {
+          await navigator.clipboard.writeText(el.dataset.v);
+          toast('Másolva');
+          // A gomb egy pillanatra pipára vált.
+          if (!el.classList.contains('done')) {
+            const html = el.innerHTML;
+            el.classList.add('done');
+            el.innerHTML = IC.check;
+            setTimeout(() => { el.classList.remove('done'); el.innerHTML = html; }, 1300);
+          }
+        } catch (_) { toast('A másolás nem sikerült'); }
         break;
       case 'copy-pw':
         try { await navigator.clipboard.writeText(el.dataset.pw); toast('Link másolva'); } catch (_) { /* kijelölhető marad */ }
@@ -1394,8 +1718,15 @@
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && document.activeElement === $('#q')) { $('#q').value = ''; renderSearch(); return; }
-    if (e.key === 'Escape' && S.drawer && !$('#settings').open) { S.drawer = null; renderDrawer(); }
+    if (e.key === 'Escape' && S.drawer && !$('#settings').open && !$('#paste').open) closeDrawer();
   });
+
+  // Görgetéskor a fejléc árnyékot kap, hogy elváljon a tartalomtól.
+  let scrolled = false;
+  window.addEventListener('scroll', () => {
+    const s = window.scrollY > 4;
+    if (s !== scrolled) { scrolled = s; document.querySelector('.top').classList.toggle('scrolled', s); }
+  }, { passive: true });
 
   $('#settings').addEventListener('close', () => {
     if (S.pending) { rebuild(); render(); }
