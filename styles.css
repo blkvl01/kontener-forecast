@@ -1216,3 +1216,5 @@ g .hit{fill:transparent}
 .ct-wrap{isolation:isolate}
 .ct-wrap:before{content:"";position:absolute;inset:6.25% .5%;z-index:-1;border-radius:2px;box-shadow:0 6px 10px -2px oklch(0.2 0.02 255 / .16)}
 .ev-main .panel>.empty{animation:k-up-s .4s var(--ease-expo) backwards;animation-delay:calc(var(--dm) + 120ms)}
+.hero-main .ring .ring-n{font-family:var(--cond);font-size:38px;font-weight:700;fill:var(--yard-text)}
+.hero-main .ring .ring-l{font-family:var(--sans);font-size:11.5px;font-weight:500;fill:var(--yard-muted)}

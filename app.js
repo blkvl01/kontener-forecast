@@ -146,7 +146,7 @@
     if (!animate) { void ind.offsetWidth; ind.style.transition = ''; }
   }
 
-  const FMT = { int: v => fmtInt(v), t: v => fmtT(v), d1: v => fmtDec(v, 0, 1), dur: v => fmtDur(v), pct: v => `${Math.round(v)}%` };
+  const FMT = { int: v => fmtInt(v), t: v => fmtT(v), d1: v => fmtDec(v, 0, 1), dur: v => fmtDur(v) };
   const num = (v, f = 'int', d = 0) => `<span class="cnt" data-n="${v}" data-f="${f}" data-d="${d}">${FMT[f](v)}</span>`;
 
   // Számlálás nulláról a végértékig; az alapállapot a végérték, így hiba esetén is helyes szám látszik.
@@ -866,9 +866,9 @@
           <h2 class="sx-h">Áttekintés</h2>
           <div class="hero">
             <div class="hero-main">
-              ${ring(storedL.length, past.length, 'done', 132)}
+              ${ring(storedL.length, past.length, 'done', 132, `<text x="50%" y="50%" text-anchor="middle"><tspan class="ring-n" x="50%" dy=".1em">${storedL.length}</tspan><tspan class="ring-l" x="50%" dy="1.7em">betárolva</tspan></text>`)}
               <div><div class="hero-n">${num(past.length, 'int', 150)}<small> konténer</small></div>
-                <div class="hero-sub">${arrived.length} megérkezett · ${storedL.length} betárolva</div>
+                <div class="hero-sub">${arrived.length} megérkezett</div>
                 <div class="hero-sub">${fmtT(kg)} · ${fmtInt(ct)} karton</div></div>
             </div>
             <div class="hero-side">
@@ -1052,7 +1052,6 @@
           ${check ? `<rect class="ct-chk" x="186" y="25" width="21" height="28" rx="1.5"/><text x="196.5" y="47" class="ct-id" text-anchor="middle">${esc(check)}</text>` : ''}
           <text x="26" y="72" class="ct-sub">${esc(kgTxt)}</text>
           <text x="128" y="72" class="ct-sub">${esc(ctTxt)}</text>
-          ${ph.p ? `<text x="372" y="72" class="ct-pct" text-anchor="end">${Math.round(ph.p * 100)}%</text>` : ''}
         </g>
       </svg>`;
   }
@@ -1080,12 +1079,13 @@
       </section>`;
   }
 
-  function ring(v, total, cls, size = 40) {
+  // Haladás-gyűrű százalék nélkül; a felirat (ha van) a középre kerül.
+  function ring(v, total, cls, size = 40, label = '') {
     const r = size / 2 - 4, C = 2 * Math.PI * r, f = total ? Math.min(1, v / total) : 0;
     return `<svg class="ring ring-${cls}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" style="--c:${C.toFixed(1)}">
       <circle class="ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}"/>
       <circle class="ring-fg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-dasharray="${(C * f).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
-      <text x="50%" y="50%" dy=".35em" text-anchor="middle">${total ? Math.round(f * 100) : 0}%</text>
+      ${label}
     </svg>`;
   }
 
