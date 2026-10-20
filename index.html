@@ -12,13 +12,14 @@
 <link rel="preload" href="fonts/barlow-latin-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/barlow-condensed-latin-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/red-hat-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=20261020211541">
-<script src="boot-role.js"></script>
+<link rel="stylesheet" href="styles.css?v=20261020211937">
+<script src="boot-role.js?v=20261020211937"></script>
 </head>
 <body>
 <svg class="kf-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
   <pattern id="kf-rib" patternUnits="userSpaceOnUse" x="20.9" y="0" width="7" height="96"><rect class="kf-rib" width="2.2" height="96"/></pattern>
   <pattern id="kf-rib-f" patternUnits="userSpaceOnUse" x="20.8" y="0" width="7" height="96"><rect class="kf-rib-f" width="2.4" height="96"/></pattern>
+  <pattern id="kf-hz" patternUnits="userSpaceOnUse" width="9" height="9" patternTransform="rotate(45)"><rect class="kf-hz" width="4.5" height="9"/></pattern>
   <linearGradient id="kf-done" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="gd-a"/><stop offset="1" class="gd-b"/></linearGradient>
 </defs></svg>
 <div class="boot" id="boot" aria-hidden="true">
@@ -27,22 +28,23 @@
     <i class="bfx-glow"></i><i class="bfx-beam l"></i><i class="bfx-beam r"></i><i class="bfx-burst"></i>
   </div>
   <div class="boot-stage">
+    <i class="boot-conv"></i>
     <div class="boot-hoist"><i class="boot-cable"></i><i class="boot-spreader"><b class="bcn l"></b><b class="bcn r"></b></i></div>
     <div class="boot-box">
-      <div class="boot-body"><i class="boot-fill" id="boot-fill"></i><i class="boot-edge" id="boot-edge"></i><div class="boot-load" id="boot-load"><i style="--c:0;--r:1;--k:0"></i><i style="--c:0;--r:0;--k:1"></i><i style="--c:1;--r:1;--k:2"></i><i style="--c:1;--r:0;--k:3"></i><i style="--c:2;--r:1;--k:4"></i><i style="--c:2;--r:0;--k:5"></i><i style="--c:3;--r:1;--k:6"></i><i style="--c:3;--r:0;--k:7"></i><i style="--c:4;--r:1;--k:8"></i><i style="--c:4;--r:0;--k:9"></i><i style="--c:5;--r:1;--k:10"></i><i style="--c:5;--r:0;--k:11"></i><i style="--c:6;--r:1;--k:12"></i><i style="--c:6;--r:0;--k:13"></i></div><i class="boot-sheen"></i></div>
+      <div class="boot-body"><i class="boot-fill" id="boot-fill"></i><i class="boot-edge" id="boot-edge"></i><div class="boot-load" id="boot-load"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><i class="boot-sheen"></i></div>
       <svg class="boot-ct" viewBox="0 0 400 96" preserveAspectRatio="none">
       <g class="bt-ribs"><line x1="22" y1="13" x2="22" y2="83"/><line x1="36" y1="13" x2="36" y2="83"/><line x1="50" y1="13" x2="50" y2="83"/><line x1="64" y1="13" x2="64" y2="83"/><line x1="78" y1="13" x2="78" y2="83"/><line x1="92" y1="13" x2="92" y2="83"/><line x1="106" y1="13" x2="106" y2="83"/><line x1="120" y1="13" x2="120" y2="83"/><line x1="134" y1="13" x2="134" y2="83"/><line x1="148" y1="13" x2="148" y2="83"/><line x1="162" y1="13" x2="162" y2="83"/><line x1="176" y1="13" x2="176" y2="83"/><line x1="190" y1="13" x2="190" y2="83"/><line x1="204" y1="13" x2="204" y2="83"/><line x1="218" y1="13" x2="218" y2="83"/><line x1="232" y1="13" x2="232" y2="83"/><line x1="246" y1="13" x2="246" y2="83"/><line x1="260" y1="13" x2="260" y2="83"/><line x1="274" y1="13" x2="274" y2="83"/><line x1="288" y1="13" x2="288" y2="83"/><line x1="302" y1="13" x2="302" y2="83"/><line x1="316" y1="13" x2="316" y2="83"/><line x1="330" y1="13" x2="330" y2="83"/><line x1="344" y1="13" x2="344" y2="83"/><line x1="358" y1="13" x2="358" y2="83"/><line x1="372" y1="13" x2="372" y2="83"/></g>
       <g class="bt-frame"><rect x="2" y="6" width="396" height="6"/><rect x="2" y="83" width="396" height="7"/><rect x="2" y="6" width="8" height="84"/><rect x="390" y="6" width="8" height="84"/></g>
       <g class="bt-cast"><rect x="2" y="6" width="14" height="11" rx="1"/><rect x="384" y="6" width="14" height="11" rx="1"/><rect x="2" y="79" width="14" height="11" rx="1"/><rect x="384" y="79" width="14" height="11" rx="1"/></g>
       <rect class="bt-outline" x="2" y="6" width="396" height="84" rx="2" pathLength="1"/>
     </svg>
-      <span class="boot-code">KFAU 000001 <b>1</b></span>
+      <span class="boot-code">KFAU 000001 <b>3</b></span>
       <div class="boot-land"><i class="bfx-ring"></i><span class="bfx-sparks"><i style="--a:-172deg;--s:1"></i><i style="--a:-160deg;--s:.7"></i><i style="--a:-146deg;--s:1.15"></i><i style="--a:-131deg;--s:.8"></i><i style="--a:-118deg;--s:1"></i><i style="--a:-104deg;--s:.6"></i><i style="--a:-76deg;--s:.65"></i><i style="--a:-62deg;--s:1"></i><i style="--a:-49deg;--s:.85"></i><i style="--a:-34deg;--s:1.2"></i><i style="--a:-20deg;--s:.75"></i><i style="--a:-8deg;--s:1"></i></span></div>
     </div>
     <div class="boot-name"><span style="--i:0">K</span><span style="--i:1">o</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">é</span><span style="--i:5">n</span><span style="--i:6">e</span><span style="--i:7">r</span><i></i><span style="--i:9">F</span><span style="--i:10">o</span><span style="--i:11">r</span><span style="--i:12">e</span><span style="--i:13">c</span><span style="--i:14">a</span><span style="--i:15">s</span><span style="--i:16">t</span></div>
     <div class="boot-card" id="boot-card"><span class="bc-day" id="bc-day"></span><span class="bc-time" id="bc-time"></span><span class="bc-n" id="bc-n"></span></div>
   </div>
-  <div class="boot-rail"><i class="boot-belt"></i></div>
+  <div class="boot-rail"></div>
 </div>
 
 <div class="app" id="app" hidden>
@@ -169,9 +171,9 @@
   </div>
 </dialog>
 
-<script src="vendor/supabase.min.js?v=20261020211541"></script>
-<script src="config.js?v=20261020211541"></script>
-<script src="derive.js?v=20261020211541"></script>
-<script src="app.js?v=20261020211541"></script>
+<script src="vendor/supabase.min.js?v=20261020211937"></script>
+<script src="config.js?v=20261020211937"></script>
+<script src="derive.js?v=20261020211937"></script>
+<script src="app.js?v=20261020211937"></script>
 </body>
 </html>

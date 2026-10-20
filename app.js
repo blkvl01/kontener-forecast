@@ -132,6 +132,53 @@
   }
   const flyTo = to => r => [{ transform: 'none' }, { transform: `translate(${to.left - r.left}px, ${to.top - r.top}px) scale(${to.width / r.width})` }];
 
+  // Darus szállítás: a kampón lógó konténer felemelkedik, a futómacska átviszi, a célnál leereszkedik, rugózik, a kampó kiold.
+  // Három egymásba ágyazott réteg (X, Y + méret, lengés), mindegyik külön transform-animáció.
+  // grab: a kampónak előbb le kell ereszkednie (nem volt felemelve); a visszatérő ígéret a lerakáskor teljesül.
+  function craneFly(svg, to, ms, grab = 0) {
+    const r = svg.getBoundingClientRect();
+    const f = document.createElement('div');
+    f.className = 'ct-flyer crane';
+    Object.assign(f.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    f.innerHTML = `<div class="cr-y"><div class="cr-sw">${HOIST}</div></div>`;
+    const ct = svg.cloneNode(true);
+    ct.removeAttribute('style');
+    ct.classList.remove('ct-grow', 'ct-lg');
+    const sw = f.querySelector('.cr-sw');
+    sw.appendChild(ct);
+    document.body.appendChild(f);
+    const hk = f.querySelector('.hk');
+    const dx = to.left - r.left, dy = to.top - r.top, s = to.width / r.width;
+    const peak = Math.max(14, Math.min(r.top, to.top) - 64) - r.top;
+    const k = p => (1 + (s - 1) * p).toFixed(4);
+    const dir = Math.sign(dx) || 1, a = Math.min(5, Math.max(1.6, Math.abs(dx) / 110));
+    const opt = (o = {}) => ({ duration: ms, delay: grab, easing: 'linear', fill: 'both', ...o });
+    if (grab) hk.animate([{ transform: 'translateY(-70%)', opacity: 0 }, { opacity: 1, offset: .3 }, { transform: 'none', opacity: 1 }], { duration: grab, easing: 'cubic-bezier(.3,1.35,.5,1)', fill: 'backwards' });
+    f.querySelector('.cr-y').animate([
+      { transform: `translateY(0) scale(1)`, easing: 'cubic-bezier(.4,0,.25,1)' },
+      { transform: `translateY(${peak}px) scale(${k(.12)})`, offset: .3, easing: 'linear' },
+      { transform: `translateY(${peak}px) scale(${k(.6)})`, offset: .55, easing: 'cubic-bezier(.45,0,.3,1)' },
+      { transform: `translateY(${dy + 4}px) scale(${s})`, offset: .9, easing: 'cubic-bezier(.3,0,.4,1)' },
+      { transform: `translateY(${dy}px) scale(${s})` },
+    ], opt());
+    f.animate([{ transform: 'translateX(0)' }, { transform: `translateX(${dx}px)` }], opt({ duration: ms * .58, delay: grab + ms * .16, easing: 'cubic-bezier(.6,0,.3,1)' }));
+    // Gyorsuláskor a teher lemarad, fékezéskor előrelendül, majd lecsillapodik.
+    sw.animate([
+      { transform: 'rotate(0deg)', offset: 0 }, { transform: 'rotate(0deg)', offset: .16 },
+      { transform: `rotate(${a * dir}deg)`, offset: .3 }, { transform: `rotate(${a * .25 * dir}deg)`, offset: .5 },
+      { transform: `rotate(${-a * .85 * dir}deg)`, offset: .7 }, { transform: `rotate(${a * .3 * dir}deg)`, offset: .84 },
+      { transform: `rotate(${-a * .1 * dir}deg)`, offset: .94 }, { transform: 'rotate(0deg)', offset: 1 },
+    ], opt({ easing: 'ease-in-out' }));
+    const landed = sleep(grab + ms);
+    landed.then(() => {
+      ct.style.opacity = '0';
+      f.classList.add('rel');
+      hk.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateY(-60%)', opacity: 1, offset: .6 }, { transform: 'translateY(-90%)', opacity: 0 }], { duration: 380, delay: 120, easing: 'cubic-bezier(.55,0,.6,1)', fill: 'both' })
+        .finished.finally(() => f.remove());
+    });
+    return landed;
+  }
+
   // Csúszó jelölők a heti sávban (kiválasztott nap) és a naptárban (kiválasztott cella).
   function placeDayInd() {
     const days = $('#view .days');
@@ -367,7 +414,11 @@
 
   // A töltöttség a betöltés ütemét követi, de az első nyitáskor legfeljebb az idővel arányosan nő,
   // így gyors hálózaton sem ugrik egyből tele a konténer. (performance.now() a lapbetöltés óta eltelt idő.)
-  let bootTarget = 0, bootShown = 0, bootRaf = 0;
+  // Szerepkörönként más a belépő (data-bi), ezért más a töltés kezdete és hossza is; a dolgozónál kartonok jelzik.
+  const BOOT_IN = document.documentElement.getAttribute('data-bi') || 'editor';
+  const BOOT_RAMP = { editor: [420, 900], admin: [820, 1000], worker: [650, 750] }[BOOT_IN] || [420, 900];
+  const BOOT_LOAD = [1, 0, 3, 2, 5, 4, 7, 6, 9, 8, 11, 10, 13, 12];
+  let bootTarget = 0, bootShown = 0, bootRaf = 0, bootCells = 0;
   function bootProgress(f) {
     bootTarget = Math.max(bootTarget, f);
     if (!bootRaf) bootRaf = requestAnimationFrame(bootTick);
@@ -376,13 +427,35 @@
     bootRaf = 0;
     const b = $('#boot');
     if (!b) return;
-    const ramp = BOOT_SEEN || RM.matches ? 1 : Math.min(1, 0.1 + 0.9 * Math.max(0, (now - 420) / 900));
+    const ramp = BOOT_SEEN || RM.matches ? 1 : Math.min(1, 0.1 + 0.9 * Math.max(0, (now - BOOT_RAMP[0]) / BOOT_RAMP[1]));
     const goal = Math.min(bootTarget, ramp);
     bootShown += (goal - bootShown) * 0.16;
     if (goal - bootShown < 0.002) bootShown = goal;
-    const fill = $('#boot-fill');
-    if (fill) fill.style.transform = `scaleX(${bootShown.toFixed(4)})`;
+    const p = bootShown.toFixed(4);
+    $('#boot-fill').style.transform = `scaleX(${p})`;
+    $('#boot-edge').style.transform = `translateX(${(p * 100).toFixed(2)}%)`;
+    const n = Math.round(bootShown * BOOT_LOAD.length);
+    if (n > bootCells) {
+      const cells = $('#boot-load').children;
+      for (; bootCells < n; bootCells++) cells[BOOT_LOAD[bootCells]].classList.add('on');
+    }
     if (bootShown < bootTarget) bootRaf = requestAnimationFrame(bootTick);
+  }
+
+  // Szerepkör szerint: a belépés után már a valódi szín és kilépő (data-br), legközelebb ezzel indul a belépő is.
+  function bootRole(role) {
+    const r = role === 'admin' || role === 'worker' ? role : 'editor';
+    document.documentElement.setAttribute('data-br', r);
+    try { localStorage.setItem('kf-role', r); } catch (_) { /* privát mód */ }
+  }
+
+  // Dolgozó: blokkolókártya a mai nappal, a mostani időponttal és a mai konténerek számával.
+  function bootCard() {
+    const d = new Date();
+    $('#bc-day').textContent = `${DOW[(d.getDay() + 6) % 7]} ${short(iso(d))}`;
+    $('#bc-time').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const n = S.data && S.today ? onDay(S.today).length : null;
+    $('#bc-n').innerHTML = n === null ? '' : `<b>${n}</b>konténer`;
   }
 
   // A konténer a betöltés ütemében telik meg, utána a daru kiemeli, a redőnykapu felgördül.
@@ -392,9 +465,14 @@
     booted = true;
     try { sessionStorage.setItem('kf-boot', '1'); } catch (_) { /* privát mód */ }
     const fast = RM.matches || document.hidden;
+    const role = document.documentElement.getAttribute('data-br') || 'editor';
+    const min = { editor: [1380, 600], admin: [2000, 1000], worker: [1450, 650] }[role] || [1380, 600];
     bootProgress(1);
-    await sleep(Math.max(fast ? 0 : 200, (fast ? 0 : BOOT_SEEN ? 600 : 1380) - performance.now()));
+    await sleep(Math.max(fast ? 0 : 200, (fast ? 0 : BOOT_SEEN ? min[1] : min[0]) - performance.now()));
     for (let k = 0; k < 30 && !fast && !document.hidden && bootShown < 0.99; k++) await sleep(30);
+    // Kilépő előtti pillanat: admin „élesít”, dolgozó blokkol.
+    if (!fast && role === 'admin') { b.classList.add('lock'); await sleep(420); }
+    if (!fast && role === 'worker' && mode === 'app') { bootCard(); b.classList.add('stamp'); await sleep(BOOT_SEEN ? 700 : 950); }
     apply();
     b.classList.add('out');
     if (mode === 'app') {
@@ -405,7 +483,7 @@
       countUp($('#view'), fast ? 0 : 320);
       setTimeout(() => app.classList.remove('boot-in'), 2400);
     }
-    setTimeout(() => b.remove(), fast ? 0 : 1100);
+    setTimeout(() => b.remove(), fast ? 0 : role === 'admin' ? 1450 : 1100);
   }
 
   function showAuth(mode, info) {
@@ -426,6 +504,7 @@
     const { data, error } = await sb.from('members').select('email, role, name').eq('email', email).maybeSingle();
     if (error || !data) { showAuth('denied', email); return; }
     ME = data;
+    bootRole(ME.role);
     document.body.classList.toggle('role-worker', isWorker());
     sb.rpc('touch_me').then(() => {}, () => {});
     setInterval(() => sb.rpc('touch_me').then(() => {}, () => {}), 5 * 60000);
@@ -1061,6 +1140,18 @@
       </svg>`;
   }
 
+  // Daru-függeszték a kártyákon: kötél, horogblokk, hevederek és a narancs spreader twistlock-lámpákkal.
+  const HOIST = `<span class="hk" aria-hidden="true"><i class="hk-cable"></i><svg class="hk-rig" viewBox="0 0 400 56" preserveAspectRatio="xMidYMax meet">
+      <path class="hk-sling" d="M200 27 L110 42 M200 27 L290 42"/>
+      <rect class="hk-block" x="186" y="0" width="28" height="15" rx="3.5"/><circle class="hk-pin" cx="200" cy="7.5" r="3.2"/>
+      <path class="hk-hook" d="M200 15 v6 a4.6 4.6 0 1 1 -4.6 4.6"/>
+      <rect class="hk-tl" x="6" y="49" width="7" height="7"/><rect class="hk-tl" x="387" y="49" width="7" height="7"/>
+      <rect class="hk-beam" x="2" y="41" width="396" height="9" rx="1.5"/>
+      <rect class="hk-hz" x="2" y="41" width="40" height="9" rx="1.5"/><rect class="hk-hz" x="358" y="41" width="40" height="9" rx="1.5"/>
+      <rect x="2" y="41" width="40" height="9" rx="1.5" fill="url(#kf-hz)"/><rect x="358" y="41" width="40" height="9" rx="1.5" fill="url(#kf-hz)"/>
+      <rect class="hk-hl" x="42" y="41.5" width="316" height="1.6"/>
+    </svg><b class="hk-lamp l"></b><b class="hk-lamp r"></b></span>`;
+
   function fleet(d, list) {
     if (!list.length) return '';
     const cards = list.map((c, i) => {
@@ -1069,7 +1160,7 @@
       const eta = !c.arrived && c.eta_time ? `<span class="cc-eta">ETA ${esc(c.eta_time)}</span>` : '';
       return `
         <button type="button" class="ccard${late ? ' is-late' : ''}" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 11)}">
-          <span class="ct-wrap">${containerSvg(c)}</span>
+          <span class="ct-wrap"><i class="cc-ground"></i><span class="ct-rig"><span class="ct-sw">${HOIST}${containerSvg(c)}</span></span></span>
           <span class="cc-top">
             <span class="cc-w"><b>${fmtDec((c.kg || 0) / 1000, 1, 1)}</b><small>t</small></span>
             <span class="ph ph-${late ? 'late' : `${ph.grp} phk-${ph.key}`}">${esc(late ? late.label : ph.label)}</span>
@@ -1407,7 +1498,16 @@
     const target = sheet.querySelector('.sheet-ct .ct');
     const t = target.getBoundingClientRect();
     const end = { left: t.left - 80, top: t.top, width: t.width };
-    flyClone(svg, flyTo(end), 560).finished.finally(() => sheet.classList.add('landed'));
+    // A kártyán felemelt konténert a daru viszi át; ha nem volt felemelve (billentyűzet), a kampó előbb ráereszkedik.
+    const card = fromEl.closest('.ccard');
+    const lifted = !!card && card.matches(':hover, :focus-visible');
+    if (card) {
+      document.querySelectorAll('#view .ccard.away').forEach(x => x.classList.remove('away'));
+      card.classList.add('away');
+      craneFly(svg, end, 900, lifted ? 0 : 260).then(() => sheet.classList.add('landed'));
+    } else {
+      flyClone(svg, flyTo(end), 560).finished.finally(() => sheet.classList.add('landed'));
+    }
   }
 
   // Lapozás az adatlapon: a régi konténer kifut, az új a másik irányból érkezik (futószalag).
@@ -1434,11 +1534,14 @@
     const card = document.querySelector(`#view .ccard[data-id="${CSS.escape(id)}"] .ct`);
     const from = root.querySelector('.sheet-ct .ct');
     const r = card && card.getBoundingClientRect();
+    document.querySelectorAll('#view .ccard.away').forEach(x => { if (!card || !x.contains(card)) x.classList.remove('away'); });
     if (card && from && canFly() && r.bottom > 0 && r.top < window.innerHeight) {
-      card.style.opacity = '0';
-      flyClone(from, flyTo(r), 440).finished.finally(() => { card.style.opacity = ''; });
+      // A daru visszaviszi a konténert a kártyára, a lap közben kicsúszik.
+      const cc = card.closest('.ccard');
+      cc.classList.add('away');
+      craneFly(from, r, 700, 200).then(() => cc.classList.remove('away'));
       from.style.opacity = '0';
-    }
+    } else if (card) card.closest('.ccard').classList.remove('away');
     if (!root.firstChild || RM.matches) { root.innerHTML = ''; back(); return; }
     root.classList.add('leaving');
     clearTimeout(drawerTimer);
