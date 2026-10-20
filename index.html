@@ -12,7 +12,7 @@
 <link rel="preload" href="fonts/barlow-latin-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/barlow-condensed-latin-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/red-hat-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=20261020153824">
+<link rel="stylesheet" href="styles.css?v=20261020204606">
 </head>
 <body>
 <svg class="kf-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
@@ -96,13 +96,10 @@
 
     <section class="set-sec" id="users-sec" style="--i:1" hidden>
       <h3>Kollégák</h3>
-      <ul class="users" id="users"></ul>
-      <form id="user-form" class="user-form">
-        <label class="sr" for="user-name">Név</label>
-        <input id="user-name" type="text" placeholder="Kolléga neve" autocomplete="off" maxlength="80" required>
-        <button type="submit" class="btn-primary sm">Meghívó link</button>
-      </form>
-      <div class="newpw" id="newpw" hidden></div>
+      <div class="users-entry">
+        <span class="users-sum" id="users-sum"></span>
+        <button type="button" class="btn-primary sm" data-action="people">Felhasználók kezelése</button>
+      </div>
     </section>
 
     <section class="set-sec" id="outlook-sec" style="--i:2" hidden>
@@ -128,6 +125,32 @@
   </div>
 </dialog>
 
+<dialog id="people" class="settings people" aria-labelledby="people-title">
+  <div class="settings-inner">
+    <div class="settings-head">
+      <h2 id="people-title">Felhasználók</h2>
+      <button type="button" class="x-btn" data-action="people-close" aria-label="Bezárás"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+
+    <div class="p-sum" id="p-sum" role="group" aria-label="Szűrés"></div>
+
+    <form id="user-form" class="p-invite">
+      <label class="sr" for="user-name">Név</label>
+      <input id="user-name" type="text" placeholder="Új kolléga neve" autocomplete="off" maxlength="80" required>
+      <fieldset class="p-roles">
+        <legend class="sr">Rang</legend>
+        <label><input type="radio" name="invite-role" value="worker" checked><span>Dolgozó</span></label>
+        <label><input type="radio" name="invite-role" value="editor"><span>Szerkesztő</span></label>
+        <label><input type="radio" name="invite-role" value="admin"><span>Admin</span></label>
+      </fieldset>
+      <button type="submit" class="btn-primary sm">Meghívó link</button>
+    </form>
+    <div class="newpw" id="newpw" hidden></div>
+
+    <ul class="users p-list" id="users"></ul>
+  </div>
+</dialog>
+
 <dialog id="paste" class="settings" aria-labelledby="paste-title">
   <div class="settings-inner">
     <div class="settings-head">
@@ -144,9 +167,9 @@
   </div>
 </dialog>
 
-<script src="vendor/supabase.min.js?v=20261020153824"></script>
-<script src="config.js?v=20261020153824"></script>
-<script src="derive.js?v=20261020153824"></script>
-<script src="app.js?v=20261020153824"></script>
+<script src="vendor/supabase.min.js?v=20261020204606"></script>
+<script src="config.js?v=20261020204606"></script>
+<script src="derive.js?v=20261020204606"></script>
+<script src="app.js?v=20261020204606"></script>
 </body>
 </html>
