@@ -1897,9 +1897,19 @@
     toast('Beállítások mentve');
   });
 
+  // A realtime csatorna megszakadhat (altatott lap, hálózatváltás): a szinkron állapotát ezért percenként is lekérdezzük.
+  async function pullSync() {
+    try {
+      const { data } = await sb.from('sync_status').select('*').eq('id', 1).maybeSingle();
+      if (data) { SYNC = data; renderSync(); }
+    } catch (_) { /* hálózati hiba: a következő körben újra */ }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.data) pullSync(); });
+
   setInterval(() => {
     if (!S.data) return;
     window.KF.reload();
+    pullSync();
     if (editing() || S.drawer) return;
     const t = iso(new Date());
     if (t !== S.today) { rebuild(); render(); return; }
