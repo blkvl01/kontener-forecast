@@ -1537,6 +1537,8 @@ g .hit{fill:transparent}
    Hover: a kampó leereszkedik, a twistlockok bekattannak (lámpa), a konténer felemelkedik, lefékezve kileng, majd lebeg.
    Elhagyáskor fordított sorrend: leteszi, kiold, a kampó felhúzódik. Csak transform/opacity mozog. */
 .ct-rig,.ct-sw{position:relative;display:block}
+.ccard.phys .ct-sw{will-change:transform}
+
 .ct-sw>.ct{position:relative;display:block}
 .hk{position:absolute;left:0;right:0;bottom:90.6%;height:58.33%;pointer-events:none;opacity:0;transform:translateY(-70%)}
 .hk-rig{position:absolute;inset:0;display:block;width:100%;height:100%;overflow:visible}
@@ -1556,7 +1558,7 @@ g .hit{fill:transparent}
 .hk-lamp:before{content:"";position:absolute;inset:-3px;border-radius:50%;border:1.5px solid oklch(0.85 0.17 70);opacity:0}
 .cc-ground{position:absolute;left:.5%;right:.5%;top:6.25%;bottom:6.25%;pointer-events:none}
 /* a lebegő konténer árnyéka a földön: szélesebb, halványabb */
-.cc-ground:before{content:"";position:absolute;left:3%;right:3%;bottom:-9px;height:16px;border-radius:50%;background:radial-gradient(closest-side,oklch(0.2 0.03 255 / .3),oklch(0.2 0.03 255 / 0));opacity:0;transform:scaleX(.82)}
+.cc-ground>.cc-shadow{position:absolute;left:3%;right:3%;bottom:-9px;height:16px;border-radius:50%;background:radial-gradient(closest-side,oklch(0.2 0.03 255 / .3),oklch(0.2 0.03 255 / 0));opacity:0;transform:scaleX(.82)}
 /* lerakóhely jelölése az alsó sarkokban */
 .cc-ground:after{content:"";position:absolute;left:-3px;right:-3px;bottom:-3px;height:9px;opacity:0;transform:translateY(-3px);
   background:linear-gradient(var(--orange),var(--orange)) 0 100%/12px 2px,linear-gradient(var(--orange),var(--orange)) 0 100%/2px 9px,
@@ -1572,7 +1574,7 @@ g .hit{fill:transparent}
   .hk-lamp:after{transition:opacity .12s linear .18s}
   .ct-rig{transition:transform .34s cubic-bezier(.5,0,.25,1)}
   .ct-wrap:before{transition:opacity .3s linear}
-  .cc-ground:before{transition:opacity .3s linear,transform .34s cubic-bezier(.5,0,.25,1)}
+  .cc-ground>.cc-shadow{transition:opacity .3s linear,transform .34s cubic-bezier(.5,0,.25,1)}
   .cc-ground:after{transition:opacity .2s linear,transform .3s var(--ease-quart)}
   .ccard:hover{z-index:2}
   /* belépés: kampó le (0–.38 s, kis kötélrugózással), kattanás (.34 s), emelés (.4–1 s), kilengés, lebegés */
@@ -1580,21 +1582,22 @@ g .hit{fill:transparent}
   .ccard:hover .hk-lamp:after{opacity:1;transition-delay:.34s}
   .ccard:hover .hk-lamp:before{animation:hk-lock .5s var(--ease-quart) .34s}
   .ccard:hover .ct-rig{transform:translateY(-10px);transition:transform .6s cubic-bezier(.45,0,.2,1) .4s;animation:hk-bob 2.6s ease-in-out 1.9s infinite alternate}
-  .ccard:hover .ct-sw{transform-origin:50% -60%;animation:hk-sway 1.7s ease-in-out .78s}
   .ccard:hover .ct-wrap:before{opacity:.25;transition:opacity .5s linear .45s}
-  .ccard:hover .cc-ground:before{opacity:1;transform:none;transition:opacity .5s linear .45s,transform .6s cubic-bezier(.45,0,.2,1) .4s}
+  .ccard:hover .cc-ground>.cc-shadow{opacity:1;transform:none;transition:opacity .5s linear .45s,transform .6s cubic-bezier(.45,0,.2,1) .4s}
+  /* amíg a fizika fut, az árnyék helyzetét a JS írja: csak az áttetszőség úszik */
+  .ccard.phys .cc-ground>.cc-shadow{transition:opacity .3s linear}
+  .ccard.phys:hover .cc-ground>.cc-shadow{transition:opacity .5s linear .45s}
   .ccard:hover .cc-ground:after{opacity:.75;transform:none;transition:opacity .3s linear .7s,transform .45s var(--ease-expo) .7s}
   /* lenyomva: a kötél megfeszül, indulásra kész */
   .ccard:active .ct-rig{transform:translateY(-13px);transition:transform .12s var(--ease-quart)}
   .ccard.away .ct-rig{transition:none}
 }
 @keyframes hk-lock{from{opacity:1;transform:scale(.6)}to{opacity:0;transform:scale(2.6)}}
-@keyframes hk-sway{0%{transform:none}16%{transform:rotate(.9deg)}38%{transform:rotate(-.65deg)}60%{transform:rotate(.38deg)}80%{transform:rotate(-.16deg)}to{transform:none}}
 @keyframes hk-bob{to{translate:0 -2px}}
 
 /* repülés az adatlapra: X a külső, Y + méret a középső, lengés a belső rétegen (mind külön kompozitor-animáció) */
 .crane .cr-y{position:absolute;inset:0;transform-origin:0 0}
-.crane .cr-sw{position:relative;width:100%;height:100%;transform-origin:50% -80%}
+.crane .cr-sw{position:relative;width:100%;height:100%}
 .crane .ct{display:block;width:100%;height:100%;filter:drop-shadow(0 14px 16px oklch(0.1 0.02 255 / .32))}
 .crane .hk{opacity:1;transform:none}
 .crane .hk-lamp:after{opacity:1;transition:opacity .12s linear}

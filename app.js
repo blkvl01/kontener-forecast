@@ -132,11 +132,102 @@
   }
   const flyTo = to => r => [{ transform: 'none' }, { transform: `translate(${to.left - r.left}px, ${to.top - r.top}px) scale(${to.width / r.width})` }];
 
+  // ---------- daru: a felemelt konténer követi az egeret ----------
+  // Kártyánként egy rugós-csillapított inga: a konténer a kampó feletti tengely körül oldalra leng (2D).
+  // Az egér felőli vége billen le; a vízszintes sebesség lökés (túllendül, majd visszaleng); a földi árnyék
+  // a konténer alja után csúszik. Csak transform íródik, és csak amíg mozog: nyugalomban nincs képkocka-ciklus.
+  // Az emelés (lift) a CSS-átmenet ütemét követi: csak a felemelt konténer leng.
+  const HOVER_OK = window.matchMedia('(hover: hover) and (prefers-reduced-motion: no-preference)');
+  const PIVOT = 1.1; // a lengés tengelye a konténer közepe fölött, konténermagasságban mérve (a kampó fölött)
+  const swT = (a, p) => `translateY(${(-p).toFixed(1)}px) rotate(${a.toFixed(3)}deg) translateY(${p.toFixed(1)}px)`;
+  const sims = new Map();
+  let simRaf = 0, simLast = 0;
+
+  function simFor(card) {
+    let m = sims.get(card);
+    if (m) return m;
+    const sw = card.querySelector('.ct-sw');
+    if (!sw) return null;
+    m = { card, sw, sh: card.querySelector('.cc-shadow'), h: sw.offsetHeight, r: null, enter: performance.now(), out: false, lift: 0, nx: 0, pv: 0, px: null, pt: 0, a: 0, va: 0 };
+    sims.set(card, m);
+    card.classList.add('phys');
+    return m;
+  }
+  function simClear(m) {
+    sims.delete(m.card);
+    m.card.classList.remove('phys');
+    m.sw.style.transform = '';
+    if (m.sh) m.sh.style.transform = '';
+  }
+  // Kattintáskor a daru a pillanatnyi kilengésből veszi át a konténert.
+  function simGrab(card) {
+    const m = sims.get(card);
+    if (!m) return 0;
+    const a = m.a;
+    simClear(m);
+    return a;
+  }
+
+  function simStep(now) {
+    simRaf = 0;
+    const dt = Math.min(0.034, Math.max(0.001, (now - (simLast || now - 16)) / 1000));
+    simLast = now;
+    for (const m of sims.values()) {
+      if (!m.card.isConnected || m.card.classList.contains('away')) { simClear(m); continue; }
+      // emelés: belépés után ~.42 s-tól .55 s alatt fel, kilépéskor .34 s alatt le (mint a CSS-átmenet)
+      m.lift = m.out ? Math.max(0, m.lift - dt / 0.34) : (now - m.enter > 420 ? Math.min(1, m.lift + dt / 0.55) : m.lift);
+      const L = m.lift * m.lift * (3 - 2 * m.lift);
+      m.pv *= Math.exp(-dt * 10);
+      // lágy, alulcsillapított inga (~0,9 Hz); elengedve erősebben csillapodik
+      const ta = m.nx * 4.5 * L, c = m.out ? 7 : 2.2;
+      for (let i = 0; i < 2; i++) {
+        const h = dt / 2;
+        m.va += (32 * (ta - m.a) - c * m.va + m.pv * 0.05 * L) * h;
+        m.a += m.va * h;
+      }
+      m.a = Math.max(-8, Math.min(8, m.a));
+      const p = m.h * PIVOT;
+      m.sw.style.transform = swT(m.a, p);
+      // földi árnyék: a konténer alja után csúszik, felemelve szétterül
+      if (m.sh) {
+        const shift = -Math.sin(m.a * Math.PI / 180) * (p + m.h / 2) * 0.85;
+        m.sh.style.transform = `translateX(${shift.toFixed(2)}px) scaleX(${(0.82 + 0.18 * L).toFixed(4)})`;
+      }
+      if (m.out && m.lift === 0 && Math.abs(m.a) < 0.02 && Math.abs(m.va) < 0.05) simClear(m);
+    }
+    if (sims.size) simRaf = requestAnimationFrame(simStep);
+    else simLast = 0;
+  }
+  const simKick = () => { if (!simRaf) simRaf = requestAnimationFrame(simStep); };
+
+  document.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse' || !HOVER_OK.matches || !canFly()) return;
+    const card = e.target.closest ? e.target.closest('#view .ccard') : null;
+    for (const m of sims.values()) if (m.card !== card) m.out = true;
+    if (card && !card.classList.contains('away')) {
+      const m = simFor(card);
+      if (m) {
+        const now = performance.now();
+        if (m.out) { m.out = false; m.enter = now - (m.lift > 0 ? 420 : 0); }
+        if (!m.r) m.r = card.getBoundingClientRect();
+        m.nx = Math.max(-1, Math.min(1, (e.clientX - m.r.left - m.r.width / 2) / (m.r.width / 2)));
+        if (m.px !== null && now > m.pt) m.pv = m.pv * 0.6 + 0.4 * Math.max(-3000, Math.min(3000, (e.clientX - m.px) / ((now - m.pt) / 1000)));
+        m.px = e.clientX; m.pt = now;
+      }
+    }
+    if (sims.size) simKick();
+  }, { passive: true });
+  const simOut = () => { for (const m of sims.values()) m.out = true; if (sims.size) simKick(); };
+  document.addEventListener('pointerout', e => { if (!e.relatedTarget) simOut(); }, { passive: true });
+  window.addEventListener('blur', simOut);
+  window.addEventListener('scroll', () => { for (const m of sims.values()) m.r = null; }, { passive: true, capture: true });
+
   // Darus szállítás: a kampón lógó konténer felemelkedik, a futómacska átviszi, a célnál leereszkedik, rugózik, a kampó kiold.
   // Három egymásba ágyazott réteg (X, Y + méret, lengés), mindegyik külön transform-animáció.
   // grab: a kampónak előbb le kell ereszkednie (nem volt felemelve); hold(): lerakáskor a kártya saját daruja veszi át,
-  // ilyenkor nincs kioldás. A visszatérő ígéret a lerakáskor teljesül.
-  function craneFly(svg, to, ms, grab = 0, hold = () => false) {
+  // ilyenkor nincs kioldás. a0: a kártyán lengő konténer pillanatnyi kilengése, innen indul.
+  // A visszatérő ígéret a lerakáskor teljesül.
+  function craneFly(svg, to, ms, grab = 0, hold = () => false, a0 = 0) {
     const r = svg.getBoundingClientRect();
     const f = document.createElement('div');
     f.className = 'ct-flyer crane';
@@ -164,12 +255,9 @@
     ], opt());
     f.animate([{ transform: 'translateX(0)' }, { transform: `translateX(${dx}px)` }], opt({ duration: ms * .58, delay: grab + ms * .16, easing: 'cubic-bezier(.6,0,.3,1)' }));
     // Gyorsuláskor a teher lemarad, fékezéskor előrelendül, majd lecsillapodik.
-    sw.animate([
-      { transform: 'rotate(0deg)', offset: 0 }, { transform: 'rotate(0deg)', offset: .16 },
-      { transform: `rotate(${a * dir}deg)`, offset: .3 }, { transform: `rotate(${a * .25 * dir}deg)`, offset: .5 },
-      { transform: `rotate(${-a * .85 * dir}deg)`, offset: .7 }, { transform: `rotate(${a * .3 * dir}deg)`, offset: .84 },
-      { transform: `rotate(${-a * .1 * dir}deg)`, offset: .94 }, { transform: 'rotate(0deg)', offset: 1 },
-    ], opt({ easing: 'ease-in-out' }));
+    const P = r.height * PIVOT;
+    const swing = [[0, a0], [.16, a0 * .3], [.3, a * dir], [.5, a * .25 * dir], [.7, -a * .85 * dir], [.84, a * .3 * dir], [.94, -a * .1 * dir], [1, 0]];
+    sw.animate(swing.map(([o, ang]) => ({ offset: o, transform: swT(ang, P) })), opt({ easing: 'ease-in-out' }));
     const landed = sleep(grab + ms);
     landed.then(() => {
       if (hold()) { f.remove(); return; }
@@ -1162,7 +1250,7 @@
       const eta = !c.arrived && c.eta_time ? `<span class="cc-eta">ETA ${esc(c.eta_time)}</span>` : '';
       return `
         <button type="button" class="ccard${late ? ' is-late' : ''}" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 11)}">
-          <span class="ct-wrap"><i class="cc-ground"></i><span class="ct-rig"><span class="ct-sw">${HOIST}${containerSvg(c)}</span></span></span>
+          <span class="ct-wrap"><i class="cc-ground"><i class="cc-shadow"></i></i><span class="ct-rig"><span class="ct-sw">${HOIST}${containerSvg(c)}</span></span></span>
           <span class="cc-top">
             <span class="cc-w"><b>${fmtDec((c.kg || 0) / 1000, 1, 1)}</b><small>t</small></span>
             <span class="ph ph-${late ? 'late' : `${ph.grp} phk-${ph.key}`}">${esc(late ? late.label : ph.label)}</span>
@@ -1505,8 +1593,9 @@
     const lifted = !!card && card.matches(':hover');
     if (card) {
       document.querySelectorAll('#view .ccard.away').forEach(x => x.classList.remove('away'));
+      const a0 = simGrab(card);
       card.classList.add('away');
-      craneFly(svg, end, 900, lifted ? 0 : 260).then(() => sheet.classList.add('landed'));
+      craneFly(svg, end, 900, lifted ? 0 : 260, undefined, a0).then(() => sheet.classList.add('landed'));
     } else {
       flyClone(svg, flyTo(end), 560).finished.finally(() => sheet.classList.add('landed'));
     }
