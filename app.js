@@ -1218,11 +1218,11 @@
     const refDay = c.state === 'active' ? c.day : c.removed_from;
     const ph = phase(c);
     const late = lateInfo(c);
-    const where = [c.port, c.customs].filter(Boolean).join(' · ');
+    const where = [c.fwd, c.port, c.customs].filter(Boolean).join(' · ');
     const stored = c.storedPdd || {};
     const pddRows = c.pdd.map((p, i) => {
       const at = p.no && stored[p.no.toUpperCase()];
-      return `<div class="tr2" style="--i:${Math.min(i, 8)}"><span>${esc(p.no || '—')}${cp(p.no)}</span><span class="r">${fmtKg(p.kg)}${cp(String(p.kg).replace('.', ','))}</span><span class="r">${fmtInt(p.ctns)}${cp(String(p.ctns))}</span><span class="r ${at ? 'ok' : 'dim'}">${at ? esc(stamp(at)) : '—'}</span></div>`;
+      return `<div class="tr2" style="--i:${Math.min(i, 8)}"><span>${esc(p.no || '—')}${cp(p.no)}</span><span class="r">${p.kg == null ? '<span class="dim">—</span>' : fmtKg(p.kg) + cp(String(p.kg).replace('.', ','))}</span><span class="r">${p.ctns == null ? '<span class="dim">—</span>' : fmtInt(p.ctns) + cp(String(p.ctns))}</span><span class="r ${at ? 'ok' : 'dim'}">${at ? esc(stamp(at)) : '—'}</span></div>`;
     }).join('');
     const etaDate = c.eta_date || c.date;
     const active = c.state === 'active';

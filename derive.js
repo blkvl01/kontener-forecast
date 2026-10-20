@@ -18,9 +18,13 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       (files[a.container] = files[a.container] || []).push({ name: a.name, path: a.path, size: a.size || 0, at });
     }
     for (const e of m.etas || []) {
-      if (e && e.container && e.time) mailEta[e.container] = { time: e.time, at };
+      if (e && e.container && e.time) mailEta[e.container] = { time: e.time, date: e.date || '', at };
     }
-    const conts = m.containers || [];
+    // Szállítónként külön terv: egy levél csak a saját szállítója konténereit veheti le a listáról.
+    // A dátum nélküli tétel (csak sofőr/T1/ETA frissítés) a konténer meglévő napján marad.
+    const src = ((m.containers || []).find(c => c && c.src) || {}).src || 'jz';
+    const conts = (m.containers || []).filter(c => c && c.id && (c.date || C[c.id]))
+      .map(c => (c.date ? c : { ...c, date: C[c.id].date }));
     if (!conts.length) continue;
     const dates = (m.dates || []).filter(Boolean);
     dates.forEach(d => forecastDates.add(d));
@@ -29,10 +33,10 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     conts.forEach(c => { (byDate[c.date] = byDate[c.date] || []).push(c.id); });
     const before = {};
     dates.forEach(d => {
-      before[d] = Object.values(C).filter(x => x.state === 'active' && x.date === d).map(x => x.id).sort();
+      before[d] = Object.values(C).filter(x => x.state === 'active' && x.date === d && x.src === src).map(x => x.id).sort();
     });
     const ev = {
-      at, subject: m.subject || '', dates,
+      at, subject: m.subject || '', dates, src,
       before: Object.fromEntries(dates.map(d => [d, before[d].length])),
       after: Object.fromEntries(dates.map(d => [d, (byDate[d] || []).length])),
       added: [], moved: [], removed: [], t1: []
@@ -42,7 +46,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       let x = C[c.id];
       if (!x) {
         x = C[c.id] = {
-          id: c.id, date: c.date, state: 'active', first_seen: at,
+          id: c.id, date: c.date, state: 'active', first_seen: at, src, fwd: c.fwd || (src === 'jz' ? 'Voltoo' : ''),
           plate: '', t1: '', driver: '', phone: '', pdd: [], kg: 0, ctns: 0,
           port: c.port || '', customs: c.customs || '',
           history: [{ at, kind: 'first', date: c.date }],
@@ -72,6 +76,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
         x.history.push({ at, kind: 'truck', plate: x.plate, t1: x.t1 });
         ev.t1.push(c.id);
       }
+      if (c.fwd) x.fwd = c.fwd;
       if (c.pdd && c.pdd.length) x.pdd = c.pdd;
       if (x.kg && c.kg && Math.abs(x.kg - c.kg) > 1) x.history.push({ at, kind: 'weight', from: x.kg, to: c.kg });
       if (c.kg) x.kg = c.kg;
@@ -160,7 +165,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     let man = manual[x.id] || {};
     const me = mailEta[x.id];
     if (me && !(man.eta_time && man.eta_set && man.eta_set >= me.at)) {
-      man = { ...man, eta_time: me.time, eta_date: x.date, eta_for: x.date, eta_set: me.at, updated_by: 'ETA-levél', updated_at: me.at };
+      man = { ...man, eta_time: me.time, eta_date: me.date || x.date, eta_for: x.date, eta_set: me.at, updated_by: 'ETA-levél', updated_at: me.at };
     }
     x.files = files[x.id] || [];
     x.eta_date = man.eta_date || '';
