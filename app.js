@@ -423,12 +423,11 @@
   async function enter(session) {
     bootProgress(0.2);
     const email = (session.user.email || '').toLowerCase();
-    const { data, error } = await sb.from('members').select('email, role, name, signature').eq('email', email).maybeSingle();
+    const { data, error } = await sb.from('members').select('email, role, name').eq('email', email).maybeSingle();
     if (error || !data) { showAuth('denied', email); return; }
     ME = data;
     document.body.classList.toggle('role-worker', isWorker());
     sb.rpc('touch_me').then(() => {}, () => {});
-    if (!ME.signature) importSignature(true);
     setInterval(() => sb.rpc('touch_me').then(() => {}, () => {}), 5 * 60000);
     // Az alkalmazás már a nyitó réteg alatt kirajzolódik (az első elrendezés és szövegformázás itt fut le),
     // az animációi a redőny felhúzásáig szünetelnek.
@@ -1630,8 +1629,7 @@
       '',
       'Kérnénk szépen nyitást!'
     ];
-    const sig = (ME && ME.signature) || '';
-    return { to: MAIL_TO, subject, lines, sig, body: lines.join('\n'), full: lines.join('\n') + (sig ? `\n\n${sig}` : '') };
+    return { to: MAIL_TO, subject, lines, body: lines.join('\n') };
   }
 
   function mailBox(c) {
@@ -1644,25 +1642,33 @@
           <button type="button" class="btn-primary sm mail-go" data-action="mail">${IC.mail}Nyitáskérelem küldése</button>
         </div>
         ${miss.length ? `<div class="flag warn">${IC.warn}Hiányzik: ${esc(miss.join(', '))}</div>` : ''}
-        ${m.sig || isExe() ? '' : `<button type="button" class="flag warn mail-nosig" data-action="settings">${IC.warn}Nincs aláírás beállítva</button>`}
         <dl class="mail-pv">
           <div><dt>Címzett</dt><dd><span>${esc(m.to.join('; '))}</span>${cp(m.to.join('; '))}</dd></div>
           <div><dt>Tárgy</dt><dd><span>${esc(m.subject)}</span>${cp(m.subject)}</dd></div>
-          <div class="mail-txt"><dt>Szöveg</dt><dd><span>${m.lines.map(l => esc(l) || '&nbsp;').join('<br>')}${m.sig ? `<span class="mail-sig">${esc(m.sig).replace(/\n/g, '<br>')}</span>` : ''}</span>${cp(m.full)}</dd></div>
+          <div class="mail-txt"><dt>Szöveg</dt><dd><span>${m.lines.map(l => esc(l) || '&nbsp;').join('<br>')}</span>${cp(m.body)}</dd></div>
         </dl>
       </section>`;
+  }
+
+  // Az Outlook webes levélírója nyílik meg: a piszkozatba a felhasználó saját, Outlookban beállított aláírása kerül
+  // (az új Outlook mailto-val nyitott levélbe nem tesz aláírást). Elküldeni a felhasználó küldi.
+  function composeUrl(m) {
+    const q = v => encodeURIComponent(v);
+    return `https://outlook.office.com/mail/deeplink/compose?to=${q(m.to.join(';'))}&subject=${q(m.subject)}&body=${q(m.body + '\n')}`;
   }
 
   async function openMail(id) {
     const c = S.data.containers[id];
     if (!c) return;
-    const m = mailParts(c);
-    if (isExe() && exe().draft_mail) {
-      const r = await exe().draft_mail({ to: m.to, subject: m.subject, lines: m.lines });
-      if (r && r.ok) { toast('Piszkozat megnyitva az Outlookban'); return; }
+    const url = composeUrl(mailParts(c));
+    if (isExe()) {
+      if (await exe().open_url(url)) return;
+      toast('Frissítsd az alkalmazást');
+      return;
     }
-    const q = v => encodeURIComponent(v);
-    location.href = `mailto:${m.to.join(';')}?subject=${q(m.subject)}&body=${q(m.full.replace(/\n/g, '\r\n'))}`;
+    const w = window.open(url, '_blank');
+    if (w) w.opener = null;
+    else location.href = url;
   }
 
   // ---------- felhasználók ----------
@@ -1819,34 +1825,8 @@
     $('#me').innerHTML = `<span class="me-av" aria-hidden="true">${esc(ini)}</span><span class="me-txt"><b>${esc(nm)}</b><span class="me-role r-${esc(ME.role)}">${ROLE_L[ME.role] || esc(ME.role)}</span></span>${isExe() ? '<span class="me-dev">Exe</span>' : ''}`;
   }
 
-  function sigState(txt) { $('#sig-state').textContent = txt || ''; }
-
-  // Exe-ben az Outlook új levelekhez beállított aláírása; csendes módban csak üres aláírásnál, belépéskor.
-  async function importSignature(quiet) {
-    if (!isExe() || !exe().get_outlook_signature) return;
-    let sig = '';
-    try { sig = await exe().get_outlook_signature(); } catch (_) { /* nincs Outlook-aláírás */ }
-    if (!sig) { if (!quiet) toast('Az Outlookban nincs aláírás'); return; }
-    if (quiet && ME.signature) return;
-    await saveSignature(sig, quiet);
-    if ($('#settings').open) $('#sig').value = sig;
-  }
-
-  async function saveSignature(sig, quiet) {
-    const { error } = await sb.rpc('set_my_signature', { sig });
-    if (error) { if (!quiet) toast('A mentés nem sikerült'); return false; }
-    ME.signature = sig.trim() || null;
-    sigState(ME.signature ? 'Mentve' : '');
-    if (!quiet) toast('Aláírás mentve');
-    if (S.drawer) renderDrawer();
-    return true;
-  }
-
   async function openSettings() {
     renderMe();
-    $('#sig').value = ME.signature || '';
-    sigState(ME.signature ? 'Mentve' : 'Nincs beállítva');
-    $('#sig-import').hidden = !isExe();
     const admin = ME.role === 'admin';
     $('#users-sec').hidden = !admin;
     $('#ramp-sec').hidden = !admin;
@@ -1950,8 +1930,6 @@
       case 'paste-save': await savePaste(); break;
       case 'settings-close': $('#settings').close(); break;
       case 'people': openPeople(); break;
-      case 'sig-save': await saveSignature($('#sig').value); break;
-      case 'sig-import': await importSignature(false); break;
       case 'ramps': stepRamps(Number(el.dataset.step)); break;
       case 'people-close': $('#people').close(); break;
       case 'people-filter': peopleFilter = el.dataset.f; renderPeople(); break;
@@ -1973,7 +1951,6 @@
         break;
       }
       case 'mail': await openMail(S.drawer); break;
-      case 'mail-copy': await copyMail(S.drawer, el); break;
       case 'clear-eta': if (isWorker()) break; if (await saveEta(S.drawer, '', '')) toast('ETA törölve'); break;
       case 'copy':
         try {
@@ -2151,7 +2128,6 @@
     await exe().save_settings({ ...cur, autostart: on });
     toast(on ? 'Indul a Windows-zal' : 'Nem indul a Windows-zal');
   });
-  $('#sig').addEventListener('input', () => sigState($('#sig').value.trim() === (ME.signature || '') ? 'Mentve' : 'Nincs mentve'));
 
   // A realtime csatorna megszakadhat (altatott lap, hálózatváltás): a szinkron állapotát ezért percenként is lekérdezzük.
   async function pullSync() {

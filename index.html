@@ -12,7 +12,7 @@
 <link rel="preload" href="fonts/barlow-latin-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/barlow-condensed-latin-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/red-hat-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=20261020210448">
+<link rel="stylesheet" href="styles.css?v=20261020211541">
 <script src="boot-role.js"></script>
 </head>
 <body>
@@ -99,16 +99,6 @@
 
     <section class="me-card set-sec" style="--i:0" aria-label="Fiók" id="me"></section>
 
-    <section class="set-sec" id="sig-sec" style="--i:1">
-      <div class="set-h"><h3>Aláírás</h3><span class="set-state" id="sig-state"></span></div>
-      <label class="sr" for="sig">Aláírás</label>
-      <textarea id="sig" class="sig-text" rows="5" maxlength="2000" spellcheck="false"></textarea>
-      <div class="settings-row">
-        <button type="button" class="btn-primary sm" data-action="sig-save">Mentés</button>
-        <button type="button" class="btn-ghost sm" data-action="sig-import" id="sig-import" hidden>Átvétel az Outlookból</button>
-      </div>
-    </section>
-
     <section class="set-sec" id="users-sec" style="--i:2" hidden>
       <div class="set-h"><h3>Csapat</h3></div>
       <button type="button" class="team-card" data-action="people">
@@ -179,9 +169,9 @@
   </div>
 </dialog>
 
-<script src="vendor/supabase.min.js?v=20261020210448"></script>
-<script src="config.js?v=20261020210448"></script>
-<script src="derive.js?v=20261020210448"></script>
-<script src="app.js?v=20261020210448"></script>
+<script src="vendor/supabase.min.js?v=20261020211541"></script>
+<script src="config.js?v=20261020211541"></script>
+<script src="derive.js?v=20261020211541"></script>
+<script src="app.js?v=20261020211541"></script>
 </body>
 </html>
