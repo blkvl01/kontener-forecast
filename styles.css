@@ -945,7 +945,7 @@ g .hit{fill:transparent}
 /* ---- nyitó animáció: daru leengedi, a betöltés megtölti, a redőnykapu felgördül ----
    A töltés és a fényvillanás HTML-réteg az SVG alatt/fölött, így GPU-n mozog.
    Szerepkörönként más: data-bi = belépő (a legutóbbi szerepkör, már az első képkocka előtt), data-br = szín és kilépő (belépés után a valódi).
-   Szerkesztő: narancs, daru, redőny. Admin: piros, ejtés, szikrák, fényszórók, kétszárnyú kapu. Dolgozó: babakék, görgősor, kartonok, blokkolókártya. */
+   Szerkesztő: narancs, daru, redőny. Admin: piros, ejtés, szikrák, fényszórók, a végén a kamera belezuhan a konténerbe. Dolgozó: babakék, görgősor, kartonok, blokkolókártya. */
 .boot{--bp:var(--fill-live);--ba:var(--orange);
   position:fixed;inset:0;z-index:var(--z-boot);display:grid;place-items:center;overflow:hidden;color:var(--yard-text);
   background-color:var(--yard);
@@ -982,16 +982,14 @@ g .hit{fill:transparent}
 @keyframes boot-door{to{transform:translateY(-100%)}}
 @keyframes boot-lift{to{transform:translateY(-70px) scale(.95);opacity:0}}
 /* a szerepkörös rétegek alapból nincsenek */
-.boot-door,.boot-fx,.boot-edge,.boot-code,.boot-land,.boot-load,.boot-conv,.boot-card,.bcn{display:none}
+.boot-fx,.boot-edge,.boot-code,.boot-land,.boot-load,.boot-conv,.boot-card,.bcn{display:none}
 
-/* -- admin: piros konténer, ejtés + szikrák, pásztázó fényszórók, a végén kétszárnyú kapu -- */
-:root[data-br=admin] .boot{background:none;box-shadow:none;perspective:1100px}
-:root[data-br=admin] .boot-door{display:block;position:absolute;top:0;bottom:0;width:50.5%;
-  background-color:oklch(0.195 0.022 18);
-  background-image:linear-gradient(180deg,oklch(1 0 0 / .03),transparent 35%,transparent 70%,oklch(0 0 0 / .25)),
-    repeating-linear-gradient(90deg,oklch(1 0 0 / .035) 0 2px,transparent 2px 9px,oklch(0 0 0 / .13) 9px 13px,transparent 13px 38px)}
-.boot-door.l{left:0;transform-origin:0 50%;box-shadow:inset -1px 0 0 oklch(0 0 0 / .5)}
-.boot-door.r{right:0;transform-origin:100% 50%;box-shadow:inset 1px 0 0 oklch(1 0 0 / .06)}
+/* -- admin: piros konténer, ejtés + szikrák, pásztázó fényszórók, a végén a kamera belezuhan a konténerbe -- */
+:root[data-br=admin] .boot{background:none}
+/* a háttér külön rétegen, hogy a kilépőnél a konténertől függetlenül halványodhasson */
+:root[data-br=admin] .boot:before{content:"";position:absolute;inset:0;z-index:-1;background-color:oklch(0.195 0.022 18);
+  background-image:linear-gradient(180deg,oklch(1 0 0 / .03),transparent 35%,transparent 70%,oklch(0 0 0 / .22)),
+    repeating-linear-gradient(180deg,oklch(1 0 0 / .05) 0 1px,transparent 1px 3px,oklch(0 0 0 / .16) 3px 5px,transparent 5px 24px)}
 :root[data-br=admin] .boot-fx{display:block;position:absolute;inset:0;pointer-events:none}
 .bfx-glow{position:absolute;left:50%;bottom:-30vh;width:120vmax;height:70vh;margin-left:-60vmax;border-radius:50%;background:radial-gradient(closest-side,oklch(0.55 0.2 27 / .38),oklch(0.55 0.2 27 / 0));opacity:.55;animation:bfx-pulse 2.4s var(--ease-io) .7s infinite alternate}
 @keyframes bfx-pulse{to{opacity:1}}
@@ -1003,7 +1001,6 @@ g .hit{fill:transparent}
 @keyframes bfx-on{to{opacity:.55}}
 @keyframes bfx-sweep-l{from{transform:rotate(-34deg)}to{transform:rotate(16deg)}}
 @keyframes bfx-sweep-r{from{transform:rotate(30deg)}to{transform:rotate(-18deg)}}
-.bfx-burst{position:absolute;left:50%;top:50%;width:80vmax;height:80vmax;margin:-40vmax 0 0 -40vmax;border-radius:50%;background:radial-gradient(closest-side,oklch(1 0.03 30 / .9),oklch(0.7 0.2 27 / .45) 35%,oklch(0.6 0.2 27 / 0) 70%);opacity:0;transform:scale(.1)}
 :root[data-bi=admin] .boot-hoist,:root[data-bi=admin] .boot-box{animation:boot-drop 1.05s linear backwards}
 @keyframes boot-drop{
   0%{transform:translateY(-78vh);animation-timing-function:cubic-bezier(.5,0,.85,.4)}
@@ -1039,22 +1036,30 @@ g .hit{fill:transparent}
 @keyframes boot-flip{from{opacity:0;transform:perspective(300px) rotateX(-100deg) translateY(.15em)}}
 :root[data-br=admin] .boot-name:after{content:"";position:absolute;left:0;right:.16em;bottom:-11px;height:3px;border-radius:2px;background:var(--ba);box-shadow:0 0 12px oklch(0.6 0.22 27 / .7);animation:k-gx .8s var(--ease-expo) 1.25s backwards}
 /* a töltés végén: sarokvasak felvillannak, a konténer „bekapcsol” */
-:root[data-br=admin] .boot.lock .boot-box{animation:boot-arm .42s var(--ease-quart)}
-@keyframes boot-arm{40%{transform:scale(1.035)}}
-:root[data-br=admin] .boot.lock .boot-sheen{animation:boot-sheen .45s var(--ease-quart)}
-:root[data-br=admin] .boot.lock .bt-cast rect{fill:oklch(0.95 0.06 50);transition:fill .12s}
-:root[data-br=admin] .boot.lock .bfx-glow{animation:none;opacity:1}
+:root[data-br=admin] .boot.lock .boot-box{animation:boot-arm .46s var(--ease-quart) forwards}
+@keyframes boot-arm{to{transform:scale(.965)}}
+:root[data-br=admin] .boot.lock .boot-sheen{animation:boot-sheen .5s var(--ease-quart) .08s backwards}
+:root[data-br=admin] .boot.lock .bt-cast rect{animation:cast-hot .3s var(--ease-quart) backwards}
+.boot.lock .bt-cast rect:nth-child(2){animation-delay:70ms}.boot.lock .bt-cast rect:nth-child(4){animation-delay:140ms}.boot.lock .bt-cast rect:nth-child(3){animation-delay:210ms}
+@keyframes cast-hot{35%{fill:oklch(0.97 0.05 60)}}
+:root[data-br=admin] .boot.lock .boot-edge{opacity:0;transition:opacity .25s}
+:root[data-br=admin] .boot.lock .bfx-glow{animation:none;opacity:1;transition:opacity .3s}
 :root[data-br=admin] .boot.out{animation:none;pointer-events:none}
-:root[data-br=admin] .boot.out .boot-stage{animation:boot-launch .55s var(--ease-in) forwards}
-@keyframes boot-launch{to{transform:translateY(-62vh) scale(.92);opacity:0}}
-:root[data-br=admin] .boot.out .bfx-burst{animation:bfx-burst .8s var(--ease-quart) .05s}
-@keyframes bfx-burst{0%{opacity:0;transform:scale(.1)}25%{opacity:1}100%{opacity:0;transform:scale(1.6)}}
-:root[data-br=admin] .boot.out .bfx-beam,:root[data-br=admin] .boot.out .bfx-glow{animation:k-out .4s linear .1s both}
-:root[data-br=admin] .boot.out .boot-rail{animation:k-out .35s linear .45s both}
-:root[data-br=admin] .boot.out .boot-door.l{animation:door-l 1s var(--ease-io) .28s forwards}
-:root[data-br=admin] .boot.out .boot-door.r{animation:door-r 1s var(--ease-io) .28s forwards}
-@keyframes door-l{70%{opacity:1}to{transform:rotateY(96deg);opacity:0}}
-@keyframes door-r{70%{opacity:1}to{transform:rotateY(-96deg);opacity:0}}
+:root[data-br=admin] .boot.out:before{animation:k-out .32s var(--ease-io) .1s forwards}
+:root[data-br=admin] .boot.out .boot-stage{animation:none}
+/* a konténer a kamera felé zuhan és átrepül rajta: tömör marad, amíg be nem tölti a képet */
+:root[data-br=admin] .boot.out .boot-box{animation:boot-dive .66s linear forwards}
+@keyframes boot-dive{
+  0%{transform:scale(.965);animation-timing-function:cubic-bezier(.45,0,.9,.6)}
+  55%{transform:scale(1.9);animation-timing-function:linear}
+  75%{transform:scale(4.2)}
+  88%{transform:scale(8.5);opacity:1}
+  100%{transform:scale(15);opacity:0}}
+:root[data-br=admin] .boot.out .boot-name{animation:boot-sink .26s var(--ease-in) forwards}
+@keyframes boot-sink{to{opacity:0;transform:translateY(12px)}}
+:root[data-br=admin] .boot.out .boot-code{animation:k-out .15s linear forwards}
+:root[data-br=admin] .boot.out .bfx-beam,:root[data-br=admin] .boot.out .bfx-glow{animation:k-out .3s linear both}
+:root[data-br=admin] .boot.out .boot-rail{animation:k-out .25s linear .1s both}
 
 /* -- dolgozó: babakék konténer görgősoron, kartonok rakodása, blokkolókártya, kigurul -- */
 :root[data-br=worker] .boot{background-color:oklch(0.21 0.02 245)}
@@ -1289,7 +1294,7 @@ g .hit{fill:transparent}
   :root .boot-hoist,:root .boot-box,:root .boot-stage,:root .boot-name span,:root .boot-load i.on,:root .boot-conv{animation:none}
   .boot-cable,.boot-spreader,.boot-sheen,.bt-outline,.boot-fx,.boot-land,.boot-edge,.bcn,.boot-name:after{display:none !important}
   :root .boot.out{animation:k-out .25s linear forwards}
-  :root .boot.out .boot-stage,:root .boot.out .boot-box,:root .boot.out .boot-door,:root .boot.out .boot-name,:root .boot.out .boot-card,:root .boot.stamp .boot-card,:root .boot.stamp .bc-time,:root .boot.lock .boot-box{animation:none}
+  :root .boot.out .boot-stage,:root .boot.out .boot-box,:root .boot.out .boot-name,:root .boot.out .boot-card,:root .boot.out .boot-code,:root .boot.lock .bt-cast rect,:root .boot.stamp .boot-card,:root .boot.stamp .bc-time,:root .boot.lock .boot-box{animation:none}
   .blk:before{display:none}
   .ct-clip,.ct-level,.ring-fg,.t-line,.steps:after,.fb{animation:none !important}
   .ev-yard .blk.late,.ev-main .ccard.is-late,.flash-late{animation:none}
@@ -1569,16 +1574,16 @@ g .hit{fill:transparent}
   .ct-wrap:before{transition:opacity .3s linear}
   .cc-ground:before{transition:opacity .3s linear,transform .34s cubic-bezier(.5,0,.25,1)}
   .cc-ground:after{transition:opacity .2s linear,transform .3s var(--ease-quart)}
-  .ccard:is(:hover,:focus-visible){z-index:2}
+  .ccard:hover{z-index:2}
   /* belépés: kampó le (0–.38 s, kis kötélrugózással), kattanás (.34 s), emelés (.4–1 s), kilengés, lebegés */
-  .ccard:is(:hover,:focus-visible) .hk{opacity:1;transform:none;transition:transform .38s cubic-bezier(.3,1.35,.5,1),opacity .12s linear}
-  .ccard:is(:hover,:focus-visible) .hk-lamp:after{opacity:1;transition-delay:.34s}
-  .ccard:is(:hover,:focus-visible) .hk-lamp:before{animation:hk-lock .5s var(--ease-quart) .34s}
-  .ccard:is(:hover,:focus-visible) .ct-rig{transform:translateY(-10px);transition:transform .6s cubic-bezier(.45,0,.2,1) .4s;animation:hk-bob 2.6s ease-in-out 1.9s infinite alternate}
-  .ccard:is(:hover,:focus-visible) .ct-sw{transform-origin:50% -60%;animation:hk-sway 1.7s ease-in-out .78s}
-  .ccard:is(:hover,:focus-visible) .ct-wrap:before{opacity:.25;transition:opacity .5s linear .45s}
-  .ccard:is(:hover,:focus-visible) .cc-ground:before{opacity:1;transform:none;transition:opacity .5s linear .45s,transform .6s cubic-bezier(.45,0,.2,1) .4s}
-  .ccard:is(:hover,:focus-visible) .cc-ground:after{opacity:.75;transform:none;transition:opacity .3s linear .7s,transform .45s var(--ease-expo) .7s}
+  .ccard:hover .hk{opacity:1;transform:none;transition:transform .38s cubic-bezier(.3,1.35,.5,1),opacity .12s linear}
+  .ccard:hover .hk-lamp:after{opacity:1;transition-delay:.34s}
+  .ccard:hover .hk-lamp:before{animation:hk-lock .5s var(--ease-quart) .34s}
+  .ccard:hover .ct-rig{transform:translateY(-10px);transition:transform .6s cubic-bezier(.45,0,.2,1) .4s;animation:hk-bob 2.6s ease-in-out 1.9s infinite alternate}
+  .ccard:hover .ct-sw{transform-origin:50% -60%;animation:hk-sway 1.7s ease-in-out .78s}
+  .ccard:hover .ct-wrap:before{opacity:.25;transition:opacity .5s linear .45s}
+  .ccard:hover .cc-ground:before{opacity:1;transform:none;transition:opacity .5s linear .45s,transform .6s cubic-bezier(.45,0,.2,1) .4s}
+  .ccard:hover .cc-ground:after{opacity:.75;transform:none;transition:opacity .3s linear .7s,transform .45s var(--ease-expo) .7s}
   /* lenyomva: a kötél megfeszül, indulásra kész */
   .ccard:active .ct-rig{transform:translateY(-13px);transition:transform .12s var(--ease-quart)}
   .ccard.away .ct-rig{transition:none}

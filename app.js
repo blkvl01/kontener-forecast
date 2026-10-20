@@ -134,8 +134,9 @@
 
   // Darus szállítás: a kampón lógó konténer felemelkedik, a futómacska átviszi, a célnál leereszkedik, rugózik, a kampó kiold.
   // Három egymásba ágyazott réteg (X, Y + méret, lengés), mindegyik külön transform-animáció.
-  // grab: a kampónak előbb le kell ereszkednie (nem volt felemelve); a visszatérő ígéret a lerakáskor teljesül.
-  function craneFly(svg, to, ms, grab = 0) {
+  // grab: a kampónak előbb le kell ereszkednie (nem volt felemelve); hold(): lerakáskor a kártya saját daruja veszi át,
+  // ilyenkor nincs kioldás. A visszatérő ígéret a lerakáskor teljesül.
+  function craneFly(svg, to, ms, grab = 0, hold = () => false) {
     const r = svg.getBoundingClientRect();
     const f = document.createElement('div');
     f.className = 'ct-flyer crane';
@@ -171,6 +172,7 @@
     ], opt({ easing: 'ease-in-out' }));
     const landed = sleep(grab + ms);
     landed.then(() => {
+      if (hold()) { f.remove(); return; }
       ct.style.opacity = '0';
       f.classList.add('rel');
       hk.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateY(-60%)', opacity: 1, offset: .6 }, { transform: 'translateY(-90%)', opacity: 0 }], { duration: 380, delay: 120, easing: 'cubic-bezier(.55,0,.6,1)', fill: 'both' })
@@ -471,7 +473,7 @@
     await sleep(Math.max(fast ? 0 : 200, (fast ? 0 : BOOT_SEEN ? min[1] : min[0]) - performance.now()));
     for (let k = 0; k < 30 && !fast && !document.hidden && bootShown < 0.99; k++) await sleep(30);
     // Kilépő előtti pillanat: admin „élesít”, dolgozó blokkol.
-    if (!fast && role === 'admin') { b.classList.add('lock'); await sleep(420); }
+    if (!fast && role === 'admin') { b.classList.add('lock'); await sleep(460); }
     if (!fast && role === 'worker' && mode === 'app') { bootCard(); b.classList.add('stamp'); await sleep(BOOT_SEEN ? 700 : 950); }
     apply();
     b.classList.add('out');
@@ -483,7 +485,7 @@
       countUp($('#view'), fast ? 0 : 320);
       setTimeout(() => app.classList.remove('boot-in'), 2400);
     }
-    setTimeout(() => b.remove(), fast ? 0 : role === 'admin' ? 1450 : 1100);
+    setTimeout(() => b.remove(), fast ? 0 : role === 'admin' ? 900 : 1100);
   }
 
   function showAuth(mode, info) {
@@ -1500,7 +1502,7 @@
     const end = { left: t.left - 80, top: t.top, width: t.width };
     // A kártyán felemelt konténert a daru viszi át; ha nem volt felemelve (billentyűzet), a kampó előbb ráereszkedik.
     const card = fromEl.closest('.ccard');
-    const lifted = !!card && card.matches(':hover, :focus-visible');
+    const lifted = !!card && card.matches(':hover');
     if (card) {
       document.querySelectorAll('#view .ccard.away').forEach(x => x.classList.remove('away'));
       card.classList.add('away');
@@ -1539,7 +1541,7 @@
       // A daru visszaviszi a konténert a kártyára, a lap közben kicsúszik.
       const cc = card.closest('.ccard');
       cc.classList.add('away');
-      craneFly(from, r, 700, 200).then(() => cc.classList.remove('away'));
+      craneFly(from, r, 700, 200, () => cc.matches(':hover')).then(() => cc.classList.remove('away'));
       from.style.opacity = '0';
     } else if (card) card.closest('.ccard').classList.remove('away');
     if (!root.firstChild || RM.matches) { root.innerHTML = ''; back(); return; }
