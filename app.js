@@ -668,8 +668,8 @@
   }
 
   // ---------- folyamat, késés, rámpa ----------
-  const STAGES = ['request', 'approved', 'opened', 'released', 'stored'];
-  const STAGE_LABEL = { request: 'Érkezés', approved: 'Nyitható', opened: 'Nyitás', released: 'Elengedve', stored: 'Betárolva' };
+  const STAGES = ['arrive', 'request', 'approved', 'opened', 'released', 'stored'];
+  const STAGE_LABEL = { arrive: 'Megérkezett', request: 'Nyitás kérve', approved: 'Nyitható', opened: 'Nyitás', released: 'Elengedve', stored: 'Betárolva' };
   const PHASE = {
     pre: ['Tervben', 0, 'plan'], t1: ['Kamion + T1', 0, 'plan'], eta: ['ETA megvan', 0, 'plan'],
     request: ['Megérkezett', 0.25, 'live'], approved: ['Nyitható', 0.5, 'live'], opened: ['Nyitás', 0.75, 'live'],
@@ -712,13 +712,13 @@
   function stepper(c) {
     const st = c.stages || {};
     const first = (st.request && st.request.at) || c.arrived_at;
-    const atOf = k => (k === 'request' ? (c.arrived_at || first) : st[k] && st[k].at);
+    const atOf = k => (k === 'arrive' ? (c.arrived_at || first) : st[k] && st[k].at);
     let prev = null, last = -1;
     const items = STAGES.map((k, i) => {
       const at = atOf(k);
-      const real = k === 'request' ? first : at;
-      const dur = real && prev ? fmtDur(minutesBetween(prev, real)) : '';
-      if (real) { prev = real; last = i; }
+      // Az érkezés és a nyitáskérés közti távot nem mérjük: az időtartamok a nyitáskéréstől indulnak.
+      const dur = at && prev && k !== 'request' ? fmtDur(minutesBetween(prev, at)) : '';
+      if (at) { if (k !== 'arrive' || !st.request) prev = at; last = i; }
       const lab = k === 'stored' && !st.stored && c.storage ? `Betárolás ${c.storage.done}/${c.storage.total}` : STAGE_LABEL[k];
       return `
         <li class="${at ? 'done' : ''}" style="--i:${i}">
