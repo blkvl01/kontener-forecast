@@ -59,7 +59,7 @@
   const nowIso = () => { const d = new Date(); return `${iso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
 
   // ---------- állapot ----------
-  const S = { statsDays: 28, q: '', data: null, view: 'week', week: null, sel: null, month: null, calSel: null, drawer: null, pending: false, today: null };
+  const S = { statsDays: 28, q: '', data: null, view: 'week', week: null, sel: null, month: null, calSel: null, drawer: null, pending: false, today: null, pdir: 0 };
   const CFG = window.KF_CONFIG;
   const sb = window.supabase.createClient(CFG.url, CFG.key, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
@@ -112,41 +112,70 @@
   const RM = window.matchMedia('(prefers-reduced-motion: reduce)');
   const VIEWS = ['week', 'month', 'stats'];
   const ZONES = { week: 'yard main', month: 'cal side', stats: 'stats' };
-  const canVT = () => !!document.startViewTransition && !RM.matches && !document.hidden;
-  let vtSeq = 0;
+  const canFly = () => !RM.matches && !document.hidden && !!Element.prototype.animate;
 
-  // Nézetváltás View Transitions API-val; a kind/dir a CSS-ben választja ki a mozgást.
-  function vt(kind, dir, update) {
-    if (!canVT()) { update(); return null; }
-    const root = document.documentElement;
-    const my = ++vtSeq;
-    root.dataset.vt = kind;
-    root.dataset.dir = dir > 0 ? 'fwd' : dir < 0 ? 'back' : 'none';
-    let t;
-    try { t = document.startViewTransition(update); } catch (_) { delete root.dataset.vt; update(); return null; }
-    t.finished.finally(() => { if (vtSeq === my) { delete root.dataset.vt; delete root.dataset.dir; } });
-    return t;
+  // Repülő másolat (FLIP): egy rögzített pozíciójú klón GPU-n mozog a cél helyére.
+  // A View Transition API-t szándékosan nem használjuk: minden indításkor és végén az egész oldal stílusát újraszámolja.
+  function flyClone(from, keyframes, ms, easing = 'cubic-bezier(.16,1,.3,1)') {
+    const r = from.getBoundingClientRect();
+    const c = from.cloneNode(true);
+    c.removeAttribute('style');
+    c.classList.add('ct-flyer');
+    Object.assign(c.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    document.body.appendChild(c);
+    const a = c.animate(keyframes(r), { duration: ms, easing, fill: 'forwards' });
+    a.finished.then(() => c.remove(), () => c.remove());
+    return a;
+  }
+  const flyTo = to => r => [{ transform: 'none' }, { transform: `translate(${to.left - r.left}px, ${to.top - r.top}px) scale(${to.width / r.width})` }];
+
+  // Csúszó jelölők a heti sávban (kiválasztott nap) és a naptárban (kiválasztott cella).
+  function placeDayInd() {
+    const days = $('#view .days');
+    if (!days) return;
+    const i = [...days.querySelectorAll('.day')].findIndex(b => b.dataset.date === S.sel);
+    days.style.setProperty('--di', String(Math.max(0, i)));
+    days.classList.toggle('no-sel', i < 0);
+  }
+  function placeCalInd(animate) {
+    const ind = $('#view .cal-ind');
+    const cell = ind && $(`#view .cell[data-date="${S.calSel}"]`);
+    if (!cell) { if (ind) ind.style.opacity = '0'; return; }
+    if (!animate) ind.style.transition = 'none';
+    Object.assign(ind.style, { opacity: '', width: `${cell.offsetWidth}px`, height: `${cell.offsetHeight}px`, translate: `${cell.offsetLeft}px ${cell.offsetTop}px` });
+    if (!animate) { void ind.offsetWidth; ind.style.transition = ''; }
   }
 
   const FMT = { int: v => fmtInt(v), t: v => fmtT(v), d1: v => fmtDec(v, 0, 1), dur: v => fmtDur(v), pct: v => `${Math.round(v)}%` };
   const num = (v, f = 'int', d = 0) => `<span class="cnt" data-n="${v}" data-f="${f}" data-d="${d}">${FMT[f](v)}</span>`;
 
   // Számlálás nulláról a végértékig; az alapállapot a végérték, így hiba esetén is helyes szám látszik.
+  // Egyetlen képkocka-ciklus az összes számlálónak, és csak akkor ír a DOM-ba, ha a kiírt szöveg változik.
   function countUp(root, offset = 0) {
     if (RM.matches || document.hidden) return;
+    const items = [];
+    const base = performance.now() + offset;
     root.querySelectorAll('[data-n]').forEach(el => {
       if (el.closest('.await')) return;
       const to = Number(el.dataset.n), f = FMT[el.dataset.f] || FMT.int;
       if (!to) return;
-      const t0 = performance.now() + offset + Number(el.dataset.d || 0), dur = 900;
-      el.textContent = f(0);
-      const step = now => {
-        const k = Math.min(1, Math.max(0, (now - t0) / dur));
-        el.textContent = f(k >= 1 ? to : to * (1 - Math.pow(2, -10 * k)));
-        if (k < 1) requestAnimationFrame(step);
-      };
-      requestAnimationFrame(step);
+      const last = f(0);
+      el.textContent = last;
+      items.push({ el, to, f, t0: base + Number(el.dataset.d || 0), last });
     });
+    if (!items.length) return;
+    const dur = 750;
+    const step = now => {
+      let live = false;
+      for (const it of items) {
+        const k = Math.min(1, Math.max(0, (now - it.t0) / dur));
+        const txt = it.f(k >= 1 ? it.to : it.to * (1 - Math.pow(2, -10 * k)));
+        if (txt !== it.last) { it.el.textContent = txt; it.last = txt; }
+        if (k < 1) live = true;
+      }
+      if (live) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   // A hajtás alatti diagramok, táblák csak láthatóvá váláskor indulnak.
@@ -156,6 +185,7 @@
     if (revealIO) revealIO.disconnect();
     revealIO = new IntersectionObserver(es => es.forEach(e => {
       if (!e.isIntersecting) return;
+      e.target.classList.add('rv');
       e.target.classList.remove('await');
       revealIO.unobserve(e.target);
       countUp(e.target);
@@ -347,7 +377,8 @@
     const goal = Math.min(bootTarget, ramp);
     bootShown += (goal - bootShown) * 0.16;
     if (goal - bootShown < 0.002) bootShown = goal;
-    b.style.setProperty('--prog', bootShown.toFixed(4));
+    const fill = $('#boot-fill');
+    if (fill) fill.style.transform = `scaleX(${bootShown.toFixed(4)})`;
     if (bootShown < bootTarget) bootRaf = requestAnimationFrame(bootTick);
   }
 
@@ -366,6 +397,7 @@
     if (mode === 'app') {
       const app = $('#app');
       app.classList.add('boot-in');
+      app.classList.remove('boot-wait');
       awaitReveal($('#view'));
       countUp($('#view'), fast ? 0 : 320);
       setTimeout(() => app.classList.remove('boot-in'), 2400);
@@ -393,6 +425,11 @@
     ME = data;
     sb.rpc('touch_me').then(() => {}, () => {});
     setInterval(() => sb.rpc('touch_me').then(() => {}, () => {}), 5 * 60000);
+    // Az alkalmazás már a nyitó réteg alatt kirajzolódik (az első elrendezés és szövegformázás itt fut le),
+    // az animációi a redőny felhúzásáig szünetelnek.
+    const app = $('#app');
+    app.classList.add('boot-wait');
+    app.hidden = false;
     await loadAll('boot ' + ZONES[S.view]);
     showAuth('app');
     subscribe();
@@ -461,8 +498,9 @@
     const v = $('#view');
     v.className = enter ? enter.split(' ').map(z => `ev-${z}`).join(' ') : '';
     v.innerHTML = S.view === 'week' ? weekView() : S.view === 'month' ? monthView() : statsView();
+    if (S.view === 'month') placeCalInd(false);
     renderDrawer();
-    if (enter && !$('#app').hidden) {
+    if (enter && !$('#app').hidden && !$('#app').classList.contains('boot-wait')) {
       awaitReveal(v);
       // Csak a belépő zónák számai számolnak fel; a helyben maradó részek nem villannak.
       const roots = { yard: '.yard', main: '.main', cal: '.month-main', side: '.side', stats: '.statsv' };
@@ -473,17 +511,54 @@
     S.pending = false;
   }
 
+  // A kijelölt fül/időszak alatti csúszó jelölő: egyetlen kis elem, CSS-átmenettel mozog (nincs nézetváltás-pillanatkép).
+  function placeInd(group, active, animate) {
+    const ind = group && group.querySelector('.tab-ind');
+    if (!ind || !active || !active.offsetWidth) return;
+    if (!animate) ind.style.transition = 'none';
+    ind.style.width = `${active.offsetWidth}px`;
+    ind.style.transform = `translateX(${active.offsetLeft}px)`;
+    if (!animate) { void ind.offsetWidth; ind.style.transition = ''; }
+  }
+
+  let tabsPlaced = false;
   function renderTabs() {
     document.querySelectorAll('.tab').forEach(t => {
       if (t.dataset.view === S.view) t.setAttribute('aria-current', 'page');
       else t.removeAttribute('aria-current');
     });
+    const nav = $('.tabs');
+    placeInd(nav, nav.querySelector('[aria-current="page"]'), tabsPlaced);
+    tabsPlaced = tabsPlaced || !!nav.querySelector('.tab-ind').style.width;
+  }
+  if ('ResizeObserver' in window) {
+    // Csak szélességváltozásra igazít (a magasság minden panelcserénél változik, az ne szakítsa meg a csúszást).
+    let roW = '';
+    const ro = new ResizeObserver(() => {
+      const w = `${$('.tabs').offsetWidth}:${$('#view').offsetWidth}`;
+      if (w === roW) return;
+      roW = w;
+      placeInd($('.tabs'), $('.tabs [aria-current="page"]'), false);
+      placeInd($('#period .seg'), $('#period .seg-btn[aria-pressed="true"]'), false);
+      placeCalInd(false);
+    });
+    ro.observe($('.tabs'));
+    ro.observe($('#view'));
   }
 
+  // Az időszaksáv helyben frissül: a 7/28/90 jelölő csúszik, a hét/hónap felirat lapozáskor számlálószerűen pörög.
+  let periodKind = '';
   function renderPeriod() {
     let label;
+    const box = $('#period');
     if (S.view === 'stats') {
-      $('#period').innerHTML = `<div class="seg" role="group" aria-label="Időszak">${[7, 28, 90].map(n => `<button type="button" class="seg-btn" data-action="stats-range" data-days="${n}" aria-pressed="${S.statsDays === n}"><i class="tab-bg" aria-hidden="true"></i>${n} nap</button>`).join('')}</div>`;
+      const fresh = periodKind !== 'stats';
+      if (fresh) {
+        box.innerHTML = `<div class="seg" role="group" aria-label="Időszak"><i class="tab-ind" aria-hidden="true"></i>${[7, 28, 90].map(n => `<button type="button" class="seg-btn" data-action="stats-range" data-days="${n}">${n} nap</button>`).join('')}</div>`;
+        periodKind = 'stats';
+      }
+      box.querySelectorAll('.seg-btn').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.days) === S.statsDays)));
+      placeInd(box.querySelector('.seg'), box.querySelector('.seg-btn[aria-pressed="true"]'), !fresh);
       return;
     }
     if (S.view === 'week') {
@@ -497,7 +572,19 @@
       const d = parse(S.month + '-01');
       label = `<b>${MON[d.getMonth()]}</b><span>${d.getFullYear()}</span>`;
     }
-    $('#period').innerHTML = `
+    const pl = box.querySelector('.period-label');
+    if (periodKind === S.view && pl) {
+      if (pl.innerHTML !== label) {
+        pl.innerHTML = label;
+        pl.classList.remove('roll-fwd', 'roll-back');
+        if (S.pdir) { void pl.offsetWidth; pl.classList.add(S.pdir > 0 ? 'roll-fwd' : 'roll-back'); }
+      }
+      S.pdir = 0;
+      return;
+    }
+    periodKind = S.view;
+    S.pdir = 0;
+    box.innerHTML = `
       <button type="button" class="ibtn" data-action="prev" aria-label="${S.view === 'week' ? 'Előző hét' : 'Előző hónap'}">${IC.left}</button>
       <div class="period-label">${label}</div>
       <button type="button" class="ibtn" data-action="next" aria-label="${S.view === 'week' ? 'Következő hét' : 'Következő hónap'}">${IC.right}</button>
@@ -562,11 +649,10 @@
       const done = list.filter(c => phase(c).key === 'stored').length;
       return `
         <button type="button" class="day${d === S.today ? ' is-today' : ''}" data-action="day" data-date="${d}" aria-pressed="${d === S.sel}" style="--i:${i}">
-          <span class="day-sel" aria-hidden="true"></span>
           <div class="day-top"><span class="day-dow">${DOW[i]}</span>${d === S.today ? '<span class="today-tag">MA</span>' : ''}</div>
           <div class="day-num"><span>${parse(d).getDate()}</span></div>
           <div class="stack ${nodata ? 'nodata' : ''}" style="height:${H}px">${blocks}${note}</div>
-          <div class="day-foot"><span><b>${num(list.length, 'int', 120 + i * 40)}</b><small>konténer</small></span><span class="day-t">${list.length ? num(kg, 't', 120 + i * 40) : '—'}</span></div>
+          <div class="day-foot"><span><b>${num(list.length, 'int', 120 + i * 40)}</b><small>konténer</small></span><span class="day-t">${list.length ? fmtT(kg) : '—'}</span></div>
           <div class="day-ctn">${list.length ? `<span>${fmtInt(sumCt(list))} karton</span>${done ? `<span class="day-sto"><i style="--p:${Math.round(done / list.length * 100)}%"></i>${done}/${list.length} betárolva</span>` : ''}` : ''}</div>
         </button>`;
     }).join('');
@@ -576,7 +662,7 @@
     return `
       <section class="yard" aria-label="Heti érkezések">
         <div class="legend">${legend}</div>
-        <div class="yard-scroll"><div class="days">${cols}</div></div>
+        <div class="yard-scroll"><div class="days" style="--di:${Math.max(0, days.indexOf(S.sel))}"><i class="day-ind" aria-hidden="true"></i>${cols}</div></div>
       </section>
       ${dayPanel()}`;
   }
@@ -856,7 +942,7 @@
       const h = x.n ? Math.max(3, y(0) - y(x.n)) : 0;
       const tip = `${DOW[dowIdx(x.d)]}, ${short(x.d)} · ${x.n} konténer · ${fmtT(x.kg)} · ${fmtInt(x.ct)} karton`;
       const lab = i % every === 0 ? `<text x="${cx + bw / 2}" y="${H - 8}" class="g-lab" text-anchor="middle">${short(x.d)}</text>` : '';
-      return `<g class="bar-hit" data-tip="${esc(tip)}"><rect x="${cx}" y="${T}" width="${bw}" height="${H - T - B}" class="hit"/>${h ? `<rect x="${cx + 1.5}" y="${y(x.n)}" width="${w}" height="${h}" rx="3" class="bar ${cls}" style="--i:${Math.round(i * 40 / data.length)}"/>` : ''}</g>${lab}`;
+      return `<g class="bar-hit" data-tip="${esc(tip)}"><rect x="${cx}" y="${T}" width="${bw}" height="${H - T - B}" class="hit"/>${h ? `<rect x="${cx + 1.5}" y="${y(x.n)}" width="${w}" height="${h}" rx="3" class="cb ${cls}" style="--i:${Math.round(i * 40 / data.length)}"/>` : ''}</g>${lab}`;
     }).join('');
     return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Napi konténerszám">${grid}${bars}</svg>`;
   }
@@ -923,7 +1009,7 @@
     }
     const bars = hrs.map((h, i) => {
       const v = cnt[h], cx = L + i * bw, hh = v ? Math.max(3, y(0) - y(v)) : 0;
-      return `<g class="bar-hit" data-tip="${pad(h)}:00–${pad(h)}:59 · ${v} konténer"><rect x="${cx}" y="${T}" width="${bw}" height="${H - T - B}" class="hit"/>${hh ? `<rect x="${cx + 2}" y="${y(v)}" width="${Math.max(2, bw - 4)}" height="${hh}" rx="3" class="bar b-done" style="--i:${i}"/>` : ''}</g>${h % 2 === 0 ? `<text x="${cx + bw / 2}" y="${H - 7}" class="g-lab" text-anchor="middle">${pad(h)}</text>` : ''}`;
+      return `<g class="bar-hit" data-tip="${pad(h)}:00–${pad(h)}:59 · ${v} konténer"><rect x="${cx}" y="${T}" width="${bw}" height="${H - T - B}" class="hit"/>${hh ? `<rect x="${cx + 2}" y="${y(v)}" width="${Math.max(2, bw - 4)}" height="${hh}" rx="3" class="cb b-done" style="--i:${i}"/>` : ''}</g>${h % 2 === 0 ? `<text x="${cx + bw / 2}" y="${H - 7}" class="g-lab" text-anchor="middle">${pad(h)}</text>` : ''}`;
     }).join('');
     return `<svg class="chart-svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Érkezések óránként">${grid}${bars}</svg>`;
   }
@@ -938,19 +1024,15 @@
     const late = lateInfo(c);
     const uid = 'cf' + (++svgUid);
     const fw = Math.round(388 * ph.p);
-    const ribs = [];
-    for (let x = 22; x < 384; x += 7) ribs.push(`<line x1="${x}" y1="13" x2="${x}" y2="83"/>`);
-    const r = ribs.join('');
     // Élő változásnál a töltés az előző szintről nő a mostanira.
     const was = PREV_P[c.id];
     const grow = was !== undefined && was < ph.p;
     return `
       <svg class="ct${late ? ' ct-late' : ''}${opts.cls ? ' ' + opts.cls : ''}${grow ? ' ct-grow' : ''}"${grow ? ` style="--f0:${(was / ph.p).toFixed(3)}"` : ''} viewBox="0 0 400 96" role="img" aria-label="${esc(id)} · ${esc(ph.label)}" preserveAspectRatio="xMidYMid meet">
-        <defs><clipPath id="${uid}"><rect class="ct-clip" x="6" y="8" width="${fw}" height="80"/></clipPath>
-          <linearGradient id="${uid}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="gd-a"/><stop offset="1" class="gd-b"/></linearGradient></defs>
+        <defs><clipPath id="${uid}"><rect class="ct-clip" x="6" y="8" width="${fw}" height="80"/></clipPath></defs>
         <rect class="ct-shell${ph.grp === 'plan' ? ' ct-shell-plan' : ''}" x="2" y="6" width="396" height="84" rx="2"/>
-        <g class="ct-ribs">${r}</g>
-        ${fw ? `<g clip-path="url(#${uid})"><rect class="ct-fill ct-fill-${ph.grp}" x="2" y="6" width="396" height="84"${ph.grp === 'done' ? ` fill="url(#${uid}g)"` : ''}/><g class="ct-ribs-f">${r}</g></g>` : ''}
+        <rect x="20.9" y="13" width="359.2" height="70" fill="url(#kf-rib)"/>
+        ${fw ? `<g clip-path="url(#${uid})"><rect class="ct-fill ct-fill-${ph.grp}" x="2" y="6" width="396" height="84"${ph.grp === 'done' ? ' fill="url(#kf-done)"' : ''}/><rect x="20.8" y="13" width="359.4" height="70" fill="url(#kf-rib-f)"/></g>` : ''}
         ${ph.p > 0 && ph.p < 1 ? `<line class="ct-level" x1="${6 + fw}" x2="${6 + fw}" y1="12" y2="84" style="--lv:${fw}"/>` : ''}
         <rect class="ct-rail" x="2" y="6" width="396" height="6"/>
         <rect class="ct-rail" x="2" y="83" width="396" height="7"/>
@@ -1003,7 +1085,7 @@
     return `<svg class="ring ring-${cls}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true" style="--c:${C.toFixed(1)}">
       <circle class="ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}"/>
       <circle class="ring-fg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-dasharray="${(C * f).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 ${size / 2} ${size / 2})"/>
-      <text x="50%" y="50%" dy=".35em" text-anchor="middle"><tspan class="cnt" data-n="${total ? Math.round(f * 100) : 0}" data-f="pct" data-d="250">${total ? Math.round(f * 100) : 0}%</tspan></text>
+      <text x="50%" y="50%" dy=".35em" text-anchor="middle">${total ? Math.round(f * 100) : 0}%</text>
     </svg>`;
   }
 
@@ -1018,6 +1100,14 @@
     const stored = list.filter(c => phase(c).key === 'stored').length;
     const late = list.filter(c => lateInfo(c)).length;
     const of = n => `<span class="of"> / ${n}</span>`;
+    // Üres nap: nincs 0 / 0-s gyűrűsor és üres idővonal, csak a dátum és az ok.
+    if (!list.length) {
+      return `
+      <main class="main">
+        <div class="dayhead"><div class="title-row"><h1><span class="slot">${DOW[dowIdx(d)]}</span></h1><span class="sub">${longLabel(d)}</span></div></div>
+        ${table(d, list)}
+      </main>`;
+    }
     return `
       <main class="main">
         <div class="dayhead">
@@ -1134,7 +1224,6 @@
       const numCls = d === S.today ? 'today' : (out ? 'out' : '');
       return `
         <button type="button" class="cell ${nodata ? 'nodata' : ''}" style="background-color:${bg};--w:${Math.floor(idx / 7) + (idx % 7)}" data-action="cell" data-date="${d}" aria-pressed="${d === S.calSel}" aria-label="${longLabel(d)}, ${list.length} konténer">
-          <span class="cell-sel" aria-hidden="true"></span>
           <div class="cell-top"><span class="cell-num ${numCls}">${parse(d).getDate()}</span>${list.length ? `<span class="cell-count">${list.length} db</span>` : ''}</div>
           <div class="pips">${list.map((c, k) => { const ph = phase(c); return `<i class="pip pip-${ph.grp}" style="--p:${Math.round(ph.p * 100)}%;--k:${Math.min(k, 9)}"></i>`; }).join('')}</div>
           ${list.length ? `<div class="cell-foot"><div class="bar"><i class="${d < S.today ? 'past' : ''}" style="width:${Math.round(r * 100)}%"></i></div><div class="cell-t">${fmtT(kg)}</div></div>` : ''}
@@ -1147,11 +1236,11 @@
         <section class="month-main" aria-label="Havi naptár">
           <div class="month-head">
             <h1><span class="slot">${MON[m.getMonth()].replace(/^./, ch => ch.toUpperCase())} <span>${m.getFullYear()}</span></span></h1>
-            <div class="month-sum"><span><b>${num(mN, 'int', 120)}</b> db</span><span><b>${num(mKg, 't', 170)}</b></span></div>
+            <div class="month-sum"><span><b>${num(mN, 'int', 120)}</b> db</span><span><b>${fmtT(mKg)}</b></span></div>
           </div>
           <div class="cal-wrap"><div class="panel cal">
             <div class="cal-dow">${DOW.map((x, i) => `<span style="--i:${i}" data-s="${DOW_S[i]}">${x}</span>`).join('')}</div>
-            <div class="cal-grid">${cells}</div>
+            <div class="cal-grid"><i class="cal-ind" aria-hidden="true"></i>${cells}</div>
           </div></div>
         </section>
         ${monthSide()}
@@ -1181,7 +1270,7 @@
           <div class="title-row"><h2><span class="slot">${DOW[dowIdx(d)]}</span></h2><span class="sub">${longLabel(d)}</span></div>
           <div class="side-stats">
             <span style="--i:0"><b>${num(list.length, 'int', 120)}</b> db</span>
-            <span style="--i:1"><b>${num(sumKg(list), 'int', 160)}</b> kg</span>
+            <span style="--i:1"><b>${fmtInt(sumKg(list))}</b> kg</span>
             <span style="--i:2"><b>${num(sumCt(list), 'int', 200)}</b> karton</span>
             <span style="--i:3">ETA <b>${num(list.filter(etaDone).length, 'int', 240)}</b>/${list.length}</span>
           </div>
@@ -1198,7 +1287,7 @@
   // ---------- adatlap ----------
   const cp = v => (v ? `<button type="button" class="cpy" data-action="copy" data-v="${esc(v)}" aria-label="Másolás" title="Másolás">${IC.copy}</button>` : '');
 
-  // mode: 'enter' (CSS-sel becsúszik), 'vt' (View Transition hozza), 'step' (lapozás), üres: frissítés helyben, görgetés megtartva.
+  // mode: 'enter' (CSS-sel becsúszik), 'fly' (a kártyáról átrepülő rajzzal), 'step'/'back' (lapozás), üres: frissítés helyben, görgetés megtartva.
   let drawerTimer = null;
   let drawerFrom = null;
   function renderDrawer(mode) {
@@ -1227,7 +1316,7 @@
     const etaDate = c.eta_date || c.date;
     const active = c.state === 'active';
     const badge = !active ? `<span class="ph ph-out ph-lg">${esc(ST_LABEL.removed)}</span>` : `<span class="ph ph-${late ? 'late' : ph.grp} ph-lg">${esc(late ? late.label : ph.label)}</span>`;
-    const anim = mode === 'enter' || mode === 'vt' || mode === 'step' ? ` ${mode}` : '';
+    const anim = { enter: ' enter', fly: ' fly', step: ' step', back: ' step back' }[mode] || '';
 
     root.innerHTML = `
       <div class="scrim${mode === 'enter' ? ' enter' : ''}" data-action="close"></div>
@@ -1286,7 +1375,7 @@
       </aside>`;
     const sh = root.querySelector('.sheet');
     if (keepScroll) sh.scrollTop = keepScroll;
-    if (mode === 'enter' || mode === 'vt') sh.focus({ preventScroll: true });
+    if (mode === 'enter' || mode === 'fly') sh.focus({ preventScroll: true });
   }
 
   // Kártyáról nyitva a konténerrajz átrepül az adatlap fejlécébe.
@@ -1294,13 +1383,25 @@
     const wasOpen = !!(S.drawer && $('#drawer .sheet'));
     drawerFrom = fromEl ? fromEl.dataset.id : drawerFrom;
     const svg = !wasOpen && fromEl && fromEl.querySelector('.ct');
-    if (svg && canVT()) {
-      svg.style.viewTransitionName = 'cthero';
-      vt('drawer', 0, () => { svg.style.viewTransitionName = ''; S.drawer = id; renderDrawer('vt'); });
-      return;
+    S.drawer = id;
+    if (!svg || !canFly()) { renderDrawer(wasOpen ? 'step' : 'enter'); return; }
+    // A kártya konténerrajza átrepül az adatlap fejlécébe; a cél a becsúszó lap végső helye (a lap 80 px-ről indul).
+    renderDrawer('fly');
+    const sheet = $('#drawer .sheet');
+    const target = sheet.querySelector('.sheet-ct .ct');
+    const t = target.getBoundingClientRect();
+    const end = { left: t.left - 80, top: t.top, width: t.width };
+    flyClone(svg, flyTo(end), 560).finished.finally(() => sheet.classList.add('landed'));
+  }
+
+  // Lapozás az adatlapon: a régi konténer kifut, az új a másik irányból érkezik (futószalag).
+  function stepDrawer(id, step) {
+    const old = $('#drawer .sheet-ct .ct');
+    if (old && canFly()) {
+      flyClone(old, () => [{ transform: 'none', opacity: 1 }, { transform: `translateY(${step > 0 ? -44 : 44}px)`, opacity: 0 }], 260, 'cubic-bezier(.55,0,.75,.2)');
     }
     S.drawer = id;
-    renderDrawer(wasOpen ? 'step' : 'enter');
+    renderDrawer(step > 0 ? 'step' : 'back');
   }
 
   function closeDrawer() {
@@ -1313,14 +1414,14 @@
       drawerFrom = null;
     };
     S.drawer = null;
-    // Ha a kártya látszik, a rajz visszarepül a helyére.
+    // Ha a kártya látszik, a rajz visszarepül a helyére, a lap közben kicsúszik.
     const card = document.querySelector(`#view .ccard[data-id="${CSS.escape(id)}"] .ct`);
+    const from = root.querySelector('.sheet-ct .ct');
     const r = card && card.getBoundingClientRect();
-    if (card && canVT() && r.bottom > 0 && r.top < window.innerHeight) {
-      const t = vt('drawer-close', 0, () => { root.innerHTML = ''; card.style.viewTransitionName = 'cthero'; });
-      if (t) t.finished.finally(() => { card.style.viewTransitionName = ''; });
-      back();
-      return;
+    if (card && from && canFly() && r.bottom > 0 && r.top < window.innerHeight) {
+      card.style.opacity = '0';
+      flyClone(from, flyTo(r), 440).finished.finally(() => { card.style.opacity = ''; });
+      from.style.opacity = '0';
     }
     if (!root.firstChild || RM.matches) { root.innerHTML = ''; back(); return; }
     root.classList.add('leaving');
@@ -1395,21 +1496,20 @@
     }, 2400);
   }
 
+  // A nagy nézetváltások nem használnak View Transitiont (az egész oldal stílusát újraszámoltatná),
+  // az irányt az érkező tartalom és a pörgő időszakfelirat adja.
   function nav(step) {
+    S.pdir = step;
     if (S.view === 'week') {
-      vt('week', step, () => {
-        S.week = addDays(S.week, step * 7);
-        S.sel = addDays(S.sel, step * 7);
-        render(`yard main ${step > 0 ? 'fwd' : 'back'}`);
-      });
+      S.week = addDays(S.week, step * 7);
+      S.sel = addDays(S.sel, step * 7);
+      render(`yard main ${step > 0 ? 'fwd' : 'back'}`);
     } else {
-      vt('month', step, () => {
-        const d = parse(S.month + '-01');
-        d.setMonth(d.getMonth() + step);
-        S.month = iso(d).slice(0, 7);
-        if (S.calSel.slice(0, 7) !== S.month) S.calSel = S.month + '-01';
-        render(`cal side ${step > 0 ? 'fwd' : 'back'}`);
-      });
+      const d = parse(S.month + '-01');
+      d.setMonth(d.getMonth() + step);
+      S.month = iso(d).slice(0, 7);
+      if (S.calSel.slice(0, 7) !== S.month) S.calSel = S.month + '-01';
+      render(`cal side ${step > 0 ? 'fwd' : 'back'}`);
     }
   }
 
@@ -1424,22 +1524,50 @@
     }
     const ref = S.view === 'month' ? S.month + '-01' : S.week;
     const dir = t < ref ? -1 : t > (S.view === 'month' ? S.month + '-31' : addDays(S.week, 6)) ? 1 : 0;
-    vt(S.view === 'month' ? 'month' : 'week', dir, () => {
-      S.today = t;
-      S.sel = S.today; S.week = mondayOf(S.today);
-      S.month = S.today.slice(0, 7); S.calSel = S.today;
-      render(`${S.view === 'month' ? 'cal side' : 'yard main'}${dir > 0 ? ' fwd' : dir < 0 ? ' back' : ''}`);
-    });
+    S.pdir = dir;
+    S.today = t;
+    S.sel = S.today; S.week = mondayOf(S.today);
+    S.month = S.today.slice(0, 7); S.calSel = S.today;
+    render(`${S.view === 'month' ? 'cal side' : 'yard main'}${dir > 0 ? ' fwd' : dir < 0 ? ' back' : ''}`);
+  }
+
+  // Nap- és cellaválasztás: csak az érintett panel épül újra, a sáv és a naptár helyben marad, a jelölő átcsúszik.
+  function swapIn(sel, html, zone) {
+    const v = $('#view');
+    const old = v.querySelector(sel);
+    if (!old) return null;
+    v.className = `ev-${zone} ev-solo`;
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html.trim();
+    const el = tpl.content.firstElementChild;
+    old.replaceWith(el);
+    awaitReveal(v);
+    countUp(el);
+    diffFlash(true);
+    rememberP();
+    return el;
+  }
+  function selectDay(d) {
+    S.sel = d;
+    if (S.view !== 'week' || !$('#view .main')) { render('main'); return; }
+    $('#view').querySelectorAll('.day').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.date === d)));
+    placeDayInd();
+    swapIn('.main', dayPanel(), 'main');
+  }
+  function selectCell(d) {
+    S.calSel = d;
+    if (S.view !== 'month' || !$('#view .side')) { render('side'); return; }
+    $('#view').querySelectorAll('.cell').forEach(c => c.setAttribute('aria-pressed', String(c.dataset.date === d)));
+    placeCalInd(true);
+    swapIn('.side', monthSide(), 'side');
   }
 
   function switchView(next) {
     if (next === S.view) return;
     const dir = VIEWS.indexOf(next) - VIEWS.indexOf(S.view);
-    vt('view', dir, () => {
-      S.view = next;
-      if (next === 'month') { S.month = S.sel.slice(0, 7); S.calSel = S.sel; }
-      render(ZONES[next]);
-    });
+    S.view = next;
+    if (next === 'month') { S.month = S.sel.slice(0, 7); S.calSel = S.sel; }
+    render(`${ZONES[next]} ${dir > 0 ? 'fwd' : 'back'}`);
   }
 
   async function saveEta(id, d, t) {
@@ -1519,20 +1647,13 @@
       case 'prev': nav(-1); break;
       case 'next': nav(1); break;
       case 'today': goToday(); break;
-      case 'day': {
-        const d = el.dataset.date;
-        if (d !== S.sel) vt('day', d < S.sel ? -1 : 1, () => { S.sel = d; render('main'); });
-        break;
-      }
-      case 'cell': {
-        const d = el.dataset.date;
-        if (d !== S.calSel) vt('cal', d < S.calSel ? -1 : 1, () => { S.calSel = d; render('side'); });
-        break;
-      }
+      case 'day': if (el.dataset.date !== S.sel) selectDay(el.dataset.date); break;
+      case 'cell': if (el.dataset.date !== S.calSel) selectCell(el.dataset.date); break;
       case 'goto': {
         const d = el.dataset.date;
         S.drawer = null;
-        vt('view', -1, () => { S.view = 'week'; S.sel = d; S.week = mondayOf(d); render('yard main'); });
+        S.view = 'week'; S.sel = d; S.week = mondayOf(d);
+        render('yard main back');
         window.scrollTo({ top: 0, behavior: RM.matches ? 'auto' : 'smooth' });
         break;
       }
@@ -1543,7 +1664,7 @@
         const list = c.state === 'active' ? onDay(c.day) : removedOn(c.removed_from);
         const step = Number(el.dataset.step);
         const i = list.findIndex(x => x.id === c.id) + step;
-        if (list[i]) vt('dstep', step, () => { S.drawer = list[i].id; renderDrawer('step'); });
+        if (list[i]) stepDrawer(list[i].id, step);
         break;
       }
       case 'refresh':
@@ -1560,7 +1681,7 @@
       case 'settings': openSettings(); break;
       case 'stats-range': {
         const n = Number(el.dataset.days);
-        if (n !== S.statsDays) vt('range', n > S.statsDays ? 1 : -1, () => { S.statsDays = n; render('stats'); });
+        if (n !== S.statsDays) { S.statsDays = n; render('stats'); }
         break;
       }
       case 'qopen': {
@@ -1577,7 +1698,7 @@
             render(enter);
             renderDrawer('enter');
           };
-          if (enter) vt(sameWeek ? 'day' : 'view', 0, go); else go();
+          go();
         }
         break;
       }

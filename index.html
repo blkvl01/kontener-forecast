@@ -7,21 +7,31 @@
 <meta name="referrer" content="no-referrer">
 <title>Konténer Forecast</title>
 <link rel="icon" href="icon.ico">
-<link rel="stylesheet" href="styles.css?v=20261020090525">
+<link rel="preload" href="fonts/barlow-latin-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/barlow-latin-500.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/barlow-latin-600.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/barlow-condensed-latin-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/red-hat-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="styles.css?v=20261020100742">
 </head>
 <body>
+<svg class="kf-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+  <pattern id="kf-rib" patternUnits="userSpaceOnUse" x="20.9" y="0" width="7" height="96"><rect class="kf-rib" width="2.2" height="96"/></pattern>
+  <pattern id="kf-rib-f" patternUnits="userSpaceOnUse" x="20.8" y="0" width="7" height="96"><rect class="kf-rib-f" width="2.4" height="96"/></pattern>
+  <linearGradient id="kf-done" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="gd-a"/><stop offset="1" class="gd-b"/></linearGradient>
+</defs></svg>
 <div class="boot" id="boot" aria-hidden="true">
   <div class="boot-stage">
     <div class="boot-hoist"><i class="boot-cable"></i><i class="boot-spreader"></i></div>
-    <svg class="boot-ct" viewBox="0 0 400 96" preserveAspectRatio="xMidYMid meet">
-      <defs><clipPath id="boot-clip"><rect x="2" y="6" width="396" height="84" rx="2"/></clipPath></defs>
-      <rect class="bt-body" x="2" y="6" width="396" height="84" rx="2"/>
-      <g clip-path="url(#boot-clip)"><rect class="bt-fill" x="2" y="6" width="396" height="84"/><rect class="bt-sheen" x="-120" y="6" width="90" height="84"/></g>
-      <g class="bt-ribs"><line x1="22" y1="13" x2="22" y2="83" style="--i:0"/><line x1="36" y1="13" x2="36" y2="83" style="--i:1"/><line x1="50" y1="13" x2="50" y2="83" style="--i:2"/><line x1="64" y1="13" x2="64" y2="83" style="--i:3"/><line x1="78" y1="13" x2="78" y2="83" style="--i:4"/><line x1="92" y1="13" x2="92" y2="83" style="--i:5"/><line x1="106" y1="13" x2="106" y2="83" style="--i:6"/><line x1="120" y1="13" x2="120" y2="83" style="--i:7"/><line x1="134" y1="13" x2="134" y2="83" style="--i:8"/><line x1="148" y1="13" x2="148" y2="83" style="--i:9"/><line x1="162" y1="13" x2="162" y2="83" style="--i:10"/><line x1="176" y1="13" x2="176" y2="83" style="--i:11"/><line x1="190" y1="13" x2="190" y2="83" style="--i:12"/><line x1="204" y1="13" x2="204" y2="83" style="--i:13"/><line x1="218" y1="13" x2="218" y2="83" style="--i:14"/><line x1="232" y1="13" x2="232" y2="83" style="--i:15"/><line x1="246" y1="13" x2="246" y2="83" style="--i:16"/><line x1="260" y1="13" x2="260" y2="83" style="--i:17"/><line x1="274" y1="13" x2="274" y2="83" style="--i:18"/><line x1="288" y1="13" x2="288" y2="83" style="--i:19"/><line x1="302" y1="13" x2="302" y2="83" style="--i:20"/><line x1="316" y1="13" x2="316" y2="83" style="--i:21"/><line x1="330" y1="13" x2="330" y2="83" style="--i:22"/><line x1="344" y1="13" x2="344" y2="83" style="--i:23"/><line x1="358" y1="13" x2="358" y2="83" style="--i:24"/><line x1="372" y1="13" x2="372" y2="83" style="--i:25"/></g>
+    <div class="boot-box">
+      <div class="boot-body"><i class="boot-fill" id="boot-fill"></i><i class="boot-sheen"></i></div>
+      <svg class="boot-ct" viewBox="0 0 400 96" preserveAspectRatio="none">
+      <g class="bt-ribs"><line x1="22" y1="13" x2="22" y2="83"/><line x1="36" y1="13" x2="36" y2="83"/><line x1="50" y1="13" x2="50" y2="83"/><line x1="64" y1="13" x2="64" y2="83"/><line x1="78" y1="13" x2="78" y2="83"/><line x1="92" y1="13" x2="92" y2="83"/><line x1="106" y1="13" x2="106" y2="83"/><line x1="120" y1="13" x2="120" y2="83"/><line x1="134" y1="13" x2="134" y2="83"/><line x1="148" y1="13" x2="148" y2="83"/><line x1="162" y1="13" x2="162" y2="83"/><line x1="176" y1="13" x2="176" y2="83"/><line x1="190" y1="13" x2="190" y2="83"/><line x1="204" y1="13" x2="204" y2="83"/><line x1="218" y1="13" x2="218" y2="83"/><line x1="232" y1="13" x2="232" y2="83"/><line x1="246" y1="13" x2="246" y2="83"/><line x1="260" y1="13" x2="260" y2="83"/><line x1="274" y1="13" x2="274" y2="83"/><line x1="288" y1="13" x2="288" y2="83"/><line x1="302" y1="13" x2="302" y2="83"/><line x1="316" y1="13" x2="316" y2="83"/><line x1="330" y1="13" x2="330" y2="83"/><line x1="344" y1="13" x2="344" y2="83"/><line x1="358" y1="13" x2="358" y2="83"/><line x1="372" y1="13" x2="372" y2="83"/></g>
       <g class="bt-frame"><rect x="2" y="6" width="396" height="6"/><rect x="2" y="83" width="396" height="7"/><rect x="2" y="6" width="8" height="84"/><rect x="390" y="6" width="8" height="84"/></g>
       <g class="bt-cast"><rect x="2" y="6" width="14" height="11" rx="1"/><rect x="384" y="6" width="14" height="11" rx="1"/><rect x="2" y="79" width="14" height="11" rx="1"/><rect x="384" y="79" width="14" height="11" rx="1"/></g>
       <rect class="bt-outline" x="2" y="6" width="396" height="84" rx="2" pathLength="1"/>
     </svg>
+    </div>
     <div class="boot-name"><span style="--i:0">K</span><span style="--i:1">o</span><span style="--i:2">n</span><span style="--i:3">t</span><span style="--i:4">é</span><span style="--i:5">n</span><span style="--i:6">e</span><span style="--i:7">r</span><i></i><span style="--i:9">F</span><span style="--i:10">o</span><span style="--i:11">r</span><span style="--i:12">e</span><span style="--i:13">c</span><span style="--i:14">a</span><span style="--i:15">s</span><span style="--i:16">t</span></div>
   </div>
   <div class="boot-rail"></div>
@@ -34,9 +44,10 @@
       <span>Konténer Forecast</span>
     </div>
     <nav class="tabs" aria-label="Nézet" style="--i:1">
-      <button type="button" class="tab" data-action="view" data-view="week"><i class="tab-bg" aria-hidden="true"></i>Hét</button>
-      <button type="button" class="tab" data-action="view" data-view="month"><i class="tab-bg" aria-hidden="true"></i>Naptár</button>
-      <button type="button" class="tab" data-action="view" data-view="stats"><i class="tab-bg" aria-hidden="true"></i>Statisztika</button>
+      <i class="tab-ind" aria-hidden="true"></i>
+      <button type="button" class="tab" data-action="view" data-view="week">Hét</button>
+      <button type="button" class="tab" data-action="view" data-view="month">Naptár</button>
+      <button type="button" class="tab" data-action="view" data-view="stats">Statisztika</button>
     </nav>
     <div class="search" style="--i:2">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
@@ -133,9 +144,9 @@
   </div>
 </dialog>
 
-<script src="vendor/supabase.min.js?v=20261020090525"></script>
-<script src="config.js?v=20261020090525"></script>
-<script src="derive.js?v=20261020090525"></script>
-<script src="app.js?v=20261020090525"></script>
+<script src="vendor/supabase.min.js?v=20261020100742"></script>
+<script src="config.js?v=20261020100742"></script>
+<script src="derive.js?v=20261020100742"></script>
+<script src="app.js?v=20261020100742"></script>
 </body>
 </html>
