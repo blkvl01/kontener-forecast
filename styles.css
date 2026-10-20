@@ -1220,3 +1220,15 @@ g .hit{fill:transparent}
 .hero-main .ring .ring-l{font-family:var(--sans);font-size:11.5px;font-weight:500;fill:var(--yard-muted)}
 
 .pddcol{font-size:12px;line-height:1.5;word-break:break-all}
+
+/* ---- napléptető a táblázat fölött ---- */
+.daystep{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;border-bottom:1px solid var(--line-soft)}
+.ds-btn{display:flex;align-items:center;gap:4px;height:36px;padding:0 12px 0 8px;border:0;border-radius:9px;background:transparent;color:var(--muted);font-size:13px;font-weight:500;transition:background-color .16s var(--ease),color .16s var(--ease),transform .14s var(--ease)}
+.ds-btn:last-child{padding:0 8px 0 12px}
+.ds-btn:hover{background:oklch(0.962 0.005 255);color:var(--ink)}
+.ds-btn:active{transform:scale(.96)}
+.ds-btn:focus-visible{outline:2px solid oklch(0.62 0.16 48);outline-offset:1px}
+.ds-cur{display:flex;align-items:baseline;gap:8px;font-size:14px;color:var(--muted)}
+.ds-cur b{font-weight:600;color:var(--ink)}
+.ds-today{font-style:normal;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--orange-soft);color:var(--orange-text)}
+@media (max-width: 760px){ .ds-btn span{display:none} .ds-btn,.ds-btn:last-child{padding:0 6px} }

@@ -1190,8 +1190,16 @@
         </div>`;
     }).join('');
     const emptyText = hasForecast(d) ? 'Erre a napra nincs bejelentett konténer.' : 'Erre a napra még nem jött előrejelzés.';
+    const prev = addDays(d, -1), next = addDays(d, 1);
+    const stepper = `
+        <div class="daystep">
+          <button type="button" class="ds-btn" data-action="dayshift" data-step="-1" aria-label="Előző nap: ${DOW[dowIdx(prev)]}">${IC.left}<span>${DOW[dowIdx(prev)]}</span></button>
+          <div class="ds-cur"><b>${DOW[dowIdx(d)]}</b><span>${longLabel(d)}</span>${d === S.today ? '<i class="ds-today">ma</i>' : ''}</div>
+          <button type="button" class="ds-btn" data-action="dayshift" data-step="1" aria-label="Következő nap: ${DOW[dowIdx(next)]}"><span>${DOW[dowIdx(next)]}</span>${IC.right}</button>
+        </div>`;
     return `
       <section class="panel" aria-label="Konténerek" data-reveal>
+        ${stepper}
         ${list.length ? `<div class="tbl-scroll"><div class="tbl">
           <div class="tr head"><span>Konténer</span><span>Fuvarlevél</span><span>Rendszám · sofőr</span><span>T1 / MRN</span><span class="r">Karton</span><span class="r">Súly (kg)</span><span>ETA</span><span>Állapot</span></div>
           ${rows}
@@ -1515,6 +1523,16 @@
     }
   }
 
+  // Napléptetés: a szomszéd napra lép; ha az másik hétre esik, a hét is vált (a sáv és a tartalom a hétváltás irányába érkezik).
+  function shiftDay(step) {
+    if (S.view !== 'week') return;
+    const d = addDays(S.sel, step);
+    if (mondayOf(d) === S.week) { selectDay(d); return; }
+    S.pdir = step;
+    S.sel = d; S.week = mondayOf(d);
+    render(`yard main ${step > 0 ? 'fwd' : 'back'}`);
+  }
+
   function goToday() {
     const t = iso(new Date());
     if (S.view === 'week' && S.sel === t && S.week === mondayOf(t)) {
@@ -1651,6 +1669,7 @@
       case 'next': nav(1); break;
       case 'today': goToday(); break;
       case 'day': if (el.dataset.date !== S.sel) selectDay(el.dataset.date); break;
+      case 'dayshift': shiftDay(Number(el.dataset.step)); break;
       case 'cell': if (el.dataset.date !== S.calSel) selectCell(el.dataset.date); break;
       case 'goto': {
         const d = el.dataset.date;
@@ -1833,6 +1852,13 @@
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && document.activeElement === $('#q')) { $('#q').value = ''; renderSearch(); return; }
     if (e.key === 'Escape' && S.drawer && !$('#settings').open && !$('#paste').open) closeDrawer();
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
+        && S.view === 'week' && S.data && !S.drawer && !$('#settings').open && !$('#paste').open) {
+      const t = e.target;
+      if (t && t.closest && t.closest('input, textarea, select, [contenteditable]')) return;
+      e.preventDefault();
+      shiftDay(e.key === 'ArrowLeft' ? -1 : 1);
+    }
   });
 
   // Görgetéskor a fejléc árnyékot kap, hogy elváljon a tartalomtól.
