@@ -814,7 +814,7 @@
       return `<button type="button" class="qhit" data-action="qopen" data-id="${esc(c.id)}" style="--i:${i}">
         <span class="qhit-id">${mark(c.id, q)}</span>
         <span class="qhit-meta">${day ? `${DOW_S[dowIdx(day)]} ${short(day)}` : ''} · ${val ? `${esc(where)} ${mark(val, q)}` : esc(where)}</span>
-        <span class="ph ph-${out ? 'out' : phase(c).grp}">${esc(out ? ST_LABEL.removed : stageText(c))}</span>
+        <span class="ph ph-${out ? 'out' : `${phase(c).grp} phk-${phase(c).key}`}">${esc(out ? ST_LABEL.removed : stageText(c))}</span>
       </button>`;
     }).join('') : '<div class="qnone">Nincs találat</div>';
     if (opening) {
@@ -1068,7 +1068,7 @@
           <span class="ct-wrap">${containerSvg(c)}</span>
           <span class="cc-top">
             <span class="cc-w"><b>${fmtDec((c.kg || 0) / 1000, 1, 1)}</b><small>t</small></span>
-            <span class="ph ph-${late ? 'late' : ph.grp}">${esc(late ? late.label : ph.label)}</span>
+            <span class="ph ph-${late ? 'late' : `${ph.grp} phk-${ph.key}`}">${esc(late ? late.label : ph.label)}</span>
           </span>
           <span class="cc-sub">${fmtInt(c.ctns)} karton · ${c.pdd.length} PDD${eta}${c.ramp ? `<span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}</span>
           <span class="cc-plate ${c.plate ? '' : 'dim'}">${c.plate ? esc(plate(c.plate)) : 'kamion még nincs'}</span>
@@ -1186,7 +1186,7 @@
           <span class="cell-mono r">${fmtInt(c.ctns)}</span>
           <span class="cell-mono r">${fmtInt(c.kg)}</span>
           <input type="time" class="eta ${c.eta_time ? 'set' : ''}" value="${esc(c.eta_time)}" data-eta="${esc(c.id)}" aria-label="ETA ${esc(c.id)}" ${c.status === 'arrived' ? 'disabled' : ''}>
-          <div><div class="ph ph-${phase(c).grp}">${esc(stageText(c))}</div>${c.ramp ? ` <span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}${flags.join('')}</div>
+          <div><div class="ph ph-${phase(c).grp} phk-${phase(c).key}">${esc(stageText(c))}</div>${c.ramp ? ` <span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}${flags.join('')}</div>
         </div>`;
     }).join('');
     const emptyText = hasForecast(d) ? 'Erre a napra nincs bejelentett konténer.' : 'Erre a napra még nem jött előrejelzés.';
@@ -1325,7 +1325,7 @@
     }).join('');
     const etaDate = c.eta_date || c.date;
     const active = c.state === 'active';
-    const badge = !active ? `<span class="ph ph-out ph-lg">${esc(ST_LABEL.removed)}</span>` : `<span class="ph ph-${late ? 'late' : ph.grp} ph-lg">${esc(late ? late.label : ph.label)}</span>`;
+    const badge = !active ? `<span class="ph ph-out ph-lg">${esc(ST_LABEL.removed)}</span>` : `<span class="ph ph-${late ? 'late' : `${ph.grp} phk-${ph.key}`} ph-lg">${esc(late ? late.label : ph.label)}</span>`;
     const anim = { enter: ' enter', fly: ' fly', step: ' step', back: ' step back' }[mode] || '';
 
     root.innerHTML = `

@@ -1232,3 +1232,17 @@ g .hit{fill:transparent}
 .ds-cur b{font-weight:600;color:var(--ink)}
 .ds-today{font-style:normal;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--orange-soft);color:var(--orange-text)}
 @media (max-width: 760px){ .ds-btn span{display:none} .ds-btn,.ds-btn:last-child{padding:0 6px} }
+
+/* ---- mérföldkő-jelvények: minden állomásnak saját árnyalata ---- */
+.ph.phk-request{background:oklch(0.945 0.03 235);color:oklch(0.4 0.1 235)}
+.ph.phk-approved{background:oklch(0.955 0.07 98);color:oklch(0.42 0.09 78)}
+.ph.phk-opened{background:oklch(0.94 0.05 55);color:oklch(0.45 0.14 45)}
+.ph.phk-released{background:oklch(0.945 0.035 300);color:oklch(0.42 0.12 300)}
+.ph.phk-storing{background:oklch(0.945 0.04 200);color:oklch(0.38 0.08 205)}
+.ph.phk-stored{background:oklch(0.93 0.05 150);color:oklch(0.36 0.1 150)}
+.sheet-head .ph.phk-request{background:oklch(0.64 0.09 235);color:oklch(0.14 0.03 240)}
+.sheet-head .ph.phk-approved{background:oklch(0.84 0.14 95);color:oklch(0.22 0.04 85)}
+.sheet-head .ph.phk-opened{background:oklch(0.7 0.16 48);color:oklch(0.2 0.03 50)}
+.sheet-head .ph.phk-released{background:oklch(0.68 0.12 300);color:oklch(0.15 0.03 300)}
+.sheet-head .ph.phk-storing{background:oklch(0.72 0.1 200);color:oklch(0.15 0.03 205)}
+.sheet-head .ph.phk-stored{background:oklch(0.66 0.13 150);color:oklch(0.15 0.03 150)}
