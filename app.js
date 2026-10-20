@@ -668,17 +668,17 @@
   }
 
   // ---------- folyamat, késés, rámpa ----------
-  const STAGES = ['request', 'approved', 'opened', 'stored'];
-  const STAGE_LABEL = { request: 'Érkezés', approved: 'Nyitható', opened: 'Nyitás', stored: 'Betárolva' };
+  const STAGES = ['request', 'approved', 'opened', 'released', 'stored'];
+  const STAGE_LABEL = { request: 'Érkezés', approved: 'Nyitható', opened: 'Nyitás', released: 'Elengedve', stored: 'Betárolva' };
   const PHASE = {
     pre: ['Tervben', 0, 'plan'], t1: ['Kamion + T1', 0, 'plan'], eta: ['ETA megvan', 0, 'plan'],
     request: ['Megérkezett', 0.25, 'live'], approved: ['Nyitható', 0.5, 'live'], opened: ['Nyitás', 0.75, 'live'],
-    released: ['Nyitás', 0.75, 'live'], stored: ['Betárolva', 1, 'done']
+    released: ['Elengedve', 0.85, 'live'], stored: ['Betárolva', 1, 'done']
   };
   function phase(c) {
     if (c.stage === 'stored') return { key: 'stored', label: PHASE.stored[0], p: 1, grp: 'done' };
     if (c.storage && c.storage.done) {
-      return { key: 'storing', label: `Betárolás ${c.storage.done}/${c.storage.total}`, p: 0.75 + 0.25 * c.storage.done / Math.max(1, c.storage.total), grp: 'live' };
+      return { key: 'storing', label: `Betárolás ${c.storage.done}/${c.storage.total}`, p: 0.85 + 0.15 * c.storage.done / Math.max(1, c.storage.total), grp: 'live' };
     }
     const k = c.stage || (c.arrived ? 'request' : c.eta_time ? 'eta' : (c.plate || c.t1) ? 't1' : 'pre');
     const [label, p, grp] = PHASE[k];
@@ -712,12 +712,13 @@
   function stepper(c) {
     const st = c.stages || {};
     const first = (st.request && st.request.at) || c.arrived_at;
-    const atOf = k => (k === 'request' ? first : st[k] && st[k].at);
+    const atOf = k => (k === 'request' ? (c.arrived_at || first) : st[k] && st[k].at);
     let prev = null, last = -1;
     const items = STAGES.map((k, i) => {
       const at = atOf(k);
-      const dur = at && prev ? fmtDur(minutesBetween(prev, at)) : '';
-      if (at) { prev = at; last = i; }
+      const real = k === 'request' ? first : at;
+      const dur = real && prev ? fmtDur(minutesBetween(prev, real)) : '';
+      if (real) { prev = real; last = i; }
       const lab = k === 'stored' && !st.stored && c.storage ? `Betárolás ${c.storage.done}/${c.storage.total}` : STAGE_LABEL[k];
       return `
         <li class="${at ? 'done' : ''}" style="--i:${i}">
@@ -843,7 +844,7 @@
     const days = [...new Set(past.map(c => c.date))];
     const perDay = days.length ? past.length / days.length : 0;
 
-    const devs = past.filter(c => c.eta_time && at(c, 'request')).map(c => minutesBetween(`${c.eta_date || c.date}T${c.eta_time}:00`, at(c, 'request')));
+    const devs = past.filter(c => c.eta_time && c.arrived_at).map(c => minutesBetween(`${c.eta_date || c.date}T${c.eta_time}:00`, c.arrived_at));
     const early = devs.filter(d => d < -30).length, ok = devs.filter(d => Math.abs(d) <= 30).length, lateN = devs.filter(d => d > 30).length;
 
     const kpi = (title, l, sub, i) => {
@@ -910,7 +911,7 @@
             </div>
             <div class="panel chart" data-reveal>
               <div class="chart-head"><b>Érkezések óránként</b><span class="chart-sub">nyitáskérés ideje</span></div>
-              ${hourBars(past.map(c => at(c, 'request')).filter(Boolean))}
+              ${hourBars(past.map(c => c.arrived_at).filter(Boolean))}
             </div>
           </div>
         </section>
@@ -1179,6 +1180,7 @@
       return `
         <div class="tr row" data-id="${esc(c.id)}" style="--i:${Math.min(i, 12)}">
           <div><button type="button" class="cid" data-action="open" data-id="${esc(c.id)}">${esc(c.id)}</button><div class="sub2">${c.pdd.length} PDD</div></div>
+          <div class="cell-mono pddcol">${c.pdd.filter(p => p.no).map(p => `<div>${esc(p.no)}</div>`).join('') || '<span class="dim">—</span>'}</div>
           <div><div class="cell-mono ${c.plate ? '' : 'dim'}">${c.plate ? esc(plate(c.plate)) : 'várható'}</div>${drv ? `<div class="sub2">${esc(drv)}</div>` : ''}</div>
           <span class="cell-mono ${c.t1 ? '' : 'dim'}" style="font-size:12.5px">${esc(c.t1 || '—')}</span>
           <span class="cell-mono r">${fmtInt(c.ctns)}</span>
@@ -1191,7 +1193,7 @@
     return `
       <section class="panel" aria-label="Konténerek" data-reveal>
         ${list.length ? `<div class="tbl-scroll"><div class="tbl">
-          <div class="tr head"><span>Konténer</span><span>Rendszám · sofőr</span><span>T1 / MRN</span><span class="r">Karton</span><span class="r">Súly (kg)</span><span>ETA</span><span>Állapot</span></div>
+          <div class="tr head"><span>Konténer</span><span>Fuvarlevél</span><span>Rendszám · sofőr</span><span>T1 / MRN</span><span class="r">Karton</span><span class="r">Súly (kg)</span><span>ETA</span><span>Állapot</span></div>
           ${rows}
         </div></div>` : `<div class="empty">${emptyText}</div>`}
       </section>`;
@@ -1611,8 +1613,9 @@
           <span class="u-name">${esc(u.name || u.email)}</span>
           <span class="u-meta">${u.role === 'admin' ? 'Admin' : 'Szerkesztő'} · ${esc(seen)} · ${edits[u.email] || 0} konténernél módosított${u.added_at ? ` · meghívva ${esc(short(toLocal(u.added_at).slice(0, 10)))}` : ''}</span>
         </div>
-        ${u.role === 'admin' ? '' : `
+        ${u.role === 'admin' && !(u.email.endsWith('@csapat.invalid') && u.email !== ME.email) ? '' : `
         <div class="u-acts">
+          <button type="button" class="u-btn" data-action="user-role" data-email="${esc(u.email)}" data-role="${u.role === 'admin' ? 'editor' : 'admin'}">${u.role === 'admin' ? 'Admin jog elvétele' : 'Admin jog adása'}</button>
           <button type="button" class="u-btn" data-action="user-rename" data-email="${esc(u.email)}" data-name="${esc(u.name || '')}">Átnevezés</button>
           <button type="button" class="u-btn" data-action="user-link" data-email="${esc(u.email)}" data-name="${esc(u.name || '')}">Új link</button>
           <button type="button" class="u-btn danger" data-action="user-remove" data-email="${esc(u.email)}">Eltávolítás</button>
@@ -1753,6 +1756,11 @@
         if (li.querySelector('.u-edit')) break;
         li.querySelector('.u-name').outerHTML = `<form class="u-edit" data-email="${esc(el.dataset.email)}"><label class="sr" for="ren-${esc(el.dataset.email)}">Név</label><input id="ren-${esc(el.dataset.email)}" value="${esc(cur)}" maxlength="80" required><button type="submit" class="u-btn">Mentés</button></form>`;
         li.querySelector('.u-edit input').focus();
+        break;
+      }
+      case 'user-role': {
+        try { await usersFn('role', { email: el.dataset.email, role: el.dataset.role }); toast(el.dataset.role === 'admin' ? 'Admin jog megadva' : 'Admin jog elvéve'); loadUsers(); }
+        catch (err) { toast(err.message); }
         break;
       }
       case 'user-link': {

@@ -176,6 +176,8 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     x.arrived_auto = !!(x.auto_arrival && !man.arrived);
     x.arrived = !!man.arrived || x.arrived_auto;
     x.arrived_at = man.arrived ? (man.arrived_at || '') : (x.arrived_auto ? x.auto_arrival.at : '');
+    // Tényleges érkezés: a nyitáskérő levél ideje mínusz 15 perc.
+    if (!man.arrived && x.stages && x.stages.request) x.arrived_at = new Date(new Date(x.stages.request.at).getTime() - 15 * 60000).toISOString();
     x.stages = x.stages || {};
     x.stage = ['stored', 'released', 'opened', 'approved', 'request'].find(k => x.stages[k]) || '';
     x.ramp = man.ramp || null;
