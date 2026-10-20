@@ -172,11 +172,11 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     x.eta_time = man.eta_time || '';
     x.eta_set = man.eta_set || '';
     x.eta_stale = !!(man.eta_for && x.eta_time && man.eta_for !== x.date);
-    x.arrived_auto = !!(x.auto_arrival && !man.auto_dismissed && !man.arrived);
+    // Az érkezés és a további lépések a levelekből jönnek; kézi felülbírálás nincs.
+    x.arrived_auto = !!(x.auto_arrival && !man.arrived);
     x.arrived = !!man.arrived || x.arrived_auto;
     x.arrived_at = man.arrived ? (man.arrived_at || '') : (x.arrived_auto ? x.auto_arrival.at : '');
-    x.auto_dismissed = !!man.auto_dismissed;
-    x.stages = x.auto_dismissed ? (x.stages && x.stages.stored ? { stored: x.stages.stored } : {}) : (x.stages || {});
+    x.stages = x.stages || {};
     x.stage = ['stored', 'released', 'opened', 'approved', 'request'].find(k => x.stages[k]) || '';
     x.ramp = man.ramp || null;
     x.ramp_set = man.ramp_set || '';

@@ -1072,8 +1072,6 @@ g .hit{fill:transparent}
 .just-saved .saved{animation:k-rise .5s var(--ease-expo);--x:-10px;--y:0px}
 .just-saved .saved svg path{stroke-dasharray:22;animation:k-check .5s var(--ease-quart) .1s backwards}
 .just-saved .field.time{animation:k-glow 1s var(--ease-quart)}
-.just-on{animation:k-pop .4s var(--ease-expo)}
-.just-on svg path{stroke-dasharray:22;animation:k-check .45s var(--ease-quart) .08s backwards}
 
 /* ---- élő változás ---- */
 .flash{animation:k-flash 1.4s var(--ease-quart)}

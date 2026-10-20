@@ -1276,7 +1276,6 @@
             <div class="btns">
               <button type="button" class="btn-primary" data-action="save-eta">Mentés</button>
               ${c.eta_time ? '<button type="button" class="btn-ghost" data-action="clear-eta">Törlés</button>' : ''}
-              <button type="button" class="btn-ghost ${c.arrived ? 'on' : ''}" data-action="arrived" aria-pressed="${c.arrived}">${c.arrived ? IC.check + ' ' : ''}Megérkezett</button>
             </div>
           </section>` : ''}
 
@@ -1611,20 +1610,6 @@
         break;
       }
       case 'clear-eta': if (await saveEta(S.drawer, '', '')) toast('ETA törölve'); break;
-      case 'arrived': {
-        const c = S.data.containers[S.drawer];
-        let ok;
-        if (c.arrived_auto) {
-          ok = await upsertManual({ container: c.id, auto_dismissed: true, arrived: false, arrived_at: null });
-        } else if (c.arrived) {
-          ok = await upsertManual({ container: c.id, arrived: false, arrived_at: null, auto_dismissed: !!c.auto_arrival });
-        } else {
-          ok = await upsertManual({ container: c.id, arrived: true, arrived_at: new Date().toISOString() });
-          const b = ok && $('#drawer [data-action="arrived"]');
-          if (b) b.classList.add('just-on');
-        }
-        break;
-      }
       case 'copy':
         try {
           await navigator.clipboard.writeText(el.dataset.v);
