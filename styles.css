@@ -1336,3 +1336,73 @@ g .hit{fill:transparent}
 .mail-pv dd .cpy{flex:none;margin:-3px 0 0;opacity:.7}
 .mail-pv dd:hover .cpy{opacity:1}
 .mail-txt dd span{line-height:1.5}
+
+/* v7.1: beállítások, felhasználólista finomítás, nyitáskérelem aláírás */
+.set2{width:min(560px,calc(100vw - 32px))}
+.set2 .settings-inner{gap:4px}
+.set2 .set-sec{gap:10px;padding:18px 0 6px}
+.set-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.set-state{font-size:12px;color:var(--muted)}
+.me-card{flex-direction:row !important;align-items:center;gap:14px !important;border-top:0 !important;margin-top:6px !important;padding:14px 16px !important;border-radius:14px;background:var(--surface-2);border:1px solid var(--line-soft) !important}
+.me-av{flex:none;display:grid;place-items:center;width:44px;height:44px;border-radius:12px;background:var(--yard);color:var(--yard-text);font-family:var(--cond);font-size:18px;font-weight:600;letter-spacing:.02em}
+.me-txt{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.me-txt b{font-size:16px;font-weight:600}
+.me-role{align-self:flex-start;font-size:12px;font-weight:500;padding:2px 9px;border-radius:999px;background:oklch(0.94 0.006 255);color:var(--ink-2)}
+.me-role.r-admin{background:var(--orange-soft);color:var(--orange-text);box-shadow:inset 0 0 0 1px var(--orange-line)}
+.me-dev{font-family:var(--mono);font-size:11px;color:var(--muted);padding:3px 8px;border:1px solid var(--line);border-radius:6px}
+.sig-text{width:100%;min-height:118px;resize:vertical;padding:10px 12px;border-radius:10px;border:1px solid oklch(0.85 0.008 255);background:var(--surface);font:inherit;font-size:13px;line-height:1.5;color:var(--ink)}
+.sig-text:focus{outline:none;border-color:oklch(0.62 0.16 48);box-shadow:0 0 0 3px oklch(0.72 0.165 52 / .28)}
+.team-card{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;width:100%;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);text-align:left;transition:border-color .16s var(--ease),background-color .16s var(--ease),transform .14s var(--ease)}
+.team-card:hover{border-color:oklch(0.78 0.01 255);background:var(--surface-2)}
+.team-card:active{transform:scale(.99)}
+.team-nums{display:flex;gap:18px;flex-wrap:wrap}
+.team-nums span{display:flex;flex-direction:column;font-size:11.5px;color:var(--muted)}
+.team-nums b{font-family:var(--cond);font-size:24px;font-weight:600;line-height:1.05;color:var(--ink)}
+.team-go{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600}
+.stepper-in{display:inline-flex;align-items:center;align-self:flex-start;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
+.stepper-in output{min-width:56px;text-align:center;font-family:var(--cond);font-size:22px;font-weight:600}
+.ibtn-l{width:42px;height:42px;border:0;background:transparent;font-size:20px;color:var(--ink-2);transition:background-color .16s var(--ease)}
+.ibtn-l:hover{background:oklch(0.95 0.005 255)}
+.switch{display:flex;align-items:center;gap:12px;font-size:14px;cursor:pointer;align-self:flex-start}
+.switch input{position:absolute;opacity:0;width:1px;height:1px}
+.sw{position:relative;width:38px;height:22px;border-radius:999px;background:oklch(0.86 0.008 255);transition:background-color .2s var(--ease)}
+.sw:after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px oklch(0.2 0.02 255 / .3);transition:transform .22s var(--ease-expo)}
+.switch input:checked+.sw{background:oklch(0.62 0.16 48)}
+.switch input:checked+.sw:after{transform:translateX(16px)}
+.switch input:focus-visible+.sw{outline:2px solid var(--orange);outline-offset:2px}
+
+.p-list .p-row{grid-template-columns:minmax(190px,1.15fr) 128px minmax(360px,2.4fr) 112px}
+.p-group{display:flex !important;align-items:center;gap:8px;padding:9px 14px 7px !important;background:var(--surface-2);font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.p-group b{font-family:var(--mono);font-weight:500;letter-spacing:0;color:var(--faint)}
+.p-group.g-pending{color:oklch(0.52 0.15 45);background:var(--orange-soft)}
+.p-id .u-name{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.p-id .u-name small{font-family:var(--mono);font-size:10.5px;font-weight:500;padding:1px 6px;border-radius:5px;background:oklch(0.94 0.006 255);color:var(--muted)}
+.p-acts{display:flex;align-items:center;justify-content:flex-end;gap:6px}
+.p-menu{position:relative}
+.p-more{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;color:var(--muted);cursor:pointer;list-style:none;transition:background-color .16s var(--ease),color .16s var(--ease)}
+.p-more::-webkit-details-marker{display:none}
+.p-more:hover,.p-menu[open] .p-more{background:oklch(0.94 0.006 255);color:var(--ink)}
+.p-pop{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:180px;padding:5px;border-radius:12px;background:var(--surface);border:1px solid var(--line);box-shadow:0 14px 34px -14px oklch(0.15 0.03 255 / .45);display:flex;flex-direction:column;animation:k-up-s .22s var(--ease-expo)}
+.p-pop button{height:34px;padding:0 10px;border:0;border-radius:8px;background:transparent;text-align:left;font-size:13px;color:var(--ink)}
+.p-pop button:hover{background:oklch(0.955 0.005 255)}
+.p-pop button.danger{color:oklch(0.48 0.17 27)}
+.p-pop button.danger:hover{background:var(--late-soft)}
+.p-list{overflow:visible !important}
+.p-list>li:first-child{border-top-left-radius:12px;border-top-right-radius:12px}
+.p-list>li:last-child{border-bottom-left-radius:12px;border-bottom-right-radius:12px}
+.p-row .u-edit input{width:150px}
+@media (max-width: 1100px){
+  .p-list .p-row{grid-template-columns:minmax(0,1fr) 128px auto}
+  .p-facts{grid-column:1 / -1}
+  .p-acts{grid-column:3;grid-row:1}
+}
+@media (max-width: 560px){
+  .p-list .p-row{grid-template-columns:minmax(0,1fr) auto}
+  .p-rolecell{grid-column:1;grid-row:2}
+  .p-acts{grid-column:2;grid-row:1}
+  .p-rolecell .p-role{width:auto;min-width:140px}
+}
+
+.mail-sig{display:block;margin-top:10px;padding-top:8px;border-top:1px dashed var(--line);font-size:12px;color:var(--muted);max-height:96px;overflow:hidden;mask-image:linear-gradient(#000 70%,transparent)}
+.mail-nosig{border:0;background:transparent;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.p-facts dd.sans{font-family:var(--sans);font-size:13px}

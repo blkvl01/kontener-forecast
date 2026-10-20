@@ -423,11 +423,12 @@
   async function enter(session) {
     bootProgress(0.2);
     const email = (session.user.email || '').toLowerCase();
-    const { data, error } = await sb.from('members').select('email, role, name').eq('email', email).maybeSingle();
+    const { data, error } = await sb.from('members').select('email, role, name, signature').eq('email', email).maybeSingle();
     if (error || !data) { showAuth('denied', email); return; }
     ME = data;
     document.body.classList.toggle('role-worker', isWorker());
     sb.rpc('touch_me').then(() => {}, () => {});
+    if (!ME.signature) importSignature(true);
     setInterval(() => sb.rpc('touch_me').then(() => {}, () => {}), 5 * 60000);
     // Az alkalmazás már a nyitó réteg alatt kirajzolódik (az első elrendezés és szövegformázás itt fut le),
     // az animációi a redőny felhúzásáig szünetelnek.
@@ -1629,23 +1630,25 @@
       '',
       'Kérnénk szépen nyitást!'
     ];
-    return { to: MAIL_TO, subject, lines, body: lines.join('\n') };
+    const sig = (ME && ME.signature) || '';
+    return { to: MAIL_TO, subject, lines, sig, body: lines.join('\n'), full: lines.join('\n') + (sig ? `\n\n${sig}` : '') };
   }
 
   function mailBox(c) {
     const m = mailParts(c);
     const miss = [!c.t1 && 'MRN', !c.plate && 'rendszám'].filter(Boolean);
     return `
-      <section class="mailbox" aria-label="Érkezési email">
+      <section class="mailbox" aria-label="Nyitáskérelem">
         <div class="mail-head">
-          <b>Érkezési email</b>
-          <button type="button" class="btn-primary sm mail-go" data-action="mail">${IC.mail}Outlook piszkozat</button>
+          <b>Nyitáskérelem</b>
+          <button type="button" class="btn-primary sm mail-go" data-action="mail">${IC.mail}Nyitáskérelem küldése</button>
         </div>
         ${miss.length ? `<div class="flag warn">${IC.warn}Hiányzik: ${esc(miss.join(', '))}</div>` : ''}
+        ${m.sig || isExe() ? '' : `<button type="button" class="flag warn mail-nosig" data-action="settings">${IC.warn}Nincs aláírás beállítva</button>`}
         <dl class="mail-pv">
           <div><dt>Címzett</dt><dd><span>${esc(m.to.join('; '))}</span>${cp(m.to.join('; '))}</dd></div>
           <div><dt>Tárgy</dt><dd><span>${esc(m.subject)}</span>${cp(m.subject)}</dd></div>
-          <div class="mail-txt"><dt>Szöveg</dt><dd><span>${m.lines.map(l => esc(l) || '&nbsp;').join('<br>')}</span>${cp(m.body)}</dd></div>
+          <div class="mail-txt"><dt>Szöveg</dt><dd><span>${m.lines.map(l => esc(l) || '&nbsp;').join('<br>')}${m.sig ? `<span class="mail-sig">${esc(m.sig).replace(/\n/g, '<br>')}</span>` : ''}</span>${cp(m.full)}</dd></div>
         </dl>
       </section>`;
   }
@@ -1659,7 +1662,7 @@
       if (r && r.ok) { toast('Piszkozat megnyitva az Outlookban'); return; }
     }
     const q = v => encodeURIComponent(v);
-    location.href = `mailto:${m.to.join(';')}?subject=${q(m.subject)}&body=${q(m.body.replace(/\n/g, '\r\n') + '\r\n\r\n')}`;
+    location.href = `mailto:${m.to.join(';')}?subject=${q(m.subject)}&body=${q(m.full.replace(/\n/g, '\r\n'))}`;
   }
 
   // ---------- felhasználók ----------
@@ -1715,17 +1718,22 @@
     const n = PEOPLE.length;
     const pend = PEOPLE.filter(u => peopleState(u) === 'pending').length;
     const on = PEOPLE.filter(u => peopleState(u) === 'online').length;
-    $('#users-sum').innerHTML = `<b>${n}</b> felhasználó · <b>${n - pend}</b> belépett${pend ? ` · <b class="warn-t">${pend}</b> még nem` : ''}${on ? ` · <b class="ok-t">${on}</b> most aktív` : ''}`;
+    $('#users-sum').innerHTML = [
+      [n, 'fő', ''],
+      [n - pend, 'belépett', ''],
+      [pend, 'még nem', pend ? 'warn-t' : ''],
+      [on, 'most aktív', on ? 'ok-t' : '']
+    ].map(([v, l, c]) => `<span><b class="${c}">${v}</b>${l}</span>`).join('');
   }
+
+  const DOTS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>';
 
   function renderPeople() {
     const edits = {};
     Object.values(MAN).forEach(m => { if (m.updated_by) edits[m.updated_by] = (edits[m.updated_by] || 0) + 1; });
-    const stRank = { online: 0, in: 1, pending: 2 };
-    const roleRank = { admin: 0, editor: 1, worker: 2 };
-    const list = PEOPLE.slice().sort((a, b) => (roleRank[a.role] - roleRank[b.role]) || (a.name || '').localeCompare(b.name || '', 'hu'));
-    const counts = { all: list.length, online: 0, in: 0, pending: 0 };
-    list.forEach(u => { counts[peopleState(u)]++; });
+    const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'hu');
+    const counts = { all: PEOPLE.length, online: 0, in: 0, pending: 0 };
+    PEOPLE.forEach(u => { counts[peopleState(u)]++; });
     counts.in += counts.online;
 
     $('#p-sum').innerHTML = [
@@ -1735,51 +1743,65 @@
       ['online', 'Most aktív', counts.online, counts.online ? 'ok' : '']
     ].map(([k, l, v, cls]) => `<button type="button" class="p-tile ${cls}" data-action="people-filter" data-f="${k}" aria-pressed="${peopleFilter === k}"><b>${v}</b><span>${l}</span></button>`).join('');
 
-    const shown = list.filter(u => {
+    const match = u => {
       const st = peopleState(u);
       return peopleFilter === 'all' || st === peopleFilter || (peopleFilter === 'in' && st === 'online');
-    });
-    if (peopleFilter === 'in') shown.sort((a, b) => stRank[peopleState(a)] - stRank[peopleState(b)]);
+    };
+    const shown = PEOPLE.filter(match);
+    // Mind nézetben: előbb a még be nem lépettek, utána rangonként; szűrve egy lista.
+    const groups = peopleFilter !== 'all'
+      ? [['', shown.slice().sort(byName)]]
+      : [
+          ['Még nem lépett be', shown.filter(u => peopleState(u) === 'pending').sort(byName), 'pending'],
+          ...['admin', 'editor', 'worker'].map(r => [{ admin: 'Adminok', editor: 'Szerkesztők', worker: 'Dolgozók' }[r], shown.filter(u => u.role === r && peopleState(u) !== 'pending').sort(byName)])
+        ].filter(g => g[1].length);
 
-    const row = (u, i) => {
+    let i = 0;
+    const row = u => {
       const st = peopleState(u);
       const me = u.email === ME.email;
       const locked = u.fixed || me;
-      const stTxt = st === 'pending' ? 'Még nem lépett be' : st === 'online' ? 'Most aktív' : 'Belépett';
-      const seen = u.last_seen ? ago(u.last_seen) : '';
       const first = u.first_login || u.link_used_at;
+      const status = st === 'pending'
+        ? `Meghívó elküldve${u.link_at ? ` · ${esc(ago(u.link_at))}` : ''}`
+        : st === 'online' ? 'Most aktív' : `Aktív ${esc(ago(u.last_seen || first))}`;
       const unusedNew = st !== 'pending' && u.link_at && !u.link_used_at && u.links > 1;
+      const n = i++;
       const roleCtl = locked
         ? `<span class="p-role-ro r-${esc(u.role)}">${ROLE_L[u.role] || esc(u.role)}</span>`
-        : `<label class="sr" for="role-${i}">Rang</label><select id="role-${i}" class="p-role r-${esc(u.role)}" data-email="${esc(u.email)}">${['worker', 'editor', 'admin'].map(r => `<option value="${r}"${r === u.role ? ' selected' : ''}>${ROLE_L[r]}</option>`).join('')}</select>`;
-      const link = u.fixed ? '<span class="dim">exe</span>'
-        : u.link_at ? `${esc(stamp(toLocal(u.link_at)))}${u.link_uses ? `<small>${u.link_uses}× megnyitva</small>` : first || st === 'pending' ? '<small class="warn-t">nincs megnyitva</small>' : ''}`
-        : '<span class="dim">—</span>';
+        : `<label class="sr" for="role-${n}">Rang</label><select id="role-${n}" class="p-role r-${esc(u.role)}" data-email="${esc(u.email)}">${['worker', 'editor', 'admin'].map(r => `<option value="${r}"${r === u.role ? ' selected' : ''}>${ROLE_L[r]}</option>`).join('')}</select>`;
       return `
-      <li class="urow p-row st-${st}" style="--i:${Math.min(i, 12)}">
+      <li class="urow p-row st-${st}" style="--i:${Math.min(n, 12)}">
         <div class="p-who">
           <i class="p-dot" aria-hidden="true"></i>
           <div class="p-id">
-            <span class="u-name">${esc(u.name || u.email)}${me ? ' <small>(te)</small>' : ''}</span>
-            <span class="p-st">${stTxt}${st !== 'pending' && seen ? ` · ${esc(seen)}` : ''}</span>
+            <span class="u-name">${esc(u.name || u.email)}${me ? '<small>te</small>' : ''}${u.fixed ? '<small>exe</small>' : ''}</span>
+            <span class="p-st">${status}</span>
           </div>
         </div>
         <div class="p-rolecell">${roleCtl}</div>
         <dl class="p-facts">
-          <div><dt>Meghívva</dt><dd>${u.added_at ? esc(stamp(toLocal(u.added_at))) : '—'}${u.added_by && MEMBERS[u.added_by] ? `<small>${esc(MEMBERS[u.added_by])}</small>` : ''}</dd></div>
+          <div><dt>Meghívta</dt><dd class="sans">${u.added_by && MEMBERS[u.added_by] ? esc(MEMBERS[u.added_by]) : '—'}<small>${u.added_at ? esc(stamp(toLocal(u.added_at))) : ''}</small></dd></div>
           <div><dt>Első belépés</dt><dd>${first ? esc(stamp(toLocal(first))) : st === 'pending' ? '<span class="dim">—</span>' : '<span class="dim">korábban</span>'}</dd></div>
-          <div><dt>Link</dt><dd>${link}</dd></div>
+          <div><dt>Utoljára</dt><dd>${u.last_seen ? esc(stamp(toLocal(u.last_seen))) : '<span class="dim">—</span>'}</dd></div>
           <div><dt>Módosított</dt><dd>${edits[u.email] || 0}<small>konténer</small></dd></div>
         </dl>
-        ${unusedNew ? `<div class="flag warn p-note">${IC.warn}Az új link még nincs megnyitva</div>` : ''}
-        <div class="u-acts">${locked ? '' : `
-          <button type="button" class="u-btn" data-action="user-rename" data-email="${esc(u.email)}" data-name="${esc(u.name || '')}">Átnevezés</button>
-          <button type="button" class="u-btn" data-action="user-link" data-email="${esc(u.email)}" data-name="${esc(u.name || '')}">Új link</button>
-          <button type="button" class="u-btn danger" data-action="user-remove" data-email="${esc(u.email)}">Eltávolítás</button>`}
+        <div class="p-acts">${locked ? '' : `${st === 'pending' ? `<button type="button" class="u-btn" data-action="user-link" data-email="${esc(u.email)}" data-name="${esc(u.name || '')}">Új link</button>` : ''}
+          <details class="p-menu">
+            <summary class="p-more" aria-label="Műveletek">${DOTS}</summary>
+            <div class="p-pop">
+              <button type="button" data-action="user-rename" data-email="${esc(u.email)}" data-name="${esc(u.name || '')}">Átnevezés</button>
+              <button type="button" data-action="user-link" data-email="${esc(u.email)}" data-name="${esc(u.name || '')}">Új meghívó link</button>
+              <button type="button" class="danger" data-action="user-remove" data-email="${esc(u.email)}">Eltávolítás</button>
+            </div>
+          </details>`}
         </div>
+        ${unusedNew ? `<div class="flag warn p-note">${IC.warn}Az új link még nincs megnyitva</div>` : ''}
       </li>`;
     };
-    $('#users').innerHTML = shown.length ? shown.map(row).join('') : '<li class="p-empty">Nincs ilyen felhasználó.</li>';
+    $('#users').innerHTML = groups.length
+      ? groups.map(([title, list, cls]) => `${title ? `<li class="p-group${cls ? ' g-' + cls : ''}"><span>${title}</span><b>${list.length}</b></li>` : ''}${list.map(row).join('')}`).join('')
+      : '<li class="p-empty">Nincs ilyen felhasználó.</li>';
   }
 
   function openPeople() {
@@ -1791,20 +1813,64 @@
     loadUsers();
   }
 
+  function renderMe() {
+    const nm = ME.name || ME.email;
+    const ini = nm.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+    $('#me').innerHTML = `<span class="me-av" aria-hidden="true">${esc(ini)}</span><span class="me-txt"><b>${esc(nm)}</b><span class="me-role r-${esc(ME.role)}">${ROLE_L[ME.role] || esc(ME.role)}</span></span>${isExe() ? '<span class="me-dev">Exe</span>' : ''}`;
+  }
+
+  function sigState(txt) { $('#sig-state').textContent = txt || ''; }
+
+  // Exe-ben az Outlook új levelekhez beállított aláírása; csendes módban csak üres aláírásnál, belépéskor.
+  async function importSignature(quiet) {
+    if (!isExe() || !exe().get_outlook_signature) return;
+    let sig = '';
+    try { sig = await exe().get_outlook_signature(); } catch (_) { /* nincs Outlook-aláírás */ }
+    if (!sig) { if (!quiet) toast('Az Outlookban nincs aláírás'); return; }
+    if (quiet && ME.signature) return;
+    await saveSignature(sig, quiet);
+    if ($('#settings').open) $('#sig').value = sig;
+  }
+
+  async function saveSignature(sig, quiet) {
+    const { error } = await sb.rpc('set_my_signature', { sig });
+    if (error) { if (!quiet) toast('A mentés nem sikerült'); return false; }
+    ME.signature = sig.trim() || null;
+    sigState(ME.signature ? 'Mentve' : '');
+    if (!quiet) toast('Aláírás mentve');
+    if (S.drawer) renderDrawer();
+    return true;
+  }
+
   async function openSettings() {
-    $('#me').innerHTML = `${esc(ME.name || ME.email)}<span>${ROLE_L[ME.role] || ME.role}</span>`;
-    $('#users-sec').hidden = ME.role !== 'admin';
-    $('#outlook-sec').hidden = !isExe();
-    if (ME.role === 'admin') loadUsers();
+    renderMe();
+    $('#sig').value = ME.signature || '';
+    sigState(ME.signature ? 'Mentve' : 'Nincs beállítva');
+    $('#sig-import').hidden = !isExe();
+    const admin = ME.role === 'admin';
+    $('#users-sec').hidden = !admin;
+    $('#ramp-sec').hidden = !admin;
+    $('#ramp-count').textContent = RAMPS;
+    $('#app-sec').hidden = !isExe();
+    if (admin) loadUsers();
     if (isExe()) {
-      const s = await exe().get_settings();
-      const f = $('#outlook-form');
-      f.sender.value = s.sender || '';
-      f.subject_hint.value = s.subject_hint || '';
-      f.interval_min.value = s.interval_min || 10;
-      f.autostart.checked = !!s.autostart;
+      try { $('#autostart').checked = !!(await exe().get_settings()).autostart; } catch (_) { /* régi exe */ }
     }
     $('#settings').showModal();
+  }
+
+  let rampTimer = null;
+  function stepRamps(step) {
+    const n = Math.max(1, Math.min(99, Number($('#ramp-count').textContent) + step));
+    $('#ramp-count').textContent = n;
+    clearTimeout(rampTimer);
+    rampTimer = setTimeout(async () => {
+      const { error } = await sb.from('app_settings').update({ ramp_count: n }).eq('id', 1);
+      if (error) { toast('A mentés nem sikerült'); $('#ramp-count').textContent = RAMPS; return; }
+      RAMPS = n;
+      toast(`Rámpák: ${n}`);
+      if (S.pending || !editing()) { rebuild(); render(); }
+    }, 500);
   }
 
   document.addEventListener('click', async e => {
@@ -1884,6 +1950,9 @@
       case 'paste-save': await savePaste(); break;
       case 'settings-close': $('#settings').close(); break;
       case 'people': openPeople(); break;
+      case 'sig-save': await saveSignature($('#sig').value); break;
+      case 'sig-import': await importSignature(false); break;
+      case 'ramps': stepRamps(Number(el.dataset.step)); break;
       case 'people-close': $('#people').close(); break;
       case 'people-filter': peopleFilter = el.dataset.f; renderPeople(); break;
       case 'logout': await sb.auth.signOut(); location.reload(); break;
@@ -2000,6 +2069,11 @@
     tip.style.transform = `translate(${Math.max(8, x)}px, ${y}px)`;
   });
   document.addEventListener('click', e => {
+    // Felhasználói műveletmenü: egyszerre egy nyitva, kattintásra (vagy választás után) bezárul.
+    const own = e.target.closest('.p-menu');
+    document.querySelectorAll('.p-menu[open]').forEach(d => {
+      if (d !== own || (e.target.closest('.p-pop button') && !e.target.closest('[data-action="user-remove"]'))) d.open = false;
+    });
     if (!e.target.closest('.search')) { const b = $('#qres'); if (b && !b.hidden) { b.hidden = true; } }
   });
 
@@ -2071,12 +2145,13 @@
   }
   setInterval(checkVersion, 5 * 60000);
 
-  $('#outlook-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const f = e.target;
-    await exe().save_settings({ sender: f.sender.value, subject_hint: f.subject_hint.value, interval_min: f.interval_min.value, autostart: f.autostart.checked });
-    toast('Beállítások mentve');
+  $('#autostart').addEventListener('change', async e => {
+    const on = e.target.checked;
+    const cur = await exe().get_settings();
+    await exe().save_settings({ ...cur, autostart: on });
+    toast(on ? 'Indul a Windows-zal' : 'Nem indul a Windows-zal');
   });
+  $('#sig').addEventListener('input', () => sigState($('#sig').value.trim() === (ME.signature || '') ? 'Mentve' : 'Nincs mentve'));
 
   // A realtime csatorna megszakadhat (altatott lap, hálózatváltás): a szinkron állapotát ezért percenként is lekérdezzük.
   async function pullSync() {
