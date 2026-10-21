@@ -15,6 +15,7 @@
     down: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
     refresh: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.6 4.5L20 16"/><path d="M20 21v-5h-5"/></svg>',
     sliders: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+    help: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.5a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2-2.4 3.6"/><path d="M12 17.2h.01"/></svg>',
     arrow: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h14"/><path d="M13 6l6 6-6 6"/></svg>',
     back: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>',
     go: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>',
@@ -628,6 +629,7 @@
     showAuth('app');
     subscribe();
     window.KF.reload();
+    if (window.KFTour) window.KFTour.auto(ME, tourSheet);
   }
 
   async function bootAuth() {
@@ -809,6 +811,7 @@
       <span class="sync-text ${tcls}${fresh ? ' fresh' : ''}" title="${esc(title)}">${esc(text)}</span>
       <button type="button" class="ibtn ${busy ? 'spin' : ''}" data-action="refresh" aria-label="Frissítés">${IC.refresh}</button>
       <button type="button" class="ibtn" data-action="settings" aria-label="Beállítások">${IC.sliders}</button>
+      <button type="button" class="ibtn" data-action="tour" aria-label="Útmutató" title="Útmutató">${IC.help}</button>
       <span class="avatar" title="${esc(ME ? ME.email : '')}" aria-hidden="true">${initial}</span>`;
   }
 
@@ -2061,6 +2064,33 @@
     $('#settings').showModal();
   }
 
+  // Az útmutató adatlapos lépéseihez: a kijelölt nap első (lehetőleg már érkezett) konténere, ennek híján a legközelebbi napé.
+  const tourSheet = {
+    pick() {
+      const act = all().filter(c => c.state === 'active');
+      const day = onDay(S.sel);
+      const c = day.find(x => x.stage || x.arrived) || day[0]
+        || act.sort((a, b) => Math.abs(parse(a.day) - parse(S.sel)) - Math.abs(parse(b.day) - parse(S.sel)))[0];
+      return c ? c.id : null;
+    },
+    open(id) { if (id && S.drawer !== id) openDrawer(id); },
+    close() { closeDrawer(); }
+  };
+
+  // Útmutató: a heti nézet mai napjáról indul, hogy a lépések a valódi elemekre mutassanak.
+  function startTour(opener) {
+    if (!window.KFTour || !ME) return;
+    if (S.drawer) closeDrawer();
+    const t = iso(new Date());
+    const redo = S.view !== 'week' || S.sel !== t || S.week !== mondayOf(t);
+    if (redo) {
+      S.view = 'week'; S.today = t; S.sel = t; S.week = mondayOf(t); S.month = t.slice(0, 7); S.calSel = t;
+      render('yard main');
+    }
+    // Az újrarajzolt elemek belépő mozgása után indul, hogy a kiemelés a végleges helyükre kerüljön.
+    setTimeout(() => window.KFTour.start(ME.role, { opener, sheet: tourSheet }), redo && canFly() ? 900 : 0);
+  }
+
   let rampTimer = null;
   function stepRamps(step) {
     const n = Math.max(1, Math.min(99, Number($('#ramp-count').textContent) + step));
@@ -2117,6 +2147,7 @@
         }
         break;
       case 'settings': openSettings(); break;
+      case 'tour': startTour(el); break;
       case 'stats-range': {
         const n = Number(el.dataset.days);
         if (n !== S.statsDays) { S.statsDays = n; render('stats'); }
@@ -2339,7 +2370,7 @@
       if (!r.ok) return;
       const v = (await r.json()).v;
       const mine = window.KF_CONFIG && window.KF_CONFIG.version;
-      if (v && mine && v !== mine && !editing() && !S.drawer) location.reload();
+      if (v && mine && v !== mine && !editing() && !S.drawer && !(window.KFTour && window.KFTour.active)) location.reload();
     } catch (_) { /* hálózati hiba: később újra */ }
   }
   setInterval(checkVersion, 5 * 60000);

@@ -1,0 +1,71 @@
+/* Végigvezető (tour.js): sötét „yard” kártya, a kiemelés körül sötétített oldal. Csak transform és opacity animál. */
+:root{--z-tour:64}
+.tour{position:fixed;inset:0;z-index:var(--z-tour);user-select:none;-webkit-user-select:none;
+  --ta:var(--orange);--ti:var(--orange-ink);animation:tour-fade .26s linear backwards}
+.tour[data-role=worker]{--ta:oklch(0.82 0.09 232);--ti:oklch(0.2 0.04 240)}
+.tour[data-role=admin]{--ta:oklch(0.64 0.22 27);--ti:oklch(0.98 0.004 255)}
+.tour.bye{animation:tour-bye .2s linear forwards;pointer-events:none}
+@keyframes tour-fade{from{opacity:0}}
+@keyframes tour-bye{to{opacity:0}}
+
+/* kiemelés: a „lyuk” maga a doboz árnyéka, négy sarokpánttal */
+.tour-ring{position:absolute;left:0;top:0;width:0;height:0;border-radius:12px;pointer-events:none;
+  box-shadow:0 0 0 1.5px var(--ta),0 0 0 120vmax oklch(0.13 0.02 255 / .76)}
+.tour-ring.off{box-shadow:0 0 0 120vmax oklch(0.13 0.02 255 / .76)}
+.tour-ring:before{content:"";position:absolute;inset:-8px;
+  background:
+    linear-gradient(var(--ta),var(--ta)) 0 0/16px 2.5px,linear-gradient(var(--ta),var(--ta)) 0 0/2.5px 16px,
+    linear-gradient(var(--ta),var(--ta)) 100% 0/16px 2.5px,linear-gradient(var(--ta),var(--ta)) 100% 0/2.5px 16px,
+    linear-gradient(var(--ta),var(--ta)) 0 100%/16px 2.5px,linear-gradient(var(--ta),var(--ta)) 0 100%/2.5px 16px,
+    linear-gradient(var(--ta),var(--ta)) 100% 100%/16px 2.5px,linear-gradient(var(--ta),var(--ta)) 100% 100%/2.5px 16px;
+  background-repeat:no-repeat;animation:tour-pulse 1.5s ease-in-out infinite alternate}
+.tour-ring.off:before{display:none}
+@keyframes tour-pulse{from{opacity:.5}to{opacity:1}}
+.tour.mv .tour-ring{transition:transform .5s var(--ease-expo),width .5s var(--ease-expo),height .5s var(--ease-expo)}
+.tour.mv .tour-card{transition:transform .5s var(--ease-expo)}
+
+/* kártya */
+.tour-card{position:absolute;left:0;top:0;width:min(344px,calc(100vw - 24px));outline:0}
+.tour-in{position:relative;overflow:hidden;border-radius:14px;background:var(--yard);color:var(--yard-text);
+  border:1px solid oklch(0.33 0.022 255);box-shadow:0 28px 70px -24px oklch(0.04 0.02 255 / .95);
+  animation:tour-card-in .55s var(--ease-expo) backwards}
+.tour-in:before{content:"";display:block;height:4px;background-color:var(--ta);
+  background-image:repeating-linear-gradient(90deg,oklch(0 0 0 / .2) 0 2px,transparent 2px 7px)}
+@keyframes tour-card-in{from{opacity:0;transform:translateY(12px) scale(.98)}}
+
+.tour-head{display:flex;align-items:center;gap:10px;padding:14px 12px 0 18px}
+.tour-role{display:inline-flex;align-items:center;gap:8px;font-family:var(--cond);font-weight:700;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--ta)}
+.tour-role:before{content:"";width:8px;height:8px;border-radius:2px;background:var(--ta)}
+.tour-n{margin-left:auto;font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;color:var(--yard-muted)}
+.tour-x{width:30px;height:30px;display:grid;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--yard-muted);transition:background-color .16s var(--ease),color .16s var(--ease)}
+.tour-x:hover{background:var(--yard-raise);color:var(--yard-text)}
+
+.tour-body{padding:10px 18px 2px}
+.tour-body h3{margin:0 0 6px;font-size:19px;font-weight:600;letter-spacing:-.012em;line-height:1.25;color:oklch(0.98 0.004 255)}
+.tour-body p{margin:0;font-size:14px;line-height:1.5;color:oklch(0.84 0.012 255)}
+.tour-body p+p{margin-top:7px}
+.tour-body.swap{animation:tour-swap .36s var(--ease-expo) backwards}
+@keyframes tour-swap{from{opacity:0;transform:translateX(var(--dx,12px))}}
+.tour-art{display:none;color:var(--ta);margin:4px 0 12px}
+.tour-card.intro .tour-art{display:block;animation:tour-drop .7s var(--ease-expo) .1s backwards}
+.tour-card.intro .tour-body h3{font-size:22px}
+@keyframes tour-drop{from{opacity:0;transform:translateY(-18px)}}
+
+.tour-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 14px 14px 18px}
+.tour-ticks{display:flex;gap:4px;flex:1 1 auto;min-width:0}
+.tour-ticks i{flex:1 1 0;min-width:5px;max-width:18px;height:4px;border-radius:2px;background:oklch(0.34 0.02 255);transition:background-color .3s var(--ease)}
+.tour-ticks i.on{background:var(--ta)}
+.tour-btns{display:flex;gap:8px;flex:none}
+.tour-b{height:38px;padding:0 14px;border:1px solid transparent;border-radius:9px;font-weight:600;font-size:13.5px;transition:background-color .16s var(--ease),transform .12s var(--ease)}
+.tour-b.ghost{background:transparent;border-color:oklch(0.38 0.022 255);color:oklch(0.9 0.008 255)}
+.tour-b.ghost:hover{background:var(--yard-raise)}
+.tour-b.main{background:var(--ta);color:var(--ti)}
+.tour-b.main:hover{background:color-mix(in oklch,var(--ta) 88%,white)}
+.tour-b:active{transform:scale(.97)}
+.tour :focus-visible{outline:2px solid var(--ta);outline-offset:2px}
+
+@media (max-width: 480px){.tour-b{padding:0 12px}.tour-body h3{font-size:18px}.tour-card.intro .tour-body h3{font-size:20px}}
+@media (prefers-reduced-motion: reduce){
+  .tour,.tour-in,.tour-body.swap,.tour-card.intro .tour-art,.tour-ring:before{animation:none !important}
+  .tour.mv .tour-ring,.tour.mv .tour-card{transition:none}
+}
