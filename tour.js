@@ -218,7 +218,7 @@
       <div class="tour-card" tabindex="-1"><div class="tour-in">
         <div class="tour-head"><span class="tour-role"></span><span class="tour-n"></span><button type="button" class="tour-x" data-act="x" aria-label="Bezárás">${IC_X}</button></div>
         <div class="tour-body" aria-live="polite"><div class="tour-art">${IC_CT}</div><h3></h3><div class="tour-txt"></div></div>
-        <div class="tour-foot"><span class="tour-ticks" aria-hidden="true">${steps.map(() => '<i></i>').join('')}</span><span class="tour-btns"><button type="button" class="tour-b ghost" data-act="back"></button><button type="button" class="tour-b main" data-act="next"></button></span></div>
+        <div class="tour-foot"><span class="tour-ticks" aria-hidden="true">${steps.map(() => '<i></i>').join('')}</span><span class="tour-btns"><button type="button" class="tour-b ghost" data-act="back"></button><button type="button" class="tour-b is-primary" data-act="next"></button></span></div>
       </div></div>`;
     root.querySelector('.tour-role').textContent = ROLE_L[role] || role;
     T = {

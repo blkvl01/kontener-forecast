@@ -668,16 +668,17 @@
 
   // ---------- adatlekérdezés ----------
   const all = () => Object.values(S.data ? S.data.containers : {});
-  const ORDER = { arrived: 0, eta: 1, t1: 2, pre: 3 };
-  const byEta = (a, b) => {
-    const ea = a.eta_time || '99:99', eb = b.eta_time || '99:99';
-    if (a.status === 'arrived' && b.status !== 'arrived') return -1;
-    if (b.status === 'arrived' && a.status !== 'arrived') return 1;
-    if (ea !== eb) return ea < eb ? -1 : 1;
-    if (ORDER[a.status] !== ORDER[b.status]) return ORDER[a.status] - ORDER[b.status];
+  // Érkezési sorrend: a megérkezett konténer a tényleges érkezés, a többi az ETA ideje szerint; az ETA nélküliek a nap végén.
+  const arrKey = c => {
+    if (c.arrived) return c.arrived_at || `${c.day}T00:00:00`;
+    return c.eta_time ? `${c.day}T${c.eta_time}:00` : '9999';
+  };
+  const byArrival = (a, b) => {
+    const ka = arrKey(a), kb = arrKey(b);
+    if (ka !== kb) return ka < kb ? -1 : 1;
     return a.id < b.id ? -1 : 1;
   };
-  const onDay = d => all().filter(c => c.state === 'active' && c.day === d).sort(byEta);
+  const onDay = d => all().filter(c => c.state === 'active' && c.day === d).sort(byArrival);
   const removedOn = d => all().filter(c => c.state === 'removed' && c.removed_from === d).sort((a, b) => (a.id < b.id ? -1 : 1));
   const movedOut = d => all().filter(c => c.state === 'active' && c.moved_from === d && c.date !== d);
   const hasForecast = d => (S.data.forecast_dates || []).includes(d);
@@ -1271,7 +1272,10 @@
     const cards = list.map((c, i) => {
       const ph = phase(c);
       const late = lateInfo(c);
-      const eta = !c.arrived && c.eta_time ? `<span class="cc-eta">ETA ${esc(c.eta_time)}</span>` : '';
+      // Érkezési idő: a megérkezettnél a tényleges, egyébként az ETA.
+      const at = c.arrived
+        ? { k: 'k-in', t: 'Érkezett', v: c.arrived_at ? (c.arrived_at.slice(0, 10) === d ? hm(c.arrived_at) : stamp(c.arrived_at)) : '—' }
+        : c.eta_time ? { k: 'k-eta', t: 'ETA', v: c.eta_time } : { k: 'k-none', t: 'ETA', v: 'még nincs' };
       return `
         <button type="button" class="ccard${late ? ' is-late' : ''}" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 11)}">
           <span class="ct-wrap"><i class="cc-ground"><i class="cc-shadow"></i></i><span class="ct-rig"><span class="ct-sw">${HOIST}${containerSvg(c)}</span></span></span>
@@ -1279,8 +1283,8 @@
             <span class="cc-w"><b>${fmtDec((c.kg || 0) / 1000, 1, 1)}</b><small>t</small></span>
             <span class="ph ph-${late ? 'late' : `${ph.grp} phk-${ph.key}`}">${esc(late ? late.label : ph.label)}</span>
           </span>
-          <span class="cc-sub">${fmtInt(c.ctns)} karton · ${c.pdd.length} PDD${eta}${c.ramp ? `<span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}</span>
-          <span class="cc-plate ${c.plate ? '' : 'dim'}">${c.plate ? esc(plate(c.plate)) : 'kamion még nincs'}</span>
+          <span class="cc-sub">${fmtInt(c.ctns)} karton · ${c.pdd.length} PDD${c.ramp ? `<span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}</span>
+          <span class="cc-at ${at.k}"><small>${at.t}</small><b>${esc(at.v)}</b></span>
         </button>`;
     }).join('');
     return `
@@ -1372,10 +1376,10 @@
     return `
       <section class="panel timeline" aria-label="Idővonal" data-reveal>
         <div class="tl-track"><div class="tl-area" style="height:${h}px">${ticks}${now}${pills}${timed.length ? '' : '<div class="tl-empty">Nincs rögzített ETA</div>'}</div></div>
-        <div class="tray">
+        ${noEta.length ? `<div class="tray">
           <div class="tray-head"><span>ETA nélkül</span><span class="mono">${noEta.length}</span></div>
-          <div class="tray-list">${noEta.map((c, i) => `<button type="button" class="tray-item" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 8)}"><span>${esc(c.id)}</span><span>${fmtT(c.kg)}</span></button>`).join('') || '<span class="dim" style="font-size:13px">—</span>'}</div>
-        </div>
+          <div class="tray-list">${noEta.map((c, i) => `<button type="button" class="tray-item" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 8)}"><span>${esc(c.id)}</span><span>${fmtT(c.kg)}</span></button>`).join('')}</div>
+        </div>` : ''}
       </section>`;
   }
 
@@ -1395,6 +1399,7 @@
           <span class="cell-mono r">${fmtInt(c.ctns)}</span>
           <span class="cell-mono r">${fmtInt(c.kg)}</span>
           ${isWorker() ? `<span class="cell-mono eta-ro ${c.eta_time ? '' : 'dim'}">${esc(c.eta_time || '—')}</span>` : `<input type="time" class="eta ${c.eta_time ? 'set' : ''}" value="${esc(c.eta_time)}" data-eta="${esc(c.id)}" aria-label="ETA ${esc(c.id)}" ${c.status === 'arrived' ? 'disabled' : ''}>`}
+          <span class="cell-mono ${c.arrived && c.arrived_at ? '' : 'dim'}">${c.arrived && c.arrived_at ? esc(c.arrived_at.slice(0, 10) === d ? hm(c.arrived_at) : stamp(c.arrived_at)) : '—'}</span>
           <div><div class="ph ph-${phase(c).grp} phk-${phase(c).key}">${esc(stageText(c))}</div>${c.ramp ? ` <span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}${flags.join('')}</div>
         </div>`;
     }).join('');
@@ -1410,7 +1415,7 @@
       <section class="panel" aria-label="Konténerek" data-reveal>
         ${stepper}
         ${list.length ? `<div class="tbl-scroll"><div class="tbl">
-          <div class="tr head"><span>Konténer</span><span>Fuvarlevél</span><span>Rendszám · sofőr</span><span>T1 / MRN</span><span class="r">Karton</span><span class="r">Súly (kg)</span><span>ETA</span><span>Állapot</span></div>
+          <div class="tr head"><span>Konténer</span><span>Fuvarlevél</span><span>Rendszám · sofőr</span><span>T1 / MRN</span><span class="r">Karton</span><span class="r">Súly (kg)</span><span>ETA</span><span>Érkezett</span><span>Állapot</span></div>
           ${rows}
         </div></div>` : `<div class="empty">${emptyText}</div>`}
       </section>`;

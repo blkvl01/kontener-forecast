@@ -59,8 +59,8 @@
 .tour-b{height:38px;padding:0 14px;border:1px solid transparent;border-radius:9px;font-weight:600;font-size:13.5px;transition:background-color .16s var(--ease),transform .12s var(--ease)}
 .tour-b.ghost{background:transparent;border-color:oklch(0.38 0.022 255);color:oklch(0.9 0.008 255)}
 .tour-b.ghost:hover{background:var(--yard-raise)}
-.tour-b.main{background:var(--ta);color:var(--ti)}
-.tour-b.main:hover{background:color-mix(in oklch,var(--ta) 88%,white)}
+.tour-b.is-primary{background:var(--ta);color:var(--ti)}
+.tour-b.is-primary:hover{background:color-mix(in oklch,var(--ta) 88%,white)}
 .tour-b:active{transform:scale(.97)}
 .tour :focus-visible{outline:2px solid var(--ta);outline-offset:2px}
 
