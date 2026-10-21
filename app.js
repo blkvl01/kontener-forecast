@@ -144,6 +144,20 @@
   const sims = new Map();
   let simRaf = 0, simLast = 0;
 
+  // Az egér pillanatnyi helye: a :hover bezáráskor a lezáró réteg miatt késve frissül, ezért a darus átadás a koordinátából dönt.
+  const PTR = { x: -1, y: -1, mouse: false };
+  const trackPtr = e => { PTR.x = e.clientX; PTR.y = e.clientY; PTR.mouse = e.pointerType === 'mouse'; };
+  document.addEventListener('pointermove', trackPtr, { passive: true });
+  document.addEventListener('pointerdown', trackPtr, { passive: true });
+  const pointerOn = el => {
+    if (!PTR.mouse || !HOVER_OK.matches || !el) return false;
+    const r = el.getBoundingClientRect();
+    return PTR.x >= r.left && PTR.x <= r.right && PTR.y >= r.top && PTR.y <= r.bottom;
+  };
+  // A visszaérkező daru ezt a kártyát hagyta „kézben tartott” (.hold) állapotban: úgy néz ki, mint a hover, de a kampó nem ereszkedik le újra.
+  let holdEl = null;
+  const holdRelease = () => { if (holdEl) { holdEl.classList.remove('hold'); holdEl = null; } };
+
   function simFor(card) {
     let m = sims.get(card);
     if (m) return m;
@@ -204,6 +218,8 @@
   document.addEventListener('pointermove', e => {
     if (e.pointerType !== 'mouse' || !HOVER_OK.matches || !canFly()) return;
     const card = e.target.closest ? e.target.closest('#view .ccard') : null;
+    // Az átadási jelző addig marad, amíg az egér a kártyán áll (a valódi hover mellette ugyanazt mutatja, a zárás-kattanás nem ismétlődik).
+    if (holdEl && (!holdEl.isConnected || holdEl !== card)) holdRelease();
     for (const m of sims.values()) if (m.card !== card) m.out = true;
     if (card && !card.classList.contains('away')) {
       const m = simFor(card);
@@ -218,7 +234,7 @@
     }
     if (sims.size) simKick();
   }, { passive: true });
-  const simOut = () => { for (const m of sims.values()) m.out = true; if (sims.size) simKick(); };
+  const simOut = () => { holdRelease(); for (const m of sims.values()) m.out = true; if (sims.size) simKick(); };
   document.addEventListener('pointerout', e => { if (!e.relatedTarget) simOut(); }, { passive: true });
   window.addEventListener('blur', simOut);
   window.addEventListener('scroll', () => { for (const m of sims.values()) m.r = null; }, { passive: true, capture: true });
@@ -1619,8 +1635,9 @@
     const end = { left: t.left - 80, top: t.top, width: t.width };
     // A kártyán felemelt konténert a daru viszi át; ha nem volt felemelve (billentyűzet), a kampó előbb ráereszkedik.
     const card = fromEl.closest('.ccard');
-    const lifted = !!card && card.matches(':hover');
+    const lifted = !!card && (card.matches(':hover') || card.classList.contains('hold'));
     if (card) {
+      if (holdEl === card) holdRelease();
       document.querySelectorAll('#view .ccard.away').forEach(x => x.classList.remove('away'));
       const a0 = simGrab(card);
       card.classList.add('away');
@@ -1664,9 +1681,16 @@
       card.closest('.ccard').classList.add('away');
       craneFly(from, r, 700, {
         grab: 200,
-        hold: () => { const x = cur(); return !!x && x.matches(':hover'); },
+        hold: () => pointerOn(cur()),
         follow: () => { const x = cur(); if (x && !down) x.classList.add('away'); return x && x.querySelector('.ct'); },
-      }).then(() => { down = true; const x = cur(); if (x) x.classList.remove('away'); });
+      }).then(() => {
+        down = true;
+        const x = cur();
+        if (!x) return;
+        // Az egér a kártyán áll: a kártya a kampóval együtt veszi át a konténert (nincs újabb leereszkedés), az emelés fut le.
+        if (pointerOn(x)) { if (holdEl !== x) holdRelease(); x.classList.add('hold'); holdEl = x; }
+        x.classList.remove('away');
+      });
       from.style.opacity = '0';
     } else if (card) card.closest('.ccard').classList.remove('away');
     if (!root.firstChild || RM.matches) { root.innerHTML = ''; back(); return; }

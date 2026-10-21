@@ -1580,18 +1580,26 @@ g .hit{fill:transparent}
   .ct-wrap:before{transition:opacity .3s linear}
   .cc-ground>.cc-shadow{transition:opacity .3s linear,transform .34s cubic-bezier(.5,0,.25,1)}
   .cc-ground:after{transition:opacity .2s linear,transform .3s var(--ease-quart)}
-  .ccard:hover{z-index:2}
+  .ccard:is(:hover,.hold){z-index:2}
   /* belépés: kampó le (0–.38 s, kis kötélrugózással), kattanás (.34 s), emelés (.4–1 s), kilengés, lebegés */
-  .ccard:hover .hk{opacity:1;transform:none;transition:transform .38s cubic-bezier(.3,1.35,.5,1),opacity .12s linear}
-  .ccard:hover .hk-lamp:after{opacity:1;transition-delay:.34s}
-  .ccard:hover .hk-lamp:before{animation:hk-lock .5s var(--ease-quart) .34s}
-  .ccard:hover .ct-rig{transform:translateY(-10px);transition:transform .6s cubic-bezier(.45,0,.2,1) .4s;animation:hk-bob 2.6s ease-in-out 1.9s infinite alternate}
-  .ccard:hover .ct-wrap:before{opacity:.25;transition:opacity .5s linear .45s}
-  .ccard:hover .cc-ground>.cc-shadow{opacity:1;transform:none;transition:opacity .5s linear .45s,transform .6s cubic-bezier(.45,0,.2,1) .4s}
+  .ccard:is(:hover,.hold) .hk{opacity:1;transform:none;transition:transform .38s cubic-bezier(.3,1.35,.5,1),opacity .12s linear}
+  .ccard:is(:hover,.hold) .hk-lamp:after{opacity:1;transition-delay:.34s}
+  .ccard:is(:hover,.hold) .hk-lamp:before{animation:hk-lock .5s var(--ease-quart) .34s}
+  .ccard:is(:hover,.hold) .ct-rig{transform:translateY(-10px);transition:transform .6s cubic-bezier(.45,0,.2,1) .4s;animation:hk-bob 2.6s ease-in-out 1.9s infinite alternate}
+  .ccard:is(:hover,.hold) .ct-wrap:before{opacity:.25;transition:opacity .5s linear .45s}
+  .ccard:is(:hover,.hold) .cc-ground>.cc-shadow{opacity:1;transform:none;transition:opacity .5s linear .45s,transform .6s cubic-bezier(.45,0,.2,1) .4s}
   /* amíg a fizika fut, az árnyék helyzetét a JS írja: csak az áttetszőség úszik */
   .ccard.phys .cc-ground>.cc-shadow{transition:opacity .3s linear}
-  .ccard.phys:hover .cc-ground>.cc-shadow{transition:opacity .5s linear .45s}
-  .ccard:hover .cc-ground:after{opacity:.75;transform:none;transition:opacity .3s linear .7s,transform .45s var(--ease-expo) .7s}
+  .ccard.phys:is(:hover,.hold) .cc-ground>.cc-shadow{transition:opacity .5s linear .45s}
+  .ccard:is(:hover,.hold) .cc-ground:after{opacity:.75;transform:none;transition:opacity .3s linear .7s,transform .45s var(--ease-expo) .7s}
+  /* átvétel a visszaérkező darutól (az egér a kártyán áll): a kampó már lent van, nem ereszkedik le újra, csak az emelés fut le */
+  .ccard.hold .hk{transition:none}
+  .ccard.hold .hk-lamp:after{transition:none}
+  .ccard.hold .hk-lamp:before{animation:none}
+  .ccard.hold .ct-rig{transition:transform .45s cubic-bezier(.45,0,.2,1);animation-delay:1.2s}
+  .ccard.hold .ct-wrap:before{transition:opacity .4s linear}
+  .ccard.hold .cc-ground>.cc-shadow{transition:opacity .4s linear,transform .45s cubic-bezier(.45,0,.2,1)}
+  .ccard.hold .cc-ground:after{transition:opacity .2s linear,transform .3s var(--ease-quart)}
   /* lenyomva: a kötél megfeszül, indulásra kész */
   .ccard:active .ct-rig{transform:translateY(-13px);transition:transform .12s var(--ease-quart)}
   .ccard.away .ct-rig{transition:none}
