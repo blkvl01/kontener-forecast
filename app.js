@@ -226,8 +226,10 @@
   // Három egymásba ágyazott réteg (X, Y + méret, lengés), mindegyik külön transform-animáció.
   // grab: a kampónak előbb le kell ereszkednie (nem volt felemelve); hold(): lerakáskor a kártya saját daruja veszi át,
   // ilyenkor nincs kioldás. a0: a kártyán lengő konténer pillanatnyi kilengése, innen indul.
+  // follow(): a cél élő eleme; ha repülés közben elmozdul (görgetés, emelés, újrarajzolás), a pálya fokozatosan
+  // utánahajlik (az elején 0, lerakáskor teljes eltolás), így a konténer mindig a kártya valódi helyére érkezik.
   // A visszatérő ígéret a lerakáskor teljesül.
-  function craneFly(svg, to, ms, grab = 0, hold = () => false, a0 = 0) {
+  function craneFly(svg, to, ms, { grab = 0, hold = () => false, a0 = 0, follow = null } = {}) {
     const r = svg.getBoundingClientRect();
     const f = document.createElement('div');
     f.className = 'ct-flyer crane';
@@ -258,13 +260,32 @@
     const P = r.height * PIVOT;
     const swing = [[0, a0], [.16, a0 * .3], [.3, a * dir], [.5, a * .25 * dir], [.7, -a * .85 * dir], [.84, a * .3 * dir], [.94, -a * .1 * dir], [1, 0]];
     sw.animate(swing.map(([o, ang]) => ({ offset: o, transform: swT(ang, P) })), opt({ easing: 'ease-in-out' }));
+    // Célkövetés: képkockánként egy helylekérdezés, az eltolás a 'translate' tulajdonságba kerül
+    // (független az animált transformtól, és képernyő-pixelben értendő, a méretezés nem hat rá).
+    let raf = 0;
+    if (follow) {
+      const t0 = performance.now(), T = grab + ms;
+      const track = now => {
+        raf = 0;
+        if (!f.isConnected) return;
+        const el = follow();
+        if (el) {
+          const c = el.getBoundingClientRect();
+          const u = Math.min(1, Math.max(0, (now - t0) / T)), w = u * u * (3 - 2 * u);
+          f.style.translate = `${((c.left - to.left) * w).toFixed(2)}px ${((c.top - to.top) * w).toFixed(2)}px`;
+        }
+        raf = requestAnimationFrame(track);
+      };
+      raf = requestAnimationFrame(track);
+    }
+    const done = () => { cancelAnimationFrame(raf); f.remove(); };
     const landed = sleep(grab + ms);
     landed.then(() => {
-      if (hold()) { f.remove(); return; }
+      if (hold()) { done(); return; }
       ct.style.opacity = '0';
       f.classList.add('rel');
       hk.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateY(-60%)', opacity: 1, offset: .6 }, { transform: 'translateY(-90%)', opacity: 0 }], { duration: 380, delay: 120, easing: 'cubic-bezier(.55,0,.6,1)', fill: 'both' })
-        .finished.finally(() => f.remove());
+        .finished.finally(done);
     });
     return landed;
   }
@@ -1595,7 +1616,7 @@
       document.querySelectorAll('#view .ccard.away').forEach(x => x.classList.remove('away'));
       const a0 = simGrab(card);
       card.classList.add('away');
-      craneFly(svg, end, 900, lifted ? 0 : 260, undefined, a0).then(() => sheet.classList.add('landed'));
+      craneFly(svg, end, 900, { grab: lifted ? 0 : 260, a0 }).then(() => sheet.classList.add('landed'));
     } else {
       flyClone(svg, flyTo(end), 560).finished.finally(() => sheet.classList.add('landed'));
     }
@@ -1628,9 +1649,16 @@
     document.querySelectorAll('#view .ccard.away').forEach(x => { if (!card || !x.contains(card)) x.classList.remove('away'); });
     if (card && from && canFly() && r.bottom > 0 && r.top < window.innerHeight) {
       // A daru visszaviszi a konténert a kártyára, a lap közben kicsúszik.
-      const cc = card.closest('.ccard');
-      cc.classList.add('away');
-      craneFly(from, r, 700, 200, () => cc.matches(':hover')).then(() => cc.classList.remove('away'));
+      // A célt minden képkockán újra megkeressük: görgetés vagy élő frissítés (új kártya-elem) közben is odatalál.
+      const sel = `#view .ccard[data-id="${CSS.escape(id)}"]`;
+      const cur = () => document.querySelector(sel);
+      let down = false; // lerakás után már nem rejtjük el: a kártya saját konténere látszik
+      card.closest('.ccard').classList.add('away');
+      craneFly(from, r, 700, {
+        grab: 200,
+        hold: () => { const x = cur(); return !!x && x.matches(':hover'); },
+        follow: () => { const x = cur(); if (x && !down) x.classList.add('away'); return x && x.querySelector('.ct'); },
+      }).then(() => { down = true; const x = cur(); if (x) x.classList.remove('away'); });
       from.style.opacity = '0';
     } else if (card) card.closest('.ccard').classList.remove('away');
     if (!root.firstChild || RM.matches) { root.innerHTML = ''; back(); return; }
