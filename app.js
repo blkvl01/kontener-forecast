@@ -478,8 +478,23 @@
         if (p.new) SYNC = p.new;
         renderSync();
       })
-      .subscribe();
+      .subscribe(status => {
+        if (status !== 'SUBSCRIBED') return;
+        // Újracsatlakozás után a kimaradt változások nem érkeznek meg, ezért az adatot újra lekérjük.
+        if (subscribedOnce) refreshData(); else subscribedOnce = true;
+      });
   }
+
+  // A realtime csatorna altatás vagy hálózatváltás után hézagot hagyhat, ezért az adat időnként újra lekérődik is.
+  let subscribedOnce = false, refreshing = false, lastRefresh = Date.now();
+  async function refreshData() {
+    if (!S.data || refreshing) return;
+    if (editing() || S.drawer || (window.KFTour && window.KFTour.active)) return;
+    refreshing = true;
+    try { await loadAll(); lastRefresh = Date.now(); } catch (_) { /* hálózati hiba: később újra */ }
+    refreshing = false;
+  }
+  setInterval(() => { if (!document.hidden && Date.now() - lastRefresh > 4.5 * 60000) refreshData(); }, 60000);
 
   async function upsertManual(row) {
     const { data, error } = await sb.from('manual').upsert(row, { onConflict: 'container' }).select().single();
@@ -2418,7 +2433,11 @@
       if (data) { SYNC = data; renderSync(); }
     } catch (_) { /* hálózati hiba: a következő körben újra */ }
   }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.data) pullSync(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !S.data) return;
+    pullSync();
+    if (Date.now() - lastRefresh > 60000) refreshData();
+  });
 
   setInterval(() => {
     if (!S.data) return;
