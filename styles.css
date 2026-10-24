@@ -309,6 +309,9 @@ button{cursor:pointer}
 .side-eta{font-family:var(--mono);font-size:13px;padding:4px 9px;border-radius:7px;color:oklch(0.7 0.015 255);box-shadow:inset 0 0 0 1px oklch(0.4 0.02 255)}
 .side-eta.eta{color:var(--orange-ink);background:var(--orange);box-shadow:none;font-weight:600;width:auto;height:auto;border:0}
 .side-eta.arrived{color:oklch(0.82 0.01 255);background:oklch(0.3 0.02 255);box-shadow:none}
+.side-eta.late{color:oklch(0.99 0 0);background:var(--late);box-shadow:none;font-family:var(--sans);font-size:12.5px;font-weight:600;white-space:nowrap}
+.cell-late{align-self:flex-start;margin-top:6px;padding:1px 6px;border-radius:5px;background:var(--late-soft);color:oklch(0.45 0.17 27);font-size:12px;font-weight:600;white-space:nowrap}
+.pip.pip-late{box-shadow:inset 0 0 0 2px var(--late) !important}
 .side-empty{padding:22px 0;color:var(--yard-muted)}
 .go{display:inline-flex;align-items:center;gap:10px;margin-top:18px;padding:9px 14px;border-radius:10px;border:1px solid oklch(0.34 0.02 255);background:transparent;color:oklch(0.92 0.008 255);font-weight:500;transition:background-color .16s var(--ease)}
 .go:hover{background:var(--yard-raise)}
@@ -489,6 +492,7 @@ button{cursor:pointer}
 .qres{position:absolute;top:44px;left:0;width:min(440px,92vw);max-height:420px;overflow:auto;background:var(--surface);color:var(--ink);border-radius:14px;box-shadow:0 24px 60px -24px oklch(0.15 0.03 255 / .6);padding:6px;z-index:var(--z-dialog)}
 .qhit{all:unset;box-sizing:border-box;width:100%;display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:9px 12px;border-radius:10px;cursor:pointer}
 .qhit:hover,.qhit:focus-visible{background:oklch(0.96 0.004 255)}
+.qhit.act{background:oklch(0.965 0.018 60);box-shadow:inset 0 0 0 1.5px oklch(0.72 0.165 52 / .6)}
 .qhit-id{font-family:var(--mono);font-size:13.5px;font-weight:600}
 .qhit-meta{grid-column:1;font-size:12px;color:var(--muted)}
 .qhit .ph{grid-column:2;grid-row:1 / span 2;align-self:center;font-size:12px}
@@ -516,8 +520,8 @@ button{cursor:pointer}
 .flow-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px}
 .flow-head b{font-weight:600}
 .flow-head span{font-size:12px;color:var(--muted)}
-.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));position:relative}
-.steps:before,.steps:after{content:"";position:absolute;left:8.33%;right:8.33%;top:8px;height:2px;border-radius:1px;background:oklch(0.9 0.006 255)}
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));position:relative}
+.steps:before,.steps:after{content:"";position:absolute;left:12.5%;right:12.5%;top:8px;height:2px;border-radius:1px;background:oklch(0.9 0.006 255)}
 .steps:after{background:var(--steel);transform-origin:left;transform:scaleX(var(--sp,0))}
 .steps li{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center}
 .sp-dot{width:18px;height:18px;border-radius:50%;background:var(--surface);box-shadow:inset 0 0 0 2px oklch(0.82 0.008 255);position:relative;z-index:1}
@@ -662,6 +666,9 @@ body{font-size:14.5px}
 .blk-live{--bf:var(--fill-live)}
 .blk-done{--bf:var(--fill-done)}
 .blk.late{outline:2px solid var(--late);outline-offset:1px}
+/* késés: a piros keret mellett sarokjel is (nem csak szín) */
+.blk.late:after,.lg-ct.lg-late:after{content:"";position:absolute;top:0;right:0;border-style:solid;border-width:0 10px 10px 0;border-color:transparent var(--late) transparent transparent;pointer-events:none}
+.lg-ct.lg-late{position:relative;outline:2px solid var(--late);outline-offset:1px}
 .blk-id{font-family:var(--cond);font-size:15px;font-weight:700;letter-spacing:.03em}
 .blk-r{font-family:var(--mono);font-size:11.5px;font-weight:600}
 .day-foot b{font-size:26px;font-weight:700}
@@ -1327,7 +1334,7 @@ g .hit{fill:transparent}
   .cell-top{justify-content:center}
   .cell-num{font-size:14px}
   .cell-num.today{min-width:24px;height:22px}
-  .cell-count,.cell-foot{display:none}
+  .cell-count,.cell-foot,.cell-late{display:none}
   .pips{justify-content:center;gap:2px;margin-top:6px;min-height:0}
   .pip{width:5px !important;height:9px !important}
   .month-head h1{font-size:30px}

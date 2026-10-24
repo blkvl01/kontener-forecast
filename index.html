@@ -12,9 +12,9 @@
 <link rel="preload" href="fonts/barlow-latin-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/barlow-condensed-latin-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/red-hat-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=20261022092826">
-<link rel="stylesheet" href="tour.css?v=20261022092826">
-<script src="boot-role.js?v=20261022092826"></script>
+<link rel="stylesheet" href="styles.css?v=20261024131158">
+<link rel="stylesheet" href="tour.css?v=20261024131158">
+<script src="boot-role.js?v=20261024131158"></script>
 </head>
 <body>
 <svg class="kf-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
@@ -61,8 +61,9 @@
     </nav>
     <div class="search" style="--i:2">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
-      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Konténer, MRN, rendszám, PDD" aria-label="Keresés">
-      <div class="qres" id="qres" hidden></div>
+      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Konténer, MRN, rendszám, PDD" aria-label="Keresés" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="qres">
+      <div class="qres" id="qres" role="listbox" aria-label="Találatok" hidden></div>
+      <span class="sr" id="qcount" aria-live="polite"></span>
     </div>
     <div class="spacer"></div>
     <div class="period" id="period" style="--i:3"></div>
@@ -171,10 +172,10 @@
   </div>
 </dialog>
 
-<script src="vendor/supabase.min.js?v=20261022092826"></script>
-<script src="config.js?v=20261022092826"></script>
-<script src="derive.js?v=20261022092826"></script>
-<script src="tour.js?v=20261022092826"></script>
-<script src="app.js?v=20261022092826"></script>
+<script src="vendor/supabase.min.js?v=20261024131158"></script>
+<script src="config.js?v=20261024131158"></script>
+<script src="derive.js?v=20261024131158"></script>
+<script src="tour.js?v=20261024131158"></script>
+<script src="app.js?v=20261024131158"></script>
 </body>
 </html>

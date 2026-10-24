@@ -5,7 +5,7 @@
   const DOW_S = ['H', 'K', 'Sze', 'Cs', 'P', 'Szo', 'V'];
   const MON = ['január', 'február', 'március', 'április', 'május', 'június', 'július', 'augusztus', 'szeptember', 'október', 'november', 'december'];
   const MON_S = ['jan', 'febr', 'márc', 'ápr', 'máj', 'jún', 'júl', 'aug', 'szept', 'okt', 'nov', 'dec'];
-  const ST_LABEL = { pre: 'Bejelentve', t1: 'Kamion + T1', eta: 'ETA rögzítve', arrived: 'Megérkezett', removed: 'Kikerült' };
+  const ST_LABEL = { removed: 'Kikerült' };
 
   const IC = {
     copy: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>',
@@ -718,14 +718,31 @@
 
   // ---------- render ----------
   // enter: belépő zónák szóközzel ('boot', 'yard', 'main', 'cal', 'side', 'stats'); üresen nincs belépő animáció.
+  // Újraépítéskor (élő frissítés, percenkénti frissítés) a fókusz ugyanarra a vezérlőre kerül vissza, nem esik az oldal elejére.
+  function focusKey(scope = '#view') {
+    const a = document.activeElement;
+    if (!a || !a.closest(scope)) return null;
+    const ks = ['action', 'id', 'date', 'step', 'eta', 'v'].filter(k => a.dataset[k] != null);
+    if (!ks.length) return null;
+    return a.tagName.toLowerCase() + (a.classList[0] ? `.${CSS.escape(a.classList[0])}` : '') + ks.map(k => `[data-${k}="${CSS.escape(a.dataset[k])}"]`).join('');
+  }
+  function refocus(key, scope = '#view') {
+    const a = document.activeElement;
+    if (!key || (a && a !== document.body && a.isConnected)) return;
+    const el = $(scope).querySelector(key);
+    if (el) el.focus({ preventScroll: true });
+  }
+
   function render(enter) {
     if (!S.data) return;
     renderTabs();
     renderPeriod();
     renderSync();
     const v = $('#view');
+    const fk = focusKey();
     v.className = enter ? enter.split(' ').map(z => `ev-${z}`).join(' ') : '';
     v.innerHTML = S.view === 'week' ? weekView() : S.view === 'month' ? monthView() : statsView();
+    refocus(fk);
     if (S.view === 'month') placeCalInd(false);
     renderDrawer();
     if (enter && !$('#app').hidden && !$('#app').classList.contains('boot-wait')) {
@@ -869,15 +886,17 @@
         const ph = phase(c);
         const late = lateInfo(c);
         return `
-        <div class="blk blk-${ph.grp}${late ? ' late' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)} · ${esc(ph.label)}">
+        <div class="blk blk-${ph.grp}${late ? ' late' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)} · ${esc(late ? late.label : ph.label)}">
           <span class="blk-id">${esc(c.id)}</span><span class="blk-r">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span>
         </div>`;
       }).join('');
       const nodata = !hasForecast(d) && !list.length;
       const note = nodata && d >= S.today ? '<div class="stack-note">Még nincs előrejelzés</div>' : '';
       const done = list.filter(c => phase(c).key === 'stored').length;
+      const lateN = list.filter(c => lateInfo(c)).length;
+      const say = `${DOW[i]}, ${longLabel(d)}: ${list.length} konténer${list.length ? `, ${fmtT(kg)}, ${done} betárolva` : ''}${lateN ? `, ${lateN} késik` : ''}`;
       return `
-        <button type="button" class="day${d === S.today ? ' is-today' : ''}" data-action="day" data-date="${d}" aria-pressed="${d === S.sel}" style="--i:${i}">
+        <button type="button" class="day${d === S.today ? ' is-today' : ''}" data-action="day" data-date="${d}" aria-pressed="${d === S.sel}" aria-label="${esc(say)}" style="--i:${i}">
           <div class="day-top"><span class="day-dow">${DOW[i]}</span>${d === S.today ? '<span class="today-tag">MA</span>' : ''}</div>
           <div class="day-num"><span>${parse(d).getDate()}</span></div>
           <div class="stack ${nodata ? 'nodata' : ''}" style="height:${H}px">${blocks}${note}</div>
@@ -886,7 +905,7 @@
         </button>`;
     }).join('');
 
-    const legend = [['Tervben', 0, 'plan'], ['Megérkezett', 25, 'live'], ['Nyitás', 75, 'live'], ['Betárolva', 100, 'done']]
+    const legend = [['Tervben', 0, 'plan'], ['Megérkezett', 25, 'live'], ['Nyitás', 75, 'live'], ['Betárolva', 100, 'done'], ['Késik', 0, 'plan lg-late']]
       .map(([t, p, g], i) => `<span style="--i:${i}"><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
     return `
       <section class="yard" aria-label="Heti érkezések">
@@ -897,19 +916,22 @@
   }
 
   // ---------- folyamat, késés, rámpa ----------
-  const STAGES = ['arrive', 'request', 'approved', 'opened', 'released', 'stored'];
-  const STAGE_LABEL = { arrive: 'Megérkezett', request: 'Nyitás kérve', approved: 'Nyitható', opened: 'Nyitás', released: 'Elengedve', stored: 'Betárolva' };
+  // Egy fázis, egy név: a chip, a jelmagyarázat, a mérföldkő és a statisztika ugyanezeket a feliratokat használja.
+  const STAGES = ['arrive', 'approved', 'opened', 'stored'];
+  const STAGE_LABEL = { arrive: 'Megérkezett', approved: 'Nyitható', opened: 'Nyitás', stored: 'Betárolva' };
   const PHASE = {
-    pre: ['Tervben', 0, 'plan'], t1: ['Kamion + T1', 0, 'plan'], eta: ['ETA megvan', 0, 'plan'],
+    pre: ['Tervben', 0, 'plan'], t1: ['Rendszám + T1', 0, 'plan'], eta: ['ETA', 0, 'plan'],
     request: ['Megérkezett', 0.25, 'live'], approved: ['Nyitható', 0.5, 'live'], opened: ['Nyitás', 0.75, 'live'],
-    released: ['Elengedve', 0.85, 'live'], stored: ['Betárolva', 1, 'done']
+    stored: ['Betárolva', 1, 'done']
   };
   function phase(c) {
     if (c.stage === 'stored') return { key: 'stored', label: PHASE.stored[0], p: 1, grp: 'done' };
     if (c.storage && c.storage.done) {
       return { key: 'storing', label: `Betárolás ${c.storage.done}/${c.storage.total}`, p: 0.85 + 0.15 * c.storage.done / Math.max(1, c.storage.total), grp: 'live' };
     }
-    const k = c.stage || (c.arrived ? 'request' : c.eta_time ? 'eta' : (c.plate || c.t1) ? 't1' : 'pre');
+    // Az elengedés nem külön fázis: a nyitás után a betárolásig „Nyitás” marad.
+    const s = c.stage === 'released' ? 'opened' : c.stage;
+    const k = s || (c.arrived ? 'request' : c.eta_time ? 'eta' : (c.plate || c.t1) ? 't1' : 'pre');
     const [label, p, grp] = PHASE[k];
     return { key: k, label, p, grp };
   }
@@ -924,13 +946,15 @@
     return `${d} nap ${Math.floor((min % 1440) / 60)} ó`;
   }
 
+  // Késés: ennyi perccel az ETA után. A statisztika ETA-pontossága is ezzel számol.
+  const LATE_MIN = 15;
   function lateInfo(c) {
     if (!c || c.state !== 'active' || c.arrived) return null;
     const today = iso(new Date());
     if (c.eta_time) {
       const t = new Date(`${c.eta_date || c.date}T${c.eta_time}:00`);
       const min = (Date.now() - t.getTime()) / 60000;
-      return min > 15 ? { min, label: `Késik ${fmtDur(min)}` } : null;
+      return min > LATE_MIN ? { min, label: `Késik ${fmtDur(min)}` } : null;
     }
     if (c.date && c.date < today) return { min: 0, label: 'Nem érkezett meg' };
     return null;
@@ -945,9 +969,9 @@
     let prev = null, last = -1;
     const items = STAGES.map((k, i) => {
       const at = atOf(k);
-      // Az érkezés és a nyitáskérés közti távot nem mérjük: az időtartamok a nyitáskéréstől indulnak.
-      const dur = at && prev && k !== 'request' ? fmtDur(minutesBetween(prev, at)) : '';
-      if (at) { if (k !== 'arrive' || !st.request) prev = at; last = i; }
+      // Az időtartamok a nyitáskéréstől (érkezési levél) indulnak, mint a statisztikában.
+      const dur = at && prev && k !== 'arrive' ? fmtDur(minutesBetween(prev, at)) : '';
+      if (at) { prev = k === 'arrive' ? (first || at) : at; last = i; }
       const lab = k === 'stored' && !st.stored && c.storage ? `Betárolás ${c.storage.done}/${c.storage.total}` : STAGE_LABEL[k];
       return `
         <li class="${at ? 'done' : ''}" style="--i:${i}">
@@ -1030,22 +1054,42 @@
     return `${esc(t.slice(0, a))}<mark>${esc(t.slice(a, b))}</mark>${esc(t.slice(b))}`;
   }
 
+  // Billentyűzettel: ↓/↑ lépteti a kijelölt találatot, Enter megnyitja, Esc töröl (combobox minta).
+  let qIdx = -1;
+  function searchState(open) {
+    const q = $('#q');
+    q.setAttribute('aria-expanded', String(open));
+    const hits = $('#qres').querySelectorAll('.qhit');
+    hits.forEach((h, i) => { h.classList.toggle('act', i === qIdx); h.setAttribute('aria-selected', String(i === qIdx)); });
+    if (open && hits[qIdx]) { q.setAttribute('aria-activedescendant', hits[qIdx].id); hits[qIdx].scrollIntoView({ block: 'nearest' }); }
+    else q.removeAttribute('aria-activedescendant');
+  }
+  function closeSearch() {
+    $('#qres').hidden = true;
+    qIdx = -1;
+    searchState(false);
+  }
+
   function renderSearch() {
     const box = $('#qres');
     const q = $('#q').value.trim();
-    if (q.length < 3) { box.hidden = true; box.innerHTML = ''; return; }
+    if (q.length < 3) { box.hidden = true; box.innerHTML = ''; qIdx = -1; searchState(false); $('#qcount').textContent = ''; return; }
     const hits = searchHits(q);
     const opening = box.hidden;
     box.hidden = false;
+    qIdx = hits.length ? 0 : -1;
+    const say = hits.length ? `${hits.length} találat` : 'Nincs találat';
+    if ($('#qcount').textContent !== say) $('#qcount').textContent = say;
     box.innerHTML = hits.length ? hits.map(({ c, where, val }, i) => {
       const day = c.state === 'active' ? c.day : c.removed_from;
       const out = c.state === 'removed';
-      return `<button type="button" class="qhit" data-action="qopen" data-id="${esc(c.id)}" style="--i:${i}">
+      return `<button type="button" class="qhit" id="qh-${i}" role="option" tabindex="-1" data-action="qopen" data-id="${esc(c.id)}" style="--i:${i}">
         <span class="qhit-id">${mark(c.id, q)}</span>
         <span class="qhit-meta">${day ? `${DOW_S[dowIdx(day)]} ${short(day)}` : ''} · ${val ? `${esc(where)} ${mark(val, q)}` : esc(where)}</span>
         <span class="ph ph-${out ? 'out' : `${phase(c).grp} phk-${phase(c).key}`}">${esc(out ? ST_LABEL.removed : stageText(c))}</span>
       </button>`;
     }).join('') : '<div class="qnone">Nincs találat</div>';
+    searchState(true);
     if (opening) {
       box.classList.add('opening');
       setTimeout(() => box.classList.remove('opening'), 600);
@@ -1074,7 +1118,7 @@
     const perDay = days.length ? past.length / days.length : 0;
 
     const devs = past.filter(c => c.eta_time && c.arrived_at).map(c => minutesBetween(`${c.eta_date || c.date}T${c.eta_time}:00`, c.arrived_at));
-    const early = devs.filter(d => d < -30).length, ok = devs.filter(d => Math.abs(d) <= 30).length, lateN = devs.filter(d => d > 30).length;
+    const early = devs.filter(d => d < -LATE_MIN).length, ok = devs.filter(d => Math.abs(d) <= LATE_MIN).length, lateN = devs.filter(d => d > LATE_MIN).length;
 
     const kpi = (title, l, sub, i) => {
       const v = avg(l);
@@ -1087,7 +1131,7 @@
       </div>`;
     };
 
-    const segs = [['Érkezés → Nyitható', avg(openT) || 0, 's1'], ['Nyitható → Nyitás', avg(waitT) || 0, 's2'], ['Nyitás → Betárolva', avg(openStore) || 0, 's3']];
+    const segs = [['Megérkezett → Nyitható', avg(openT) || 0, 's1'], ['Nyitható → Nyitás', avg(waitT) || 0, 's2'], ['Nyitás → Betárolva', avg(openStore) || 0, 's3']];
     const segSum = segs.reduce((t, x) => t + x[1], 0);
 
     return `
@@ -1121,7 +1165,7 @@
             ${segSum ? `<div class="flowbar">${segs.map(([k, v, cl], i) => `<div class="fb fb-${cl}" style="flex:${Math.max(v, segSum * 0.06)};--i:${i}" data-tip="${esc(`${k}: ${fmtDur(v)}`)}"><b>${esc(fmtDur(v))}</b><span>${esc(k)}</span></div>`).join('')}</div>` : '<div class="empty">Még nincs elég adat.</div>'}
           </div>
           <div class="panel chart" data-reveal>
-            <div class="chart-head"><b>Konténerenként</b><span class="lg"><i class="fb-s1"></i>Érkezés → Nyitható</span><span class="lg"><i class="fb-s2"></i>Nyitható → Nyitás</span><span class="lg"><i class="fb-s3"></i>Nyitás → Betárolva</span></div>
+            <div class="chart-head"><b>Konténerenként</b><span class="lg"><i class="fb-s1"></i>Megérkezett → Nyitható</span><span class="lg"><i class="fb-s2"></i>Nyitható → Nyitás</span><span class="lg"><i class="fb-s3"></i>Nyitás → Betárolva</span></div>
             ${gantt(past, at)}
           </div>
         </section>
@@ -1183,7 +1227,7 @@
     if (!rows.length) return '<div class="empty">Még nincs elég adat.</div>';
     const span = x => minutesBetween(x.r, x.s || x.o || x.a);
     const max = Math.max(60, ...rows.map(span));
-    const LAB = { r: 'Érkezés', a: 'Nyitható', o: 'Nyitás', s: 'Betárolva' };
+    const LAB = { r: 'Megérkezett', a: 'Nyitható', o: 'Nyitás', s: 'Betárolva' };
     const CL = { a: 's1', o: 's2', s: 's3' };
     return `<div class="gantt">${rows.map((x, i) => {
       // Ha egy mérföldkő hiányzik, a szakasz a következő meglévőig tart, így a sáv nem marad üresen.
@@ -1477,10 +1521,12 @@
       let bg = weekend ? 'oklch(0.982 0.003 255)' : 'oklch(0.995 0.001 255)';
       if (kg) bg = `oklch(${(0.995 - 0.035 * r).toFixed(3)} ${(0.035 * r).toFixed(3)} 60)`;
       const numCls = d === S.today ? 'today' : (out ? 'out' : '');
+      const lateN = list.filter(c => lateInfo(c)).length;
       return `
-        <button type="button" class="cell ${nodata ? 'nodata' : ''}" style="background-color:${bg};--w:${Math.floor(idx / 7) + (idx % 7)}" data-action="cell" data-date="${d}" aria-pressed="${d === S.calSel}" aria-label="${longLabel(d)}, ${list.length} konténer">
+        <button type="button" class="cell ${nodata ? 'nodata' : ''}" style="background-color:${bg};--w:${Math.floor(idx / 7) + (idx % 7)}" data-action="cell" data-date="${d}" aria-pressed="${d === S.calSel}" aria-label="${longLabel(d)}, ${list.length} konténer${lateN ? `, ${lateN} késik` : ''}">
           <div class="cell-top"><span class="cell-num ${numCls}">${parse(d).getDate()}</span>${list.length ? `<span class="cell-count">${list.length} db</span>` : ''}</div>
-          <div class="pips">${list.map((c, k) => { const ph = phase(c); return `<i class="pip pip-${ph.grp}" style="--p:${Math.round(ph.p * 100)}%;--k:${Math.min(k, 9)}"></i>`; }).join('')}</div>
+          ${lateN ? `<span class="cell-late">${lateN} késik</span>` : ''}
+          <div class="pips">${list.map((c, k) => { const ph = phase(c); return `<i class="pip pip-${ph.grp}${lateInfo(c) ? ' pip-late' : ''}" style="--p:${Math.round(ph.p * 100)}%;--k:${Math.min(k, 9)}"></i>`; }).join('')}</div>
           ${list.length ? `<div class="cell-foot"><div class="bar"><i class="${d < S.today ? 'past' : ''}" style="width:${Math.round(r * 100)}%"></i></div><div class="cell-t">${fmtT(kg)}</div></div>` : ''}
         </button>`;
     }).join('');
@@ -1507,11 +1553,12 @@
     const list = onDay(d);
     const rows = list.map((c, i) => {
       const ph = phase(c);
-      const etaCls = c.arrived ? 'arrived' : (c.eta_time ? 'eta' : '');
+      const late = lateInfo(c);
+      const etaCls = late ? 'late' : c.arrived ? 'arrived' : (c.eta_time ? 'eta' : '');
       return `
         <button type="button" class="side-item" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 10)}">
-          <span class="side-l"><i class="pip pip-${ph.grp} side-pip" style="--p:${Math.round(ph.p * 100)}%" aria-hidden="true"></i><span class="side-txt"><span class="mono">${esc(c.id)}</span><span class="sub2">${esc(c.plate ? plate(c.plate) : 'rendszám nélkül')} · ${fmtInt(c.kg)} kg</span></span></span>
-          <span class="side-eta ${etaCls}">${esc(c.arrived ? stageText(c) : (c.eta_time || '—'))}</span>
+          <span class="side-l"><i class="pip pip-${ph.grp}${late ? ' pip-late' : ''} side-pip" style="--p:${Math.round(ph.p * 100)}%" aria-hidden="true"></i><span class="side-txt"><span class="mono">${esc(c.id)}</span><span class="sub2">${esc(c.plate ? plate(c.plate) : 'rendszám nélkül')} · ${fmtInt(c.kg)} kg</span></span></span>
+          <span class="side-eta ${etaCls}">${esc(late ? late.label : c.arrived ? stageText(c) : (c.eta_time || '—'))}</span>
         </button>`;
     }).join('');
     const wk = mondayOf(d);
@@ -1550,11 +1597,14 @@
     const c = S.drawer && S.data.containers[S.drawer];
     if (!c) {
       S.drawer = null;
+      appInteractive();
       if (!root.classList.contains('leaving')) root.innerHTML = '';
       return;
     }
     clearTimeout(drawerTimer);
     root.classList.remove('leaving');
+    // Modális lap: a háttér nem kap fókuszt, a Tab a lapon belül marad.
+    $('#app').inert = true;
     const prevSheet = root.querySelector('.sheet');
     const keepScroll = !mode && prevSheet && prevSheet.dataset.id === c.id ? prevSheet.scrollTop : 0;
     const dayList = c.state === 'active' ? onDay(c.day) : removedOn(c.removed_from);
@@ -1573,6 +1623,8 @@
     const badge = !active ? `<span class="ph ph-out ph-lg">${esc(ST_LABEL.removed)}</span>` : `<span class="ph ph-${late ? 'late' : `${ph.grp} phk-${ph.key}`} ph-lg">${esc(late ? late.label : ph.label)}</span>`;
     const anim = { enter: ' enter', fly: ' fly', step: ' step', back: ' step back' }[mode] || '';
 
+    const had = root.contains(document.activeElement);
+    const fk = mode === 'enter' || mode === 'fly' ? null : focusKey('#drawer');
     root.innerHTML = `
       <div class="scrim${mode === 'enter' ? ' enter' : ''}" data-action="close"></div>
       <aside class="sheet${anim}" role="dialog" aria-modal="true" aria-label="${esc(c.id)}" tabindex="-1" data-id="${esc(c.id)}">
@@ -1632,7 +1684,8 @@
       </aside>`;
     const sh = root.querySelector('.sheet');
     if (keepScroll) sh.scrollTop = keepScroll;
-    if (mode === 'enter' || mode === 'fly') sh.focus({ preventScroll: true });
+    refocus(fk, '#drawer');
+    if (mode === 'enter' || mode === 'fly' || (had && !sh.contains(document.activeElement))) sh.focus({ preventScroll: true });
   }
 
   // Kártyáról nyitva a konténerrajz átrepül az adatlap fejlécébe.
@@ -1672,10 +1725,16 @@
     renderDrawer(step > 0 ? 'step' : 'back');
   }
 
+  // A háttér újra kezelhető; a túra alatt viszont az tartja inertben.
+  function appInteractive() {
+    $('#app').inert = !!(window.KFTour && window.KFTour.active);
+  }
+
   function closeDrawer() {
     if (!S.drawer) return;
     const id = S.drawer;
     const root = $('#drawer');
+    appInteractive();
     const back = () => {
       const el = drawerFrom && document.querySelector(`#view [data-id="${CSS.escape(drawerFrom)}"][data-action="open"]`);
       if (el) el.focus({ preventScroll: true });
@@ -1835,7 +1894,9 @@
     const tpl = document.createElement('template');
     tpl.innerHTML = html.trim();
     const el = tpl.content.firstElementChild;
+    const fk = focusKey();
     old.replaceWith(el);
+    refocus(fk);
     awaitReveal(v);
     countUp(el);
     diffFlash(true);
@@ -2348,11 +2409,21 @@
     document.querySelectorAll('.p-menu[open]').forEach(d => {
       if (d !== own || (e.target.closest('.p-pop button') && !e.target.closest('[data-action="user-remove"]'))) d.open = false;
     });
-    if (!e.target.closest('.search')) { const b = $('#qres'); if (b && !b.hidden) { b.hidden = true; } }
+    if (!e.target.closest('.search')) { const b = $('#qres'); if (b && !b.hidden) closeSearch(); }
   });
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && document.activeElement === $('#q')) { $('#q').value = ''; renderSearch(); return; }
+    if (document.activeElement === $('#q') && ['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) {
+      const hits = $('#qres').querySelectorAll('.qhit');
+      if ($('#qres').hidden) { if (e.key !== 'Enter' && $('#q').value.trim().length >= 3) { e.preventDefault(); renderSearch(); } return; }
+      if (!hits.length) return;
+      e.preventDefault();
+      if (e.key === 'Enter') { (hits[qIdx] || hits[0]).click(); return; }
+      qIdx = (Math.max(qIdx, e.key === 'ArrowDown' ? -1 : 0) + (e.key === 'ArrowDown' ? 1 : -1) + hits.length) % hits.length;
+      searchState(true);
+      return;
+    }
     if (e.key === 'Escape' && S.drawer && !$('#settings').open && !$('#paste').open && !$('#people').open) closeDrawer();
     if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
         && S.view === 'week' && S.data && !S.drawer && !$('#settings').open && !$('#paste').open && !$('#people').open) {
