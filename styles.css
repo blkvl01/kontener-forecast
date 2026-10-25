@@ -803,7 +803,6 @@ g .hit{fill:transparent}
   .search{grid-column:1 / -1;flex:none;width:100%}
   .spacer{display:none}
   .period{grid-column:1 / -1;flex-wrap:wrap}
-  .period .tbtn[data-action="paste"]{display:none}
   .sync{grid-row:1;grid-column:2;gap:4px}
   .sync-text{display:none}
   .yard{padding:14px 14px 0}
