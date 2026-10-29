@@ -886,7 +886,7 @@
         const ph = phase(c);
         const late = lateInfo(c);
         return `
-        <div class="blk blk-${ph.grp}${late ? ' late' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)} · ${esc(late ? late.label : ph.label)}">
+        <div class="blk blk-${ph.grp}${late ? ' late' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--bf:${carrierColor(c)};--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)} · ${esc(late ? late.label : ph.label)}">
           <span class="blk-id">${esc(c.id)}</span><span class="blk-r">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span>
         </div>`;
       }).join('');
@@ -936,6 +936,23 @@
     return { key: k, label, p, grp };
   }
   const stageText = c => phase(c).label;
+
+  // A konténer töltése a valódi doboz színében jelenik meg, a négybetűs tulajdonosi kód (prefix) alapján.
+  // Ismeretlen prefix semleges szürke; új szín felvételéhez elég egy sort bővíteni.
+  const CARRIER_GROUPS = [
+    ['oklch(0.76 0.1 225)', 'MAEU MSKU MRKU MWCU MMAU MCPU SEAU SUDU'],   // Maersk: világoskék
+    ['oklch(0.84 0.15 85)', 'MSCU MEDU MSDU'],                            // MSC: sárga
+    ['oklch(0.66 0.13 260)', 'CMAU CGMU APZU ANNU'],                      // CMA CGM: kék
+    ['oklch(0.7 0.1 240)', 'CSNU CBHU CCLU COSU CSLU OOLU OOCU'],         // COSCO / OOCL: kék
+    ['oklch(0.72 0.16 52)', 'HLXU HLCU HLBU UACU HAMU'],                  // Hapag-Lloyd: narancs
+    ['oklch(0.72 0.14 150)', 'EGHU EGSU EISU EMCU EITU EVGU'],            // Evergreen: zöld
+    ['oklch(0.7 0.19 355)', 'ONEU KKFU KKTU NYKU MOLU'],                  // ONE: magenta
+    ['oklch(0.88 0.15 100)', 'YMLU YMMU']                                 // Yang Ming: citromsárga
+  ];
+  const CARRIER_NEUTRAL = 'oklch(0.7 0.02 255)';
+  const CARRIER_COLOR = {};
+  CARRIER_GROUPS.forEach(([col, list]) => list.split(' ').forEach(p => { CARRIER_COLOR[p] = col; }));
+  const carrierColor = c => CARRIER_COLOR[String((c && c.id) || '').replace(/\s/g, '').slice(0, 4).toUpperCase()] || CARRIER_NEUTRAL;
   let svgUid = 0;
 
   function fmtDur(min) {
@@ -1018,7 +1035,7 @@
       const ph = phase(x);
       return `<button type="button" class="dock" data-action="open" data-id="${esc(x.id)}" style="--i:${Math.min(i, 9)}">
         <span class="dock-n"><small>Rámpa</small>${x.ramp}</span>
-        <span class="dock-body"><span class="dock-id">${esc(x.id)}</span><span class="dock-bar" style="--p:${Math.round(ph.p * 100)}%"></span><span class="dock-st">${esc(ph.label)}</span></span>
+        <span class="dock-body"><span class="dock-id">${esc(x.id)}</span><span class="dock-bar" style="--p:${Math.round(ph.p * 100)}%;--cc:${carrierColor(x)}"></span><span class="dock-st">${esc(ph.label)}</span></span>
       </button>`;
     }).join('');
     return `<section class="docks" aria-label="Foglalt rámpák"><div class="dock-row">${tiles}</div></section>`;
@@ -1306,7 +1323,7 @@
         <defs><clipPath id="${uid}"><rect class="ct-clip" x="6" y="8" width="${fw}" height="80"/></clipPath></defs>
         <rect class="ct-shell${ph.grp === 'plan' ? ' ct-shell-plan' : ''}" x="2" y="6" width="396" height="84" rx="2"/>
         <rect x="20.9" y="13" width="359.2" height="70" fill="url(#kf-rib)"/>
-        ${fw ? `<g clip-path="url(#${uid})"><rect class="ct-fill ct-fill-${ph.grp}" x="2" y="6" width="396" height="84"${ph.grp === 'done' ? ' fill="url(#kf-done)"' : ''}/><rect x="20.8" y="13" width="359.4" height="70" fill="url(#kf-rib-f)"/></g>` : ''}
+        ${fw ? `<g clip-path="url(#${uid})"><rect class="ct-fill ct-fill-${ph.grp}" x="2" y="6" width="396" height="84" style="fill:${carrierColor(c)}"/><rect x="20.8" y="13" width="359.4" height="70" fill="url(#kf-rib-f)"/></g>` : ''}
         ${ph.p > 0 && ph.p < 1 ? `<line class="ct-level" x1="${6 + fw}" x2="${6 + fw}" y1="12" y2="84" style="--lv:${fw}"/>` : ''}
         <rect class="ct-rail" x="2" y="6" width="396" height="6"/>
         <rect class="ct-rail" x="2" y="83" width="396" height="7"/>
@@ -1526,7 +1543,7 @@
         <button type="button" class="cell ${nodata ? 'nodata' : ''}" style="background-color:${bg};--w:${Math.floor(idx / 7) + (idx % 7)}" data-action="cell" data-date="${d}" aria-pressed="${d === S.calSel}" aria-label="${longLabel(d)}, ${list.length} konténer${lateN ? `, ${lateN} késik` : ''}">
           <div class="cell-top"><span class="cell-num ${numCls}">${parse(d).getDate()}</span>${list.length ? `<span class="cell-count">${list.length} db</span>` : ''}</div>
           ${lateN ? `<span class="cell-late">${lateN} késik</span>` : ''}
-          <div class="pips">${list.map((c, k) => { const ph = phase(c); return `<i class="pip pip-${ph.grp}${lateInfo(c) ? ' pip-late' : ''}" style="--p:${Math.round(ph.p * 100)}%;--k:${Math.min(k, 9)}"></i>`; }).join('')}</div>
+          <div class="pips">${list.map((c, k) => { const ph = phase(c); return `<i class="pip pip-${ph.grp}${lateInfo(c) ? ' pip-late' : ''}" style="--p:${Math.round(ph.p * 100)}%;--cc:${carrierColor(c)};--k:${Math.min(k, 9)}"></i>`; }).join('')}</div>
           ${list.length ? `<div class="cell-foot"><div class="bar"><i class="${d < S.today ? 'past' : ''}" style="width:${Math.round(r * 100)}%"></i></div><div class="cell-t">${fmtT(kg)}</div></div>` : ''}
         </button>`;
     }).join('');
