@@ -938,21 +938,29 @@
   const stageText = c => phase(c).label;
 
   // A konténer töltése a valódi doboz színében jelenik meg, a négybetűs tulajdonosi kód (prefix) alapján.
-  // Ismeretlen prefix semleges szürke; új szín felvételéhez elég egy sort bővíteni.
+  // A bérbeadók (Triton, Textainer, Florens, CAI, Seaco, Cronos…) dobozai jellemzően bordók,
+  // ezért ez az alapszín minden nem felsorolt prefixre. Szándékosan nem szürke: a szürke a „még nincs töltés”.
+  // Új szín felvételéhez elég egy sort bővíteni.
+  const CARRIER_DEFAULT = 'oklch(0.52 0.11 28)';
   const CARRIER_GROUPS = [
-    ['oklch(0.76 0.1 225)', 'MAEU MSKU MRKU MWCU MMAU MCPU SEAU SUDU'],   // Maersk: világoskék
-    ['oklch(0.84 0.15 85)', 'MSCU MEDU MSDU'],                            // MSC: sárga
-    ['oklch(0.66 0.13 260)', 'CMAU CGMU APZU ANNU'],                      // CMA CGM: kék
-    ['oklch(0.7 0.1 240)', 'CSNU CBHU CCLU COSU CSLU OOLU OOCU'],         // COSCO / OOCL: kék
-    ['oklch(0.72 0.16 52)', 'HLXU HLCU HLBU UACU HAMU'],                  // Hapag-Lloyd: narancs
+    [CARRIER_DEFAULT, 'HDMU HMMU ZIMU ZCSU ZCLU'],                        // HMM, ZIM: bordó
+    ['oklch(0.76 0.1 225)', 'MAEU MSKU MRKU MWCU MMAU MCPU SEAU'],        // Maersk: világoskék
+    ['oklch(0.58 0.16 25)', 'SUDU'],                                      // Hamburg Süd: piros
+    ['oklch(0.84 0.15 85)', 'MSCU MEDU MSDU MSMU'],                       // MSC: sárga
+    ['oklch(0.56 0.13 265)', 'CMAU CGMU APZU APLU APHU ANNU'],            // CMA CGM / APL / ANL: sötétkék
+    ['oklch(0.68 0.11 245)', 'CSNU CBHU COSU OOLU OOCU'],                 // COSCO / OOCL: kék
+    ['oklch(0.7 0.1 170)', 'CCLU CSLU'],                                  // China Shipping: zöld
+    ['oklch(0.72 0.16 52)', 'HLXU HLCU HLBU HAMU'],                       // Hapag-Lloyd: narancs
+    ['oklch(0.66 0.13 150)', 'UACU UASU'],                                // UASC: zöld
     ['oklch(0.72 0.14 150)', 'EGHU EGSU EISU EMCU EITU EVGU'],            // Evergreen: zöld
     ['oklch(0.7 0.19 355)', 'ONEU KKFU KKTU NYKU MOLU'],                  // ONE: magenta
-    ['oklch(0.88 0.15 100)', 'YMLU YMMU']                                 // Yang Ming: citromsárga
+    ['oklch(0.86 0.15 95)', 'YMLU YMMU'],                                 // Yang Ming: sárga
+    ['oklch(0.58 0.12 255)', 'WHLU WHSU'],                                // Wan Hai: sötétkék
+    ['oklch(0.66 0.12 240)', 'PCIU PILU PIDU']                            // PIL: kék
   ];
-  const CARRIER_NEUTRAL = 'oklch(0.7 0.02 255)';
   const CARRIER_COLOR = {};
   CARRIER_GROUPS.forEach(([col, list]) => list.split(' ').forEach(p => { CARRIER_COLOR[p] = col; }));
-  const carrierColor = c => CARRIER_COLOR[String((c && c.id) || '').replace(/\s/g, '').slice(0, 4).toUpperCase()] || CARRIER_NEUTRAL;
+  const carrierColor = c => CARRIER_COLOR[String((c && c.id) || '').replace(/\s/g, '').slice(0, 4).toUpperCase()] || CARRIER_DEFAULT;
   let svgUid = 0;
 
   function fmtDur(min) {
