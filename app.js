@@ -1948,7 +1948,8 @@
     const d = new Date();
     const day = `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
     const mrn = c.t1 || '';
-    const subject = `Érkező B2B konténer // ${c.id}// MRN ${mrn} ${day}`.replace(/ {2,}/g, ' ');
+    const subject = `Érkező B2B konténer // ${c.id}// ${day}`;
+    const awbs = (c.pdd || []).map(p => p.no).filter(Boolean);
     const lines = [
       'Érkezett egy B2B konténer.',
       `MRN ${mrn}`.trim(),
@@ -1957,7 +1958,8 @@
       '',
       'Csatolom a képeket és dokumentációt.',
       '',
-      'Kérnénk szépen nyitást!'
+      'Kérnénk szépen nyitást!',
+      ...(awbs.length ? ['', 'Fuvarlevélszámok:', ...awbs] : [])
     ];
     return { to: MAIL_TO, subject, lines, body: lines.join('\n') };
   }
