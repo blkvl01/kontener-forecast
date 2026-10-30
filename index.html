@@ -12,9 +12,9 @@
 <link rel="preload" href="fonts/barlow-latin-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/barlow-condensed-latin-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/red-hat-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=20261030083000">
-<link rel="stylesheet" href="tour.css?v=20261030083000">
-<script src="boot-role.js?v=20261030083000"></script>
+<link rel="stylesheet" href="styles.css?v=20261030104146">
+<link rel="stylesheet" href="tour.css?v=20261030104146">
+<script src="boot-role.js?v=20261030104146"></script>
 </head>
 <body>
 <svg class="kf-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
@@ -119,11 +119,17 @@
       </div>
     </section>
 
-    <section class="set-sec" id="app-sec" style="--i:4" hidden>
+    <section class="set-sec" id="sync-sec" style="--i:4" hidden>
+      <div class="set-h"><h3>Levelek</h3></div>
+      <div class="settings-row">
+        <button type="button" class="btn-ghost sm" data-action="resync">Teljes újraszinkron</button>
+      </div>
+    </section>
+
+    <section class="set-sec" id="app-sec" style="--i:5" hidden>
       <div class="set-h"><h3>Alkalmazás</h3></div>
       <label class="switch"><input type="checkbox" id="autostart"><span class="sw" aria-hidden="true"></span>Indítás a Windows-zal</label>
       <div class="settings-row">
-        <button type="button" class="btn-ghost sm" data-action="resync">Teljes újraolvasás</button>
         <button type="button" class="btn-ghost sm" data-action="datafolder">Adatmappa</button>
       </div>
     </section>
@@ -172,10 +178,10 @@
   </div>
 </dialog>
 
-<script src="vendor/supabase.min.js?v=20261030083000"></script>
-<script src="config.js?v=20261030083000"></script>
-<script src="derive.js?v=20261030083000"></script>
-<script src="tour.js?v=20261030083000"></script>
-<script src="app.js?v=20261030083000"></script>
+<script src="vendor/supabase.min.js?v=20261030104146"></script>
+<script src="config.js?v=20261030104146"></script>
+<script src="derive.js?v=20261030104146"></script>
+<script src="tour.js?v=20261030104146"></script>
+<script src="app.js?v=20261030104146"></script>
 </body>
 </html>
