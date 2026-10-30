@@ -19,6 +19,8 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     }
     for (const e of m.etas || []) {
       if (e && e.container && e.time) mailEta[e.container] = { time: e.time, date: e.date || '', at };
+      // time: null – a szállító visszavonta a korábban közölt érkezést („/”, „TBC”)
+      else if (e && e.container && e.time === null) delete mailEta[e.container];
     }
     // Szállítónként külön terv: egy levél csak a saját szállítója konténereit veheti le a listáról.
     // A dátum nélküli tétel (csak sofőr/T1/ETA frissítés) a konténer meglévő napján marad.
