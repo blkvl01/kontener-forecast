@@ -79,6 +79,9 @@
   let SYNC = null;
   let LAST_OK = null;
   let LOCAL = null;
+  // A felhős (Power Automate) újraolvasás indítása óta eltelt idő; a következő sync_status-frissítésig „Frissítés…”.
+  let CLOUD_BUSY = 0;
+  const CLOUD_BUSY_MS = 3 * 60 * 1000;
   let channel = null;
 
   const isExe = () => !!(window.pywebview && window.pywebview.api && window.pywebview.api.auto_login);
@@ -475,7 +478,10 @@
         if (p.new && p.new.ramp_count) { RAMPS = p.new.ramp_count; scheduleRender(); }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_status' }, p => {
-        if (p.new) SYNC = p.new;
+        if (p.new) {
+          if (CLOUD_BUSY && (p.new.error || (p.new.last_ok && new Date(p.new.last_ok).getTime() > CLOUD_BUSY))) CLOUD_BUSY = 0;
+          SYNC = p.new;
+        }
         renderSync();
       })
       .subscribe(status => {
@@ -547,6 +553,39 @@
     try { out = await res.json(); } catch (_) { /* üres válasz */ }
     if (!res.ok) throw new Error(out.error || 'A kérés nem sikerült.');
     return out;
+  }
+
+  // A levelek újraolvasása a felhőben (Power Automate), exe nélkül is.
+  async function cloudSync(mode) {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(`${CFG.url}/functions/v1/outlook-sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: CFG.key,
+        Authorization: `Bearer ${session ? session.access_token : CFG.key}`
+      },
+      body: JSON.stringify({ mode })
+    });
+    let out = {};
+    try { out = await res.json(); } catch (_) { /* üres válasz */ }
+    if (!res.ok) throw new Error(out.error || 'A levelek újraolvasása nem indult el.');
+    return out;
+  }
+
+  async function startCloudSync(mode) {
+    CLOUD_BUSY = Date.now();
+    renderSync();
+    setTimeout(renderSync, CLOUD_BUSY_MS + 1000);
+    try {
+      await cloudSync(mode);
+      return true;
+    } catch (e) {
+      CLOUD_BUSY = 0;
+      renderSync();
+      toast(e.message);
+      return false;
+    }
   }
 
   // ---------- nyitó animáció ----------
@@ -841,7 +880,8 @@
     if (!S.data) return;
     const sy = SYNC || {};
     const last = toLocal(sy.last_ok);
-    const busy = !!(LOCAL && LOCAL.busy);
+    if (CLOUD_BUSY && Date.now() - CLOUD_BUSY > CLOUD_BUSY_MS) CLOUD_BUSY = 0;
+    const busy = !!(LOCAL && LOCAL.busy) || !!CLOUD_BUSY;
     let dot = '', text = 'Outlook · nincs adat', tcls = '', title = '';
     if (busy) { dot = 'busy'; text = 'Frissítés…'; }
     else if (sy.error) { dot = 'err'; text = sy.error; tcls = 'err'; }
@@ -2164,6 +2204,7 @@
     $('#ramp-sec').hidden = !admin;
     $('#ramp-count').textContent = RAMPS;
     $('#app-sec').hidden = !isExe();
+    $('#sync-sec').hidden = isWorker();
     if (admin) loadUsers();
     if (isExe()) {
       try { $('#autostart').checked = !!(await exe().get_settings()).autostart; } catch (_) { /* régi exe */ }
@@ -2243,15 +2284,9 @@
         break;
       }
       case 'refresh':
-        if (isExe()) {
-          LOCAL = { ...(LOCAL || {}), busy: true };
-          renderSync();
-          await exe().refresh();
-        } else {
-          el.classList.add('spin-once');
-          await loadAll();
-          toast('Frissítve');
-        }
+        if (CLOUD_BUSY) break;
+        await loadAll();
+        await startCloudSync('refresh');
         break;
       case 'settings': openSettings(); break;
       case 'tour': startTour(el); break;
@@ -2296,8 +2331,7 @@
       case 'logout': await sb.auth.signOut(); location.reload(); break;
       case 'resync':
         $('#settings').close();
-        await exe().resync_all();
-        toast('A levelek újraolvasása elindult');
+        if (await startCloudSync('full')) toast('A levelek újraolvasása elindult');
         break;
       case 'datafolder': await exe().open_data_folder(); break;
       case 'file': await openFile(el.dataset.path); break;
