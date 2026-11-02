@@ -1676,3 +1676,71 @@ g .hit{fill:transparent}
   .wk-pre{flex-basis:100%;max-width:none;margin-left:0}
 }
 @media (prefers-reduced-motion: reduce){.ev-yard .day-px,.ev-yard .wk-bar{animation:none}}
+
+/* ---- heti összesítő 2: eltérés, állapot, prefix-kiemelés, export ---- */
+.wk-title{gap:2px}
+.wk-acts{display:flex;gap:6px;margin-top:10px}
+.wk-btn{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 11px;border-radius:8px;border:1px solid oklch(0.34 0.02 255);background:transparent;color:oklch(0.9 0.008 255);font-size:13px;font-weight:500;transition:background-color .16s var(--ease)}
+.wk-btn:hover{background:var(--yard-raise)}
+.wk-btn svg{color:var(--yard-muted)}
+.wk-btn:disabled{opacity:.45;cursor:default;background:transparent}
+.wk-d{font-family:var(--mono);font-size:11.5px;font-weight:500;color:var(--yard-muted);white-space:nowrap}
+.wk-d.up:before{content:"▲ ";font-size:9px}
+.wk-d.dn:before{content:"▼ ";font-size:9px}
+.wk-prog{display:flex;flex-direction:column;gap:6px;padding:0 0 0 26px;border-left:1px solid var(--yard-line);min-width:250px}
+.wk-prog small{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--yard-muted)}
+.wk-prog-row{display:grid;grid-template-columns:86px 1fr auto;align-items:center;gap:10px;font-size:12.5px;color:oklch(0.86 0.01 255)}
+.wk-prog-row i{height:5px;border-radius:3px;background:linear-gradient(90deg,var(--c) 0 var(--p),oklch(0.32 0.02 255) var(--p) 100%)}
+.wk-prog-row b{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--yard-text)}
+.wk-keys{gap:6px 8px}
+.wk-key{border:1px solid oklch(0.32 0.02 255);border-radius:8px;background:transparent;padding:5px 10px;transition:background-color .16s var(--ease),border-color .16s var(--ease)}
+.wk-key:not(:disabled):hover{background:var(--yard-raise)}
+.wk-key[aria-pressed="true"]{background:oklch(0.3 0.03 235);border-color:oklch(0.72 0.1 235);color:var(--yard-text)}
+.wk-key:disabled{cursor:default}
+.wk-bar i.off,.day-px i.off{opacity:.25}
+.blk.px-off{opacity:.22}
+.tr.px-off{opacity:.4}
+.fchip{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 10px 0 12px;border-radius:999px;background:oklch(0.3 0.03 235);border:1px solid oklch(0.72 0.1 235);font-size:12.5px;font-weight:500;color:var(--yard-text)}
+.fchip i{width:9px;height:9px;border-radius:2px;background:oklch(0.72 0.1 var(--h))}
+.fchip span{color:oklch(0.85 0.01 255);font-size:11px}
+.fchip:hover{background:oklch(0.34 0.035 235)}
+
+/* változásjelzés: a legutóbbi pre-alert-változat hozta új / áthelyezett / kikerült konténerek */
+.yard-top{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;padding-bottom:14px}
+.yard-top .legend{padding-bottom:0;margin-left:auto}
+.chg-btn{display:inline-flex;align-items:center;gap:10px;height:32px;padding:0 12px;border-radius:8px;border:1px solid oklch(0.5 0.1 165);background:oklch(0.27 0.035 170);color:var(--yard-text);font-size:13px;font-weight:600;transition:background-color .16s var(--ease)}
+.chg-btn:hover,.chg-btn[aria-expanded="true"]{background:oklch(0.31 0.045 170)}
+.chg-btn .n{font-family:var(--mono);font-size:12px;padding:1px 7px;border-radius:999px;background:oklch(0.74 0.11 165);color:oklch(0.18 0.03 165)}
+.chg-btn.none{border-color:oklch(0.32 0.02 255);background:transparent;color:var(--yard-muted);font-weight:500}
+.day-chg{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;min-height:20px}
+.day-chg span{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;white-space:nowrap}
+.cg-new{background:oklch(0.74 0.11 165 / .18);color:oklch(0.84 0.1 165)}
+.cg-mov{background:oklch(0.75 0.1 235 / .18);color:oklch(0.84 0.08 235)}
+.cg-out{background:oklch(0.6 0.02 255 / .25);color:oklch(0.8 0.01 255)}
+.blk-l{display:flex;align-items:center;min-width:0}
+.blk .mk{position:absolute;left:-8px;top:50%;width:7px;height:7px;margin-top:-3.5px;border-radius:50%;box-shadow:0 0 0 1.5px oklch(0.2 0.02 255)}
+.mk-new{background:oklch(0.78 0.13 165)}
+.mk-mov{background:oklch(0.78 0.1 235)}
+.blk-ghost{border-radius:3px;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 9px;border:1.5px dashed oklch(0.5 0.015 255);color:oklch(0.68 0.01 255);font-family:var(--cond);font-size:14px;font-weight:600;flex:none;overflow:hidden;white-space:nowrap}
+.blk-ghost s{text-decoration-thickness:1.5px;overflow:hidden;text-overflow:ellipsis}
+.blk-ghost em{font-style:normal;font-family:var(--sans);font-size:11px;font-weight:500;flex:none}
+.chg-pop{position:absolute;left:0;top:calc(100% - 4px);z-index:6;width:min(430px,calc(100vw - 32px));max-height:min(520px,70vh);overflow:auto;border-radius:14px;background:var(--surface);color:var(--ink);box-shadow:0 18px 50px oklch(0 0 0 / .45);padding-bottom:8px}
+.cp-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:14px 16px 10px;border-bottom:1px solid var(--line-soft)}
+.cp-head b{font-family:var(--cond);font-size:19px;font-weight:700}
+.cp-head span{font-size:12px;color:var(--muted)}
+.cp-sec{padding:10px 8px 2px}
+.cp-sec h4{margin:0 8px 4px;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.cp-row{all:unset;box-sizing:border-box;display:grid;grid-template-columns:118px 1fr auto;gap:10px;align-items:center;width:100%;padding:7px 8px;border-radius:8px;font-size:13px;cursor:pointer}
+.cp-row:hover{background:var(--surface-2)}
+.cp-row:focus-visible{outline:2px solid var(--orange);outline-offset:-2px}
+.cp-row .cid{font-size:15px}
+.cp-row time{font-family:var(--mono);font-size:11.5px;color:var(--faint);white-space:nowrap}
+.chg-pop:not([hidden]){animation:k-up-s .25s var(--ease-expo)}
+.ev-yard .day-chg span{animation:k-pop .4s var(--ease-expo) backwards;animation-delay:calc(var(--d0) + 650ms + var(--i) * 50ms)}
+@media (max-width: 760px){
+  .yard-top .legend{margin-left:0;flex:1 1 100%}
+  .wk-prog{grid-column:1 / -1;padding-left:0;border-left:0;min-width:0}
+  .cp-row{grid-template-columns:110px 1fr}
+  .cp-row time{grid-column:2}
+}
+@media (prefers-reduced-motion: reduce){.chg-pop:not([hidden]){animation:none}}

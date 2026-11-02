@@ -22,7 +22,8 @@
     check: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>',
     mail: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/></svg>',
     warn: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
-    open: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="oklch(0.4 0.015 255)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>'
+    open: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="oklch(0.4 0.015 255)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+    xls: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13l6 5M15 13l-6 5"/></svg>'
   };
 
   // ---------- segédek ----------
@@ -61,7 +62,7 @@
   const nowIso = () => { const d = new Date(); return `${iso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
 
   // ---------- állapot ----------
-  const S = { statsDays: 28, q: '', data: null, view: 'week', week: null, sel: null, month: null, calSel: null, drawer: null, pending: false, today: null, pdir: 0 };
+  const S = { statsDays: 28, q: '', data: null, view: 'week', week: null, sel: null, month: null, calSel: null, drawer: null, pending: false, today: null, pdir: 0, px: null, chg: false };
   const CFG = window.KF_CONFIG;
   const sb = window.supabase.createClient(CFG.url, CFG.key, {
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
@@ -922,32 +923,132 @@
   }
   const pxKeys = n => [...PX_KNOWN, ...Object.keys(n).filter(k => !PX_KNOWN.includes(k)).sort()];
   const pxHue = (k, keys) => PX_HUE[k] ?? PX_SPARE[(keys.indexOf(k) - PX_KNOWN.length) % PX_SPARE.length];
+  const hasPx = (c, px) => (c.pdd || []).some(p => p.no && pxOf(p.no) === px);
+  // Prefix-szűrés: csak kiemel, a számok a teljes hetet mutatják.
+  const pxOff = c => !!S.px && !hasPx(c, S.px);
+  const pxOn = k => (S.px && S.px !== k ? 'off' : '');
+
+  // Változások: naponként és szállítónként a legutóbbi pre-alert-változat ezt hozta az előzőhöz képest.
+  // A nap első előrejelzése nem jelöl mindent újnak; ami azóta máshová került vagy visszajött, kimarad.
+  function weekChanges(days) {
+    const C = S.data.containers;
+    const latest = {};
+    for (const ev of S.data.feed || []) {
+      for (const d of ev.dates) if (days.includes(d) && !latest[`${d}|${ev.src}`]) latest[`${d}|${ev.src}`] = ev;
+    }
+    const out = [];
+    for (const [key, ev] of Object.entries(latest)) {
+      const d = key.split('|')[0];
+      const on = id => C[id] && C[id].state === 'active' && C[id].date === d;
+      if (ev.before[d]) ev.added.forEach(a => { if (a.to === d && on(a.id)) out.push({ kind: 'new', id: a.id, day: d, at: ev.at }); });
+      ev.moved.forEach(m => { if (m.to === d && on(m.id)) out.push({ kind: 'mov', id: m.id, day: d, from: m.from, at: ev.at }); });
+      ev.removed.forEach(r => {
+        const x = C[r.id];
+        if (r.from === d && x && x.state === 'removed' && x.removed_from === d) out.push({ kind: 'out', id: r.id, day: d, at: ev.at });
+      });
+    }
+    return out.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : a.id < b.id ? -1 : 1));
+  }
+
+  const when = at => {
+    const d = at.slice(0, 10);
+    return d === S.today ? `ma ${hm(at)}` : d === addDays(S.today, -1) ? `tegnap ${hm(at)}` : stamp(at);
+  };
+  const dayShort = d => `${DOW[dowIdx(d)]} ${parse(d).getDate()}.`;
+  const CHG_H = { new: 'Új', mov: 'Áthelyezve', out: 'Kikerült' };
+
+  function changesPop(chg) {
+    const secs = ['new', 'mov', 'out'].map(kd => {
+      const rows = chg.filter(x => x.kind === kd);
+      if (!rows.length) return '';
+      return `
+        <div class="cp-sec"><h4>${CHG_H[kd]} · ${rows.length}</h4>${rows.map(x => `
+          <button type="button" class="cp-row" data-action="open" data-id="${esc(x.id)}"><span class="cid">${esc(x.id)}</span><span>${esc(x.kind === 'mov' ? `${dayShort(x.from)} → ${dayShort(x.day)}` : `${DOW[dowIdx(x.day)]}, ${longLabel(x.day)}`)}</span><time>${esc(when(x.at))}</time></button>`).join('')}
+        </div>`;
+    }).join('');
+    return `
+      <div class="chg-pop" id="chg-pop" role="dialog" aria-label="Változások"${S.chg ? '' : ' hidden'}>
+        <div class="cp-head"><b>Változások</b><span>legutóbbi pre-alert szerint</span></div>${secs}
+      </div>`;
+  }
+
+  function setChg(open) {
+    S.chg = open;
+    const pop = $('#chg-pop'), btn = $('.chg-btn[data-action="chg"]');
+    if (pop) pop.hidden = !open;
+    if (btn) btn.setAttribute('aria-expanded', String(open));
+  }
 
   function weekSum(lists, wpx) {
     const flat = lists.flat();
     const keys = pxKeys(wpx);
     const pdd = keys.reduce((s, k) => s + (wpx[k] || 0), 0);
-    const kpi = (lab, v, i) => `<div class="wk-kpi" style="--i:${i}"><small>${lab}</small><b>${v}</b></div>`;
-    const bar = keys.filter(k => wpx[k]).map(k => `<i style="flex:${wpx[k]};--h:${pxHue(k, keys)}"></i>`).join('');
+    const prevWk = addDays(S.week, -7);
+    const prev = [...Array(7)].map((_, i) => onDay(addDays(prevWk, i))).flat();
+    const ppx = pxCount(prev);
+    const ppdd = Object.values(ppx).reduce((s, n) => s + n, 0);
+    const delta = (v, p, f, ref) => {
+      const d = v - p;
+      return `<span class="wk-d ${d > 0 ? 'up' : d < 0 ? 'dn' : 'eq'}" title="Előző héthez képest">${d ? f(Math.abs(d)) : '0'}${ref ? ` a ${isoWeek(prevWk)}. héthez` : ''}</span>`;
+    };
+    const kpi = (lab, v, dl, i) => `<div class="wk-kpi" style="--i:${i}"><small>${lab}</small><b>${v}</b>${dl}</div>`;
+    const arrived = flat.filter(c => c.arrived).length;
+    const stored = flat.filter(c => phase(c).key === 'stored').length;
+    const prog = (lab, n, col) => `<div class="wk-prog-row"><span>${lab}</span><i style="--p:${flat.length ? Math.round(n / flat.length * 100) : 0}%;--c:${col}"></i><b>${n}/${flat.length}</b></div>`;
+    const bar = keys.filter(k => wpx[k]).map(k => `<i class="${pxOn(k)}" style="flex:${wpx[k]};--h:${pxHue(k, keys)}"></i>`).join('');
     const legend = keys.map(k => {
       const n = wpx[k] || 0;
-      return `<span class="wk-key${n ? '' : ' zero'}"><i style="--h:${pxHue(k, keys)}"></i>${esc(k)}<b>${n}</b><span>${pdd ? Math.round(n / pdd * 100) : 0}%</span></span>`;
+      return `<button type="button" class="wk-key${n ? '' : ' zero'}" data-action="px" data-v="${esc(k)}" aria-pressed="${S.px === k}"${n ? '' : ' disabled'}><i style="--h:${pxHue(k, keys)}"></i>${esc(k)}<b>${n}</b><span>${pdd ? Math.round(n / pdd * 100) : 0}%</span></button>`;
     }).join('');
     return `
       <section class="wk-foot" aria-label="Heti összesítő">
-        <div class="wk-title"><b>${isoWeek(S.week)}. hét összesen</b><span>${weekRange(S.week)}</span></div>
+        <div class="wk-title"><b>${isoWeek(S.week)}. hét összesen</b><span>${weekRange(S.week)}</span>
+          <div class="wk-acts"><button type="button" class="wk-btn" data-action="export"${flat.length ? '' : ' disabled'}>${IC.xls}Excel</button></div>
+        </div>
         <div class="wk-kpis">
-          ${kpi('Konténer', num(flat.length, 'int', 200), 0)}
-          ${kpi('Fuvarlevél', num(pdd, 'int', 240), 1)}
-          ${kpi('Colli', num(sumCt(flat), 'int', 280), 2)}
-          ${kpi('Súly', `${num(sumKg(flat) / 1000, 'd1', 320)}<em>t</em>`, 3)}
+          ${kpi('Konténer', num(flat.length, 'int', 200), delta(flat.length, prev.length, fmtInt, true), 0)}
+          ${kpi('Fuvarlevél', num(pdd, 'int', 240), delta(pdd, ppdd, fmtInt), 1)}
+          ${kpi('Colli', num(sumCt(flat), 'int', 280), delta(sumCt(flat), sumCt(prev), fmtInt), 2)}
+          ${kpi('Súly', `${num(sumKg(flat) / 1000, 'd1', 320)}<em>t</em>`, delta(sumKg(flat), sumKg(prev), fmtT), 3)}
+          <div class="wk-prog" style="--i:4"><small>Állapot</small>
+            ${prog('Megérkezett', arrived, 'var(--fill-live)')}
+            ${prog('Betárolva', stored, 'oklch(0.86 0.12 85)')}
+          </div>
         </div>
         <div class="wk-pre">
           <div class="wk-pre-head">Fuvarlevél prefix szerint<span>${fmtInt(pdd)} db</span></div>
           <div class="wk-bar" aria-hidden="true">${bar}</div>
-          <div class="wk-keys">${legend}</div>
+          <div class="wk-keys" role="group" aria-label="Kiemelés prefix szerint">${legend}</div>
         </div>
       </section>`;
+  }
+
+  // Heti export: fuvarlevelenként egy sor, pontosvesszővel tagolt CSV (a magyar Excel így bontja oszlopokra).
+  function exportWeek() {
+    const days = [...Array(7)].map((_, i) => addDays(S.week, i));
+    const dec = v => (v == null || v === '' ? '' : String(Math.round(Number(v) * 100) / 100).replace('.', ','));
+    const cell = v => { const s = String(v ?? ''); return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const rows = [['Dátum', 'Nap', 'Konténer', 'Fuvarlevél', 'Prefix', 'Súly (kg)', 'Colli', 'Szállító', 'Rendszám', 'T1/MRN', 'ETA', 'Érkezett', 'Állapot']];
+    days.forEach(d => onDay(d).forEach(c => {
+      const pdd = (c.pdd || []).filter(p => p.no);
+      // Egyetlen fuvarlevélnél (vagy ha a szállító nem ad PDD-nkénti adatot) a konténer összesítője kerül a sorba.
+      const own = (p, k, tot) => (p[k] != null && p[k] !== '' ? p[k] : pdd.length <= 1 ? tot : '');
+      (pdd.length ? pdd : [{}]).forEach(p => rows.push([
+        d, DOW[dowIdx(d)], c.id, p.no || '', p.no ? pxOf(p.no) : '',
+        dec(own(p, 'kg', c.kg)), dec(own(p, 'ctns', c.ctns)),
+        c.fwd || '', plate(c.plate), c.t1 || '', c.eta_time || '',
+        c.arrived && c.arrived_at ? stamp(c.arrived_at) : '', stageText(c)
+      ]));
+    }));
+    const csv = '﻿' + rows.map(r => r.map(cell).join(';')).join('\r\n') + '\r\n';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = `kontener-${S.week.slice(0, 4)}-${pad(isoWeek(S.week))}-het.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast(`${rows.length - 1} fuvarlevél letöltve`);
   }
 
   function weekView() {
@@ -957,9 +1058,17 @@
     const H = window.matchMedia('(max-width: 760px)').matches ? 300 : 380;
     const GAP = 5;
     const avail = H - 12;
+    const chg = weekChanges(days);
+    if (!chg.length) S.chg = false;
+    // Kikerült vagy elvitt konténer: szaggatott helyőrző a nap alján.
+    const ghosts = days.map(d => [
+      ...chg.filter(x => x.kind === 'out' && x.day === d).map(x => ({ id: x.id, t: 'kikerült' })),
+      ...chg.filter(x => x.kind === 'mov' && x.from === d).map(x => ({ id: x.id, t: `→ ${DOW[dowIdx(x.day)]}` }))
+    ]);
+    const GH = 22;
     const minH = Math.max(16, Math.min(maxN > 10 ? 22 : 34, Math.floor((avail - (maxN - 1) * GAP) / maxN)));
-    // A legnagyobb arány, amelynél minden nap oszlopa (minimum magassággal együtt) belefér a sávba.
-    const fits = k => lists.every(l => l.reduce((s, c) => s + Math.max(minH, Math.round((c.kg || 0) * k)), 0) + Math.max(0, l.length - 1) * GAP <= avail);
+    // A legnagyobb arány, amelynél minden nap oszlopa (minimum magassággal és a helyőrzőkkel együtt) belefér a sávba.
+    const fits = k => lists.every((l, i) => l.reduce((s, c) => s + Math.max(minH, Math.round((c.kg || 0) * k)), 0) + Math.max(0, l.length - 1) * GAP + ghosts[i].length * (GH + GAP) <= avail);
     let lo = 0, hi = avail / Math.max(1, ...lists.map(l => Math.max(0, ...l.map(c => c.kg || 0))));
     for (let n = 0; n < 24; n++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
     const k = lo;
@@ -969,14 +1078,29 @@
     const cols = days.map((d, i) => {
       const list = lists[i];
       const kg = sumKg(list);
+      const dchg = chg.filter(x => x.day === d);
+      const mk = {};
+      dchg.forEach(x => { if (x.kind !== 'out') mk[x.id] = x.kind; });
       const blocks = list.slice().sort((a, b) => phase(b).p - phase(a).p || (a.eta_time || '99').localeCompare(b.eta_time || '99')).reverse().map((c, j, arr) => {
         const ph = phase(c);
         const late = lateInfo(c);
+        const m = mk[c.id];
         return `
-        <div class="blk blk-${ph.grp}${late ? ' late' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)} · ${esc(late ? late.label : ph.label)}">
-          <span class="blk-id">${esc(c.id)}</span><span class="blk-r">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span>
+        <div class="blk blk-${ph.grp}${late ? ' late' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)} · ${esc(late ? late.label : ph.label)}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">
+          <span class="blk-l">${m ? `<i class="mk mk-${m}" aria-hidden="true"></i>` : ''}<span class="blk-id">${esc(c.id)}</span></span><span class="blk-r">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span>
         </div>`;
       }).join('');
+      const ghost = ghosts[i].map(g => `<div class="blk-ghost" style="height:${GH}px"><s>${esc(g.id)}</s><em>${esc(g.t)}</em></div>`).join('');
+      const nNew = dchg.filter(x => x.kind === 'new').length;
+      const nMov = dchg.filter(x => x.kind === 'mov').length;
+      const nOut = dchg.filter(x => x.kind === 'out').length;
+      const nAway = ghosts[i].length - nOut;
+      const chips = [
+        nNew && `<span class="cg-new">+${nNew} új</span>`,
+        nMov && `<span class="cg-mov">${nMov} áthelyezve ide</span>`,
+        nAway && `<span class="cg-out">${nAway} áthelyezve innen</span>`,
+        nOut && `<span class="cg-out">${nOut} kikerült</span>`
+      ].filter(Boolean);
       const nodata = !hasForecast(d) && !list.length;
       const note = nodata && d >= S.today ? '<div class="stack-note">Még nincs előrejelzés</div>' : '';
       const done = list.filter(c => phase(c).key === 'stored').length;
@@ -984,15 +1108,17 @@
       const dpx = pxCount(list);
       const dkeys = wkeys.filter(x => dpx[x]);
       const pxs = dkeys.map(x => `${x} ${dpx[x]}`).join(' · ');
-      const say = `${DOW[i]}, ${longLabel(d)}: ${list.length} konténer${list.length ? `, ${fmtT(kg)}, ${done} betárolva` : ''}${lateN ? `, ${lateN} késik` : ''}${pxs ? `, fuvarlevél: ${pxs}` : ''}`;
+      const chgSay = chips.map(s => s.replace(/<[^>]+>/g, '')).join(', ');
+      const say = `${DOW[i]}, ${longLabel(d)}: ${list.length} konténer${list.length ? `, ${fmtT(kg)}, ${done} betárolva` : ''}${lateN ? `, ${lateN} késik` : ''}${pxs ? `, fuvarlevél: ${pxs}` : ''}${chgSay ? `, változás: ${chgSay}` : ''}`;
       return `
         <button type="button" class="day${d === S.today ? ' is-today' : ''}" data-action="day" data-date="${d}" aria-pressed="${d === S.sel}" aria-label="${esc(say)}" style="--i:${i}">
           <div class="day-top"><span class="day-dow">${DOW[i]}</span>${d === S.today ? '<span class="today-tag">MA</span>' : ''}</div>
           <div class="day-num"><span>${parse(d).getDate()}</span></div>
-          <div class="stack ${nodata ? 'nodata' : ''}" style="height:${H}px">${blocks}${note}</div>
+          <div class="day-chg">${chips.join('')}</div>
+          <div class="stack ${nodata ? 'nodata' : ''}" style="height:${H}px">${blocks}${ghost}${note}</div>
           <div class="day-foot"><span><b>${num(list.length, 'int', 120 + i * 40)}</b><small>konténer</small></span><span class="day-t">${list.length ? fmtT(kg) : '—'}</span></div>
           <div class="day-ctn">${list.length ? `<span>${fmtInt(sumCt(list))} karton</span>${done ? `<span class="day-sto"><i style="--p:${Math.round(done / list.length * 100)}%"></i>${done}/${list.length} betárolva</span>` : ''}` : ''}</div>
-          ${dkeys.length ? `<div class="day-px" aria-hidden="true">${dkeys.map(x => `<i style="flex:${dpx[x]};--h:${pxHue(x, wkeys)}"></i>`).join('')}</div><div class="day-pxt">${esc(pxs)}</div>` : ''}
+          ${dkeys.length ? `<div class="day-px" aria-hidden="true">${dkeys.map(x => `<i class="${pxOn(x)}" style="flex:${dpx[x]};--h:${pxHue(x, wkeys)}"></i>`).join('')}</div><div class="day-pxt">${esc(pxs)}</div>` : ''}
         </button>`;
     }).join('');
 
@@ -1000,7 +1126,13 @@
       .map(([t, p, g], i) => `<span style="--i:${i}"><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
     return `
       <section class="yard" aria-label="Heti érkezések">
-        <div class="legend">${legend}</div>
+        <div class="yard-top">
+          ${chg.length
+            ? `<button type="button" class="chg-btn" data-action="chg" aria-expanded="${!!S.chg}" aria-controls="chg-pop">Változások <span class="n">${chg.length}</span></button>${changesPop(chg)}`
+            : '<span class="chg-btn none">Nincs változás</span>'}
+          ${S.px ? `<button type="button" class="fchip" data-action="px" data-v="" aria-label="Kiemelés törlése: ${esc(S.px)}" style="--h:${pxHue(S.px, wkeys)}"><i></i>Csak ${esc(S.px)}<span aria-hidden="true">✕</span></button>` : ''}
+          <div class="legend">${legend}</div>
+        </div>
         <div class="yard-scroll"><div class="days" style="--di:${Math.max(0, days.indexOf(S.sel))}"><i class="day-ind" aria-hidden="true"></i>${cols}</div></div>
         ${weekSum(lists, wpx)}
       </section>
@@ -1558,7 +1690,7 @@
       if (lt) flags.push(`<div class="flag late">${IC.warn}${esc(lt.label)}</div>`);
       const drv = [c.driver, c.phone].filter(Boolean).join(' · ');
       return `
-        <div class="tr row" data-id="${esc(c.id)}" style="--i:${Math.min(i, 12)}">
+        <div class="tr row${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--i:${Math.min(i, 12)}">
           <div><button type="button" class="cid" data-action="open" data-id="${esc(c.id)}">${esc(c.id)}</button><div class="sub2">${c.pdd.length} PDD</div></div>
           <div class="cell-mono pddcol">${c.pdd.filter(p => p.no).map(p => `<div>${esc(p.no)}</div>`).join('') || '<span class="dim">—</span>'}</div>
           <div><div class="cell-mono ${c.plate ? '' : 'dim'}">${c.plate ? esc(plate(c.plate)) : 'várható'}</div>${drv ? `<div class="sub2">${esc(drv)}</div>` : ''}</div>
@@ -2306,11 +2438,16 @@
   }
 
   document.addEventListener('click', async e => {
+    // A változáslista bezárul kívülre kattintva, és ha belőle nyílik egy konténer.
+    if (S.chg && (!e.target.closest('#chg-pop, [data-action="chg"]') || e.target.closest('#chg-pop [data-action]'))) setChg(false);
     const el = e.target.closest('[data-action]');
     if (!el || el.disabled) return;
     const a = el.dataset.action;
     switch (a) {
       case 'view': switchView(el.dataset.view); break;
+      case 'chg': setChg(!S.chg); break;
+      case 'px': S.px = el.dataset.v && S.px !== el.dataset.v ? el.dataset.v : null; render(); break;
+      case 'export': exportWeek(); break;
       case 'prev': nav(-1); break;
       case 'next': nav(1); break;
       case 'today': goToday(); break;
@@ -2502,6 +2639,7 @@
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && document.activeElement === $('#q')) { $('#q').value = ''; renderSearch(); return; }
+    if (e.key === 'Escape' && S.chg) { setChg(false); const b = $('.chg-btn[data-action="chg"]'); if (b) b.focus(); return; }
     if (document.activeElement === $('#q') && ['ArrowDown', 'ArrowUp', 'Enter'].includes(e.key)) {
       const hits = $('#qres').querySelectorAll('.qhit');
       if ($('#qres').hidden) { if (e.key !== 'Enter' && $('#q').value.trim().length >= 3) { e.preventDefault(); renderSearch(); } return; }

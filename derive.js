@@ -52,7 +52,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
           history: [{ at, kind: 'first', date: c.date }],
           moved_from: null, moved_at: null, removed_from: null, removed_at: null
         };
-        ev.added.push(c.id);
+        ev.added.push({ id: c.id, to: c.date });
       } else if (x.state === 'removed' || x.date !== c.date) {
         const from = x.date;
         x.history.push({ at, kind: 'moved', from, to: c.date, back: x.state === 'removed' });
@@ -95,7 +95,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
         x.removed_from = d;
         x.removed_at = at;
         x.history.push({ at, kind: 'removed', from: d });
-        ev.removed.push(id);
+        ev.removed.push({ id, from: d });
       }
     }
     feed.push(ev);
@@ -203,7 +203,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
   return {
     containers: C,
     forecast_dates: [...forecastDates].sort(),
-    feed: feed.reverse().slice(0, 60),
+    feed: feed.reverse().slice(0, 200),
     message_count: mails.length
   };
 };
