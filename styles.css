@@ -656,7 +656,6 @@ body{font-size:14.5px}
 /* heti sáv */
 .legend{gap:8px 18px}
 .lg-ct{width:30px !important;height:12px !important;border-radius:2px !important;background:linear-gradient(90deg,var(--fill-live) 0 var(--p),var(--empty) var(--p) 100%);box-shadow:inset 0 0 0 1px var(--frame)}
-.days{min-width:1060px}
 .day{padding:18px 12px 20px}
 .stack{gap:5px}
 .blk{position:relative;border-radius:3px;padding:0 9px;font-size:12.5px;color:oklch(0.17 0.02 255);
@@ -807,10 +806,8 @@ g .hit{fill:transparent}
   .sync-text{display:none}
   .yard{padding:14px 14px 0}
   .legend{justify-content:flex-start}
-  .days{min-width:760px}
   .day{padding:14px 10px 16px}
   .day-num{font-size:30px}
-  .days{min-width:860px}
   .main,.statsv,.month{padding:20px 14px 48px}
   .dayhead h1{font-size:30px}
   .stats>div{padding:10px 14px;min-width:0;flex:1 1 30%}
@@ -1323,7 +1320,14 @@ g .hit{fill:transparent}
 .stack{container-type:inline-size}
 @container (max-width: 156px){.blk{padding:0 6px;gap:4px}.blk-id{font-size:13px;letter-spacing:.01em}.blk-r{font-size:10px}}
 @container (max-width: 118px){.blk-r{display:none}}
-@media (max-width: 760px){.days{min-width:980px}.day-t,.day-sto{white-space:nowrap}.day-sto i{display:none}}
+/* A súly/időpont sosem csúszik a konténerszámra: a jobb oldal nem zsugorodik, a bal levágódik, ha mégis szűk a hely. */
+.blk-r{flex:none}
+.blk-l{flex:0 1 auto}
+.blk-id{min-width:0;overflow:hidden}
+/* Az oszlop elég széles egy teljes konténerszámhoz és súlyhoz (kb. 130 px-es sáv). */
+.days{min-width:1100px}
+.day-t{white-space:nowrap}
+@media (max-width: 760px){.days{min-width:1080px}.day-sto{white-space:nowrap}.day-sto i{display:none}}
 .month-head h1 .slot{color:inherit}
 @media (max-width: 760px){
   .cal{min-width:0}
