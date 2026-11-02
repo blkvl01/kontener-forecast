@@ -1055,9 +1055,8 @@
     const days = [...Array(7)].map((_, i) => addDays(S.week, i));
     const lists = days.map(onDay);
     const maxN = Math.max(1, ...lists.map(l => l.length));
-    const H = window.matchMedia('(max-width: 760px)').matches ? 300 : 380;
+    const baseH = window.matchMedia('(max-width: 760px)').matches ? 300 : 380;
     const GAP = 5;
-    const avail = H - 12;
     const chg = weekChanges(days);
     if (!chg.length) S.chg = false;
     // Kikerült vagy elvitt konténer: szaggatott helyőrző a nap alján.
@@ -1066,7 +1065,14 @@
       ...chg.filter(x => x.kind === 'mov' && x.from === d).map(x => ({ id: x.id, t: `→ ${DOW[dowIdx(x.day)]}` }))
     ]);
     const GH = 22;
-    const minH = Math.max(16, Math.min(maxN > 10 ? 22 : 34, Math.floor((avail - (maxN - 1) * GAP) / maxN)));
+    // A blokk legalább olvasható magasságú (MINH); sok konténernél nem zsugorodik tovább, hanem a sáv nő meg,
+    // így a blokkok sosem lógnak rá a nap fejlécére.
+    const MINH = 22;
+    const minH = Math.max(MINH, Math.min(maxN > 10 ? MINH : 34, Math.floor((baseH - 12 - (maxN - 1) * GAP) / maxN)));
+    const need = Math.max(0, ...lists.map((l, i) => l.length * minH + Math.max(0, l.length - 1) * GAP + ghosts[i].length * (GH + GAP)));
+    // Túltelt hétnél egy kis ráhagyás marad, hogy a súly szerinti magasságkülönbség is látsszon.
+    const H = need + 12 > baseH ? Math.ceil(need * 1.12) + 12 : baseH;
+    const avail = H - 12;
     // A legnagyobb arány, amelynél minden nap oszlopa (minimum magassággal és a helyőrzőkkel együtt) belefér a sávba.
     const fits = k => lists.every((l, i) => l.reduce((s, c) => s + Math.max(minH, Math.round((c.kg || 0) * k)), 0) + Math.max(0, l.length - 1) * GAP + ghosts[i].length * (GH + GAP) <= avail);
     let lo = 0, hi = avail / Math.max(1, ...lists.map(l => Math.max(0, ...l.map(c => c.kg || 0))));
