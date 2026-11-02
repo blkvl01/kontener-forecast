@@ -1636,3 +1636,43 @@ g .hit{fill:transparent}
 @keyframes hk-blink{50%{opacity:.35}}
 @keyframes hk-pad-out{from{opacity:1;transform:none}to{opacity:0;transform:scale(.97)}}
 @keyframes hk-impact{from{opacity:1;transform:scaleX(.35)}to{opacity:0;transform:scaleX(1.15) translateY(4px)}}
+
+/* ---- heti összesítő: a hét alatti sáv és a napi fuvarlevél-prefix csík ---- */
+.day-px{display:flex;gap:2px;height:4px;margin-top:9px}
+.day-px i,.wk-bar i,.wk-key i{background-color:oklch(0.72 0.1 var(--h))}
+.day-px i{display:block;border-radius:1px}
+.day-pxt{margin-top:5px;font-family:var(--mono);font-size:11.5px;color:var(--yard-muted);text-align:right;white-space:nowrap}
+.wk-foot{display:flex;flex-wrap:wrap;align-items:stretch;gap:18px 40px;padding:18px 0 22px;border-top:1px solid var(--yard-line)}
+.wk-title{display:flex;flex-direction:column;justify-content:center;padding-right:26px;border-right:1px solid var(--yard-line)}
+.wk-title b{font-family:var(--cond);font-size:22px;font-weight:700}
+.wk-title span{font-size:12.5px;color:var(--yard-muted)}
+.wk-kpis{display:flex;align-items:stretch}
+.wk-kpi{display:flex;flex-direction:column;gap:2px;padding:0 26px;border-left:1px solid var(--yard-line)}
+.wk-kpi:first-child{padding-left:0;border-left:0}
+.wk-kpi small{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--yard-muted)}
+.wk-kpi b{font-family:var(--cond);font-size:34px;font-weight:700;line-height:1.05;white-space:nowrap}
+.wk-kpi b em{font-style:normal;font-size:18px;font-weight:600;color:oklch(0.86 0.01 255);margin-left:4px}
+.wk-pre{flex:1 1 320px;max-width:520px;margin-left:auto;display:flex;flex-direction:column;justify-content:center;gap:9px}
+.wk-pre-head{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--yard-muted)}
+.wk-pre-head span{font-family:var(--mono);font-weight:500;letter-spacing:0;text-transform:none}
+.wk-bar{display:flex;gap:3px;height:14px;border-radius:2px;background:oklch(0.26 0.02 255)}
+.wk-bar i{display:block;height:100%;border-radius:2px;background-image:repeating-linear-gradient(90deg,oklch(0 0 0 / .1) 0 2px,transparent 2px 8px)}
+.wk-keys{display:flex;flex-wrap:wrap;gap:6px 22px}
+.wk-key{display:flex;align-items:center;gap:8px;font-size:13px;color:oklch(0.86 0.01 255)}
+.wk-key i{width:10px;height:10px;border-radius:2px}
+.wk-key b{font-family:var(--mono);font-weight:600;color:var(--yard-text)}
+.wk-key span{font-family:var(--mono);font-size:12px;color:var(--yard-muted)}
+.wk-key.zero{opacity:.45}
+.ev-yard .day-px{transform-origin:left;animation:k-gx .6s var(--ease-quart) backwards;animation-delay:calc(var(--d0) + 700ms + var(--i) * 50ms)}
+.ev-yard .wk-title,.ev-yard .wk-kpi{animation:k-up-s .45s var(--ease-expo) backwards;animation-delay:calc(var(--d0) + 380ms + var(--i, 0) * 50ms)}
+.ev-yard .wk-bar{transform-origin:left;animation:k-gx .7s var(--ease-quart) backwards;animation-delay:calc(var(--d0) + 560ms)}
+@media (max-width: 760px){
+  .wk-foot{gap:14px 24px;padding:14px 0 18px}
+  .wk-title{padding-right:0;border-right:0;flex:1 1 100%}
+  .wk-kpis{flex:1 1 100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 0}
+  .wk-kpi{padding:0 16px}
+  .wk-kpi:nth-child(odd){padding-left:0;border-left:0}
+  .wk-kpi b{font-size:28px}
+  .wk-pre{flex-basis:100%;max-width:none;margin-left:0}
+}
+@media (prefers-reduced-motion: reduce){.ev-yard .day-px,.ev-yard .wk-bar{animation:none}}

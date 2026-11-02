@@ -846,12 +846,7 @@
       return;
     }
     if (S.view === 'week') {
-      const end = addDays(S.week, 6);
-      const a = parse(S.week), b = parse(end);
-      const range = a.getMonth() === b.getMonth()
-        ? `${MON_S[a.getMonth()]} ${a.getDate()} – ${b.getDate()}`
-        : `${MON_S[a.getMonth()]} ${a.getDate()} – ${MON_S[b.getMonth()]} ${b.getDate()}`;
-      label = `<b>${isoWeek(S.week)}. hét</b><span>${range}</span>`;
+      label = `<b>${isoWeek(S.week)}. hét</b><span>${weekRange(S.week)}</span>`;
     } else {
       const d = parse(S.month + '-01');
       label = `<b>${MON[d.getMonth()]}</b><span>${d.getFullYear()}</span>`;
@@ -905,6 +900,56 @@
   }
 
   // ---------- heti nézet ----------
+  function weekRange(wk) {
+    const a = parse(wk), b = parse(addDays(wk, 6));
+    return a.getMonth() === b.getMonth()
+      ? `${MON_S[a.getMonth()]} ${a.getDate()} – ${b.getDate()}`
+      : `${MON_S[a.getMonth()]} ${a.getDate()} – ${MON_S[b.getMonth()]} ${b.getDate()}`;
+  }
+
+  // Fuvarlevél-prefix: a PDD-szám „TM” előtti része (J1zTM… → J1z). A három ismert prefix mindig látszik a heti összesítőben.
+  const PX_KNOWN = ['J1z', 'SZDm', 'Oy'];
+  const PX_HUE = { J1z: 235, SZDm: 165, Oy: 305 };
+  const PX_SPARE = [95, 15, 270, 200];
+  function pxOf(no) {
+    const m = /^([A-Za-z0-9]+?)TM\d/.exec(no);
+    return m ? m[1] : (/^[A-Za-z]+/.exec(no) || ['Egyéb'])[0];
+  }
+  function pxCount(list) {
+    const n = {};
+    list.forEach(c => (c.pdd || []).forEach(p => { if (p.no) { const k = pxOf(p.no); n[k] = (n[k] || 0) + 1; } }));
+    return n;
+  }
+  const pxKeys = n => [...PX_KNOWN, ...Object.keys(n).filter(k => !PX_KNOWN.includes(k)).sort()];
+  const pxHue = (k, keys) => PX_HUE[k] ?? PX_SPARE[(keys.indexOf(k) - PX_KNOWN.length) % PX_SPARE.length];
+
+  function weekSum(lists, wpx) {
+    const flat = lists.flat();
+    const keys = pxKeys(wpx);
+    const pdd = keys.reduce((s, k) => s + (wpx[k] || 0), 0);
+    const kpi = (lab, v, i) => `<div class="wk-kpi" style="--i:${i}"><small>${lab}</small><b>${v}</b></div>`;
+    const bar = keys.filter(k => wpx[k]).map(k => `<i style="flex:${wpx[k]};--h:${pxHue(k, keys)}"></i>`).join('');
+    const legend = keys.map(k => {
+      const n = wpx[k] || 0;
+      return `<span class="wk-key${n ? '' : ' zero'}"><i style="--h:${pxHue(k, keys)}"></i>${esc(k)}<b>${n}</b><span>${pdd ? Math.round(n / pdd * 100) : 0}%</span></span>`;
+    }).join('');
+    return `
+      <section class="wk-foot" aria-label="Heti összesítő">
+        <div class="wk-title"><b>${isoWeek(S.week)}. hét összesen</b><span>${weekRange(S.week)}</span></div>
+        <div class="wk-kpis">
+          ${kpi('Konténer', num(flat.length, 'int', 200), 0)}
+          ${kpi('Fuvarlevél', num(pdd, 'int', 240), 1)}
+          ${kpi('Colli', num(sumCt(flat), 'int', 280), 2)}
+          ${kpi('Súly', `${num(sumKg(flat) / 1000, 'd1', 320)}<em>t</em>`, 3)}
+        </div>
+        <div class="wk-pre">
+          <div class="wk-pre-head">Fuvarlevél prefix szerint<span>${fmtInt(pdd)} db</span></div>
+          <div class="wk-bar" aria-hidden="true">${bar}</div>
+          <div class="wk-keys">${legend}</div>
+        </div>
+      </section>`;
+  }
+
   function weekView() {
     const days = [...Array(7)].map((_, i) => addDays(S.week, i));
     const lists = days.map(onDay);
@@ -918,6 +963,8 @@
     let lo = 0, hi = avail / Math.max(1, ...lists.map(l => Math.max(0, ...l.map(c => c.kg || 0))));
     for (let n = 0; n < 24; n++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
     const k = lo;
+    const wpx = pxCount(lists.flat());
+    const wkeys = pxKeys(wpx);
 
     const cols = days.map((d, i) => {
       const list = lists[i];
@@ -934,7 +981,10 @@
       const note = nodata && d >= S.today ? '<div class="stack-note">Még nincs előrejelzés</div>' : '';
       const done = list.filter(c => phase(c).key === 'stored').length;
       const lateN = list.filter(c => lateInfo(c)).length;
-      const say = `${DOW[i]}, ${longLabel(d)}: ${list.length} konténer${list.length ? `, ${fmtT(kg)}, ${done} betárolva` : ''}${lateN ? `, ${lateN} késik` : ''}`;
+      const dpx = pxCount(list);
+      const dkeys = wkeys.filter(x => dpx[x]);
+      const pxs = dkeys.map(x => `${x} ${dpx[x]}`).join(' · ');
+      const say = `${DOW[i]}, ${longLabel(d)}: ${list.length} konténer${list.length ? `, ${fmtT(kg)}, ${done} betárolva` : ''}${lateN ? `, ${lateN} késik` : ''}${pxs ? `, fuvarlevél: ${pxs}` : ''}`;
       return `
         <button type="button" class="day${d === S.today ? ' is-today' : ''}" data-action="day" data-date="${d}" aria-pressed="${d === S.sel}" aria-label="${esc(say)}" style="--i:${i}">
           <div class="day-top"><span class="day-dow">${DOW[i]}</span>${d === S.today ? '<span class="today-tag">MA</span>' : ''}</div>
@@ -942,6 +992,7 @@
           <div class="stack ${nodata ? 'nodata' : ''}" style="height:${H}px">${blocks}${note}</div>
           <div class="day-foot"><span><b>${num(list.length, 'int', 120 + i * 40)}</b><small>konténer</small></span><span class="day-t">${list.length ? fmtT(kg) : '—'}</span></div>
           <div class="day-ctn">${list.length ? `<span>${fmtInt(sumCt(list))} karton</span>${done ? `<span class="day-sto"><i style="--p:${Math.round(done / list.length * 100)}%"></i>${done}/${list.length} betárolva</span>` : ''}` : ''}</div>
+          ${dkeys.length ? `<div class="day-px" aria-hidden="true">${dkeys.map(x => `<i style="flex:${dpx[x]};--h:${pxHue(x, wkeys)}"></i>`).join('')}</div><div class="day-pxt">${esc(pxs)}</div>` : ''}
         </button>`;
     }).join('');
 
@@ -951,6 +1002,7 @@
       <section class="yard" aria-label="Heti érkezések">
         <div class="legend">${legend}</div>
         <div class="yard-scroll"><div class="days" style="--di:${Math.max(0, days.indexOf(S.sel))}"><i class="day-ind" aria-hidden="true"></i>${cols}</div></div>
+        ${weekSum(lists, wpx)}
       </section>
       ${dayPanel()}`;
   }
