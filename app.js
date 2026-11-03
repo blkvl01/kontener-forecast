@@ -25,6 +25,7 @@
     open: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="oklch(0.4 0.015 255)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
     cam: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>',
     img: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg>',
+    box: '<svg width="16" height="11" viewBox="0 0 22 15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="1.5" width="19" height="12" rx="1"/><path d="M6 4.5v6M9.5 4.5v6M13 4.5v6M16.5 4.5v6"/></svg>',
     xls: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13l6 5M15 13l-6 5"/></svg>'
   };
 
@@ -1115,7 +1116,7 @@
         const m = mk[c.id];
         const cp = cPx(c);
         return `
-        <div class="blk blk-${ph.grp}${late ? ' late' : ''}${cp ? ' pxo' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px${cp ? `;--h:${pxHue(cp, wkeys)}` : ''}" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} · ${esc(late ? late.label : ph.label)}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">
+        <div class="blk blk-${ph.grp}${late ? ' late' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} ·${esc(late ? late.label : ph.label)}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">
           <span class="blk-l">${m ? `<i class="mk mk-${m}" aria-hidden="true"></i>` : ''}<span class="blk-id">${esc(c.id)}</span></span><span class="blk-r">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span>
         </div>`;
       }).join('');
@@ -1147,7 +1148,7 @@
           <div class="stack ${nodata ? 'nodata' : ''}" style="height:${H}px">${blocks}${ghost}${note}</div>
           <div class="day-foot"><span><b>${num(list.length, 'int', 120 + i * 40)}</b><small>konténer</small></span><span class="day-t">${list.length ? fmtT(kg) : '—'}</span></div>
           <div class="day-ctn">${list.length ? `<span>${fmtInt(sumCt(list))} karton</span>${done ? `<span class="day-sto"><i style="--p:${Math.round(done / list.length * 100)}%"></i>${done}/${list.length} betárolva</span>` : ''}` : ''}</div>
-          ${dkeys.length ? `<div class="day-px" aria-hidden="true">${dkeys.map(x => `<i class="${pxOn(x)}" style="flex:${dpx[x]};--h:${pxHue(x, wkeys)}"></i>`).join('')}</div><div class="day-pxt">${esc(pxs)}</div>` : ''}
+          ${dkeys.length ? `<div class="day-px" aria-hidden="true">${dkeys.map(x => `<i class="${pxOn(x)}" style="flex:${dpx[x]};--h:${pxHue(x, wkeys)}"></i>`).join('')}</div><div class="day-pxt">${IC.box}<span>${esc(pxs)}</span></div>` : ''}
         </button>`;
     }).join('');
 
@@ -1580,6 +1581,7 @@
           <text x="26" y="72" class="ct-sub">${esc(kgTxt)}</text>
           <text x="128" y="72" class="ct-sub">${esc(ctTxt)}</text>
         </g>
+        ${opts.px != null && !late ? `<rect class="ct-px" x="2" y="6" width="396" height="84" rx="2" style="--h:${opts.px}"/>` : ''}
       </svg>`;
   }
 
@@ -1597,16 +1599,18 @@
 
   function fleet(d, list) {
     if (!list.length) return '';
+    const keys = pxKeys(pxCountC(list));
     const cards = list.map((c, i) => {
       const ph = phase(c);
       const late = lateInfo(c);
+      const cp = cPx(c);
       // Érkezési idő: a megérkezettnél a tényleges, egyébként az ETA.
       const at = c.arrived
         ? { k: 'k-in', t: 'Érkezett', v: c.arrived_at ? (c.arrived_at.slice(0, 10) === d ? hm(c.arrived_at) : stamp(c.arrived_at)) : '—' }
         : c.eta_time ? { k: 'k-eta', t: 'ETA', v: c.eta_time } : { k: 'k-none', t: 'ETA', v: 'még nincs' };
       return `
         <button type="button" class="ccard${late ? ' is-late' : ''}" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 11)}">
-          <span class="ct-wrap"><i class="cc-ground"><i class="cc-shadow"></i></i><span class="ct-rig"><span class="ct-sw">${HOIST}${containerSvg(c)}</span></span></span>
+          <span class="ct-wrap"><i class="cc-ground"><i class="cc-shadow"></i></i><span class="ct-rig"><span class="ct-sw">${HOIST}${containerSvg(c, cp ? { px: pxHue(cp, keys) } : {})}</span></span></span>
           <span class="cc-top">
             <span class="cc-w"><b>${fmtDec((c.kg || 0) / 1000, 1, 1)}</b><small>t</small></span>
             <span class="ph ph-${late ? 'late' : `${ph.grp} phk-${ph.key}`}">${esc(late ? late.label : ph.label)}</span>

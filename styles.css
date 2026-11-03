@@ -1762,8 +1762,10 @@ g .hit{fill:transparent}
 .wk-key:disabled{cursor:default}
 .wk-bar i.off,.day-px i.off{opacity:.25}
 .blk.px-off{opacity:.22}
-/* prefix szerinti halvány keret; a késés piros kerete erősebb, az marad */
-.blk.pxo:not(.late){outline:1.5px solid oklch(0.74 0.13 var(--h) / .85);outline-offset:0}
+/* kártyák konténerrajza: keret a fő prefix színében (késésnél a piros keret marad) */
+.ct .ct-px{fill:none;stroke:oklch(0.62 0.14 var(--h));stroke-width:3.5;pointer-events:none}
+.day-pxt{display:flex;justify-content:flex-end;align-items:center;gap:6px}
+.day-pxt svg{flex:none;opacity:.85}
 .tr.px-off{opacity:.4}
 .fchip{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 10px 0 12px;border-radius:999px;background:oklch(0.3 0.03 235);border:1px solid oklch(0.72 0.1 235);font-size:12.5px;font-weight:500;color:var(--yard-text)}
 .fchip i{width:9px;height:9px;border-radius:2px;background:oklch(0.72 0.1 var(--h))}
