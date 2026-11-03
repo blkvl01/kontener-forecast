@@ -2239,7 +2239,8 @@
   // ---------- konténerfotók ----------
   // A telefonnal készült képek kicsinyítve a konténerhez kerülnek; 12 óra után a szerver (photo-cleanup) törli őket.
   const PHOTO_TTL = 12 * 3600e3;
-  const PHOTO_DIR = 'Nyitáskérelem fotók';
+  // A böngésző nem írhat magától fix útvonalra: a választó a Képek mappában nyílik, és abban jön létre ez az almappa.
+  const PHOTO_DIR = 'Nyitáskérelem';
   let PHOTOS = [];
   const PH_BLOB = {}, PH_URL = {}, PH_BUSY = {};
   const phLoading = new Set();
@@ -2402,7 +2403,7 @@
 
   async function pickDir() {
     const base = await window.showDirectoryPicker({ id: 'kf-photos', mode: 'readwrite', startIn: 'pictures' });
-    const h = base.name === PHOTO_DIR ? base : await base.getDirectoryHandle(PHOTO_DIR, { create: true });
+    const h = base.name.toLowerCase() === PHOTO_DIR.toLowerCase() ? base : await base.getDirectoryHandle(PHOTO_DIR, { create: true });
     await dirSet(h);
     return h;
   }
