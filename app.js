@@ -2619,7 +2619,9 @@
           <b>Nyitáskérelem</b>
           ${MAIL_LATER === c.id
             ? `<button type="button" class="btn-primary sm mail-go" data-action="mail-open">${IC.mail}Levél megnyitása</button>`
-            : `<button type="button" class="btn-primary sm mail-go" data-action="mail">${IC.mail}Nyitáskérelem küldése</button>`}
+            : SAVE_LATER === c.id
+              ? `<button type="button" class="btn-primary sm mail-go" data-action="photo-save">${IC.img}Fotók mentése a mappába</button>`
+              : `<button type="button" class="btn-primary sm mail-go" data-action="mail">${IC.mail}Nyitáskérelem küldése</button>`}
         </div>
         ${miss.length ? `<div class="flag warn">${IC.warn}Hiányzik: ${esc(miss.join(', '))}</div>` : ''}
         <dl class="mail-pv">
@@ -2676,17 +2678,14 @@
       return;
     }
     if (!n) { if (!openWin(url)) location.href = url; return; }
+    // A levél mindig azonnal nyílik. Ha a mappához még engedély kell, azt külön gomb kéri (két engedélykérés egy kattintásra a felugró ablakot tiltaná).
     const dir = canDir() && await dirGet();
     const ready = !canDir() || (dir && (await dir.queryPermission({ mode: 'readwrite' }).catch(() => '')) === 'granted');
-    if (ready) {
-      const opened = openWin(url);
-      await savePhotos(id);
-      if (!opened) mailLater(id);
-      return;
-    }
-    if (!(await savePhotos(id))) return;
-    if (!openWin(url)) mailLater(id);
+    if (!openWin(url)) location.href = url;
+    if (ready) await savePhotos(id);
+    else { SAVE_LATER = id; paintPhotos(id); }
   }
+  let SAVE_LATER = null;
 
   // ---------- felhasználók ----------
   function inviteUrl(key) {
@@ -3002,6 +3001,11 @@
         MAIL_LATER = null;
         if (c) { const url = composeUrl(mailParts(c)); if (!openWin(url)) location.href = url; }
         paintPhotos(S.drawer);
+        break;
+      }
+      case 'photo-save': {
+        const id = S.drawer;
+        if (await savePhotos(id)) { SAVE_LATER = null; paintPhotos(id); }
         break;
       }
       case 'photo-take':
