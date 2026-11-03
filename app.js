@@ -99,6 +99,7 @@
     eta_set: toLocal(r.eta_set), arrived: !!r.arrived, arrived_at: toLocal(r.arrived_at),
     ramp: r.ramp || null, ramp_set: toLocal(r.ramp_set),
     note: r.note || '', updated_by: r.updated_by || '', updated_at: toLocal(r.updated_at),
+    plate: r.plate || '', t1: r.t1 || '', driver: r.driver || '', phone: r.phone || '',
     auto_dismissed: !!r.auto_dismissed
   });
   const normArr = r => ({ ...r, received: toLocal(r.received) });
@@ -1874,14 +1875,14 @@
         <div class="sheet-body">
           <dl class="facts">
             <div style="--i:0"><dt>Konténer</dt><dd>${esc(c.id)}${cp(c.id)}</dd></div>
-            <div style="--i:1"><dt>Rendszám</dt><dd>${c.plate ? esc(plate(c.plate)) + cp(plate(c.plate)) : '<span class="dim">várható</span>'}</dd></div>
-            <div style="--i:2"><dt>T1 / MRN</dt><dd>${c.t1 ? esc(c.t1) + cp(c.t1) : '<span class="dim">várható</span>'}</dd></div>
+            <div style="--i:1"><dt>Rendszám</dt><dd>${c.plate ? esc(plate(c.plate)) + cp(plate(c.plate)) : '<span class="dim">várható</span>'}${fixMark(c, 'plate')}</dd></div>
+            <div style="--i:2"><dt>T1 / MRN</dt><dd>${c.t1 ? esc(c.t1) + cp(c.t1) : '<span class="dim">várható</span>'}${fixMark(c, 't1')}</dd></div>
             <div style="--i:3"><dt>Bruttó súly</dt><dd>${fmtKg(c.kg)} kg${cp(String(c.kg).replace('.', ','))}</dd></div>
             <div style="--i:4"><dt>Karton</dt><dd>${fmtInt(c.ctns)}${cp(String(c.ctns))}</dd></div>
             <div style="--i:5"><dt>Szállítási nap</dt><dd>${c.date ? `${c.date.replace(/-/g, '.')}.` + cp(c.date.replace(/-/g, '.') + '.') : '—'}<small>${c.date ? DOW[dowIdx(c.date)] : ''}</small></dd></div>
             <div style="--i:6"><dt>ETA</dt><dd>${c.eta_time ? esc(c.eta_time) + cp(c.eta_time) : '<span class="dim">nincs</span>'}${c.eta_time && c.eta_date && c.eta_date !== c.date ? `<small>${esc(short(c.eta_date))}</small>` : ''}</dd></div>
             <div style="--i:7"><dt>Rámpa</dt><dd>${c.ramp ? c.ramp + cp(String(c.ramp)) : '<span class="dim">—</span>'}</dd></div>
-            <div class="wide" style="--i:8"><dt>Sofőr</dt><dd class="plain">${c.driver ? esc(c.driver) + cp(c.driver) : '<span class="dim">nincs megadva</span>'}${c.phone ? `<small>${esc(c.phone)}${cp(c.phone)}</small>` : ''}</dd></div>
+            <div class="wide" style="--i:8"><dt>Sofőr</dt><dd class="plain">${c.driver ? esc(c.driver) + cp(c.driver) : '<span class="dim">nincs megadva</span>'}${c.phone ? `<small>${esc(c.phone)}${cp(c.phone)}</small>` : ''}${fixMark(c, 'driver') || fixMark(c, 'phone')}</dd></div>
           </dl>
 
           ${active && (c.arrived || c.stage || c.storage) ? stepper(c) : ''}
@@ -1906,6 +1907,8 @@
               ${c.eta_time ? '<button type="button" class="btn-ghost" data-action="clear-eta">Törlés</button>' : ''}
             </div>
           </section>` : ''}
+
+          ${!isWorker() ? fixBox(c) : ''}
 
           <label class="note">Megjegyzés
             <textarea id="note" rows="3" data-id="${esc(c.id)}">${esc(c.note)}</textarea>
@@ -2162,6 +2165,54 @@
     const row = t
       ? { container: id, eta_date: d || c.date, eta_time: t, eta_for: c.date, eta_set: new Date().toISOString() }
       : { container: id, eta_date: null, eta_time: null, eta_for: null, eta_set: null };
+    return upsertManual(row);
+  }
+
+  // ---------- adatok pótlása / javítása ----------
+  const FIX = [
+    { k: 'plate', label: 'Rendszám', norm: v => v.toUpperCase().replace(/\s+/g, ' ').trim() },
+    { k: 't1', label: 'T1 / MRN', norm: v => v.toUpperCase().replace(/\s+/g, '') },
+    { k: 'driver', label: 'Sofőr', norm: v => v.replace(/\s+/g, ' ').trim() },
+    { k: 'phone', label: 'Telefon', norm: v => v.replace(/\s+/g, ' ').trim() }
+  ];
+  const MRN_OK = /^\d{2}[A-Z]{2}[A-Z0-9]{14}$/;
+  const fromMail = (c, k) => (c.fixed && k in c.fixed ? c.fixed[k] : c[k]) || '';
+  const fixMark = (c, k) => (c.fixed && k in c.fixed ? '<small class="fixmark">kézzel</small>' : '');
+
+  function fixBox(c) {
+    const any = FIX.some(f => c.fixed && f.k in c.fixed);
+    const fields = FIX.map(f => {
+      const mail = fromMail(c, f.k);
+      const hint = c.fixed && f.k in c.fixed && mail && mail !== c[f.k] ? `<small class="fix-mail">Levélben: ${esc(mail)}</small>` : '';
+      return `<label>${f.label}<input class="field" id="fix-${f.k}" value="${esc(c[f.k] || '')}" autocomplete="off" spellcheck="false"${f.k === 'phone' ? ' inputmode="tel"' : ''}>${hint}</label>`;
+    }).join('');
+    return `
+          <section class="etabox fixbox" aria-label="Adatok">
+            <div class="etabox-head"><b>Adatok</b></div>
+            <div class="fix-grid">${fields}</div>
+            <div class="btns">
+              <button type="button" class="btn-primary" data-action="save-fix">Mentés</button>
+              ${any ? '<button type="button" class="btn-ghost" data-action="clear-fix">Levél szerint</button>' : ''}
+            </div>
+          </section>`;
+  }
+
+  async function saveFix(id, clear) {
+    const c = S.data.containers[id];
+    if (!c || isWorker()) return false;
+    const row = { container: id };
+    for (const f of FIX) {
+      const inp = $(`#fix-${f.k}`);
+      const v = clear || !inp ? '' : f.norm(inp.value || '');
+      if (f.k === 't1' && v && !MRN_OK.test(v)) {
+        inp.setAttribute('aria-invalid', 'true');
+        inp.focus();
+        toast('Hibás MRN');
+        return false;
+      }
+      // a levélbelivel egyező érték nem felülírás
+      row[f.k] = v && v !== fromMail(c, f.k) ? v : null;
+    }
     return upsertManual(row);
   }
 
@@ -2539,6 +2590,8 @@
         }
         break;
       }
+      case 'save-fix': if (await saveFix(S.drawer, false)) toast('Adatok mentve'); break;
+      case 'clear-fix': if (await saveFix(S.drawer, true)) toast('Levél szerinti adatok'); break;
       case 'mail': await openMail(S.drawer); break;
       case 'clear-eta': if (isWorker()) break; if (await saveEta(S.drawer, '', '')) toast('ETA törölve'); break;
       case 'copy':

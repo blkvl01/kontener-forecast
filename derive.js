@@ -1,5 +1,8 @@
 // A pre-alert levelekből és a kézi adatokból levezeti a konténerek aktuális állapotát.
 window.KFDerive = function derive(messages, manual, arrivals, stored) {
+  const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const FIX_KEYS = ['plate', 't1', 'driver', 'phone'];
   const C = {};
   const feed = [];
   const files = {};
@@ -17,17 +20,27 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       if (!a.container) continue;
       (files[a.container] = files[a.container] || []).push({ name: a.name, path: a.path, size: a.size || 0, at });
     }
-    for (const e of m.etas || []) {
-      if (e && e.container && e.time) mailEta[e.container] = { time: e.time, date: e.date || '', at };
-      // time: null – a szállító visszavonta a korábban közölt érkezést („/”, „TBC”)
-      else if (e && e.container && e.time === null) delete mailEta[e.container];
-    }
+    // A levél ETA-i a konténerek feldolgozása után kerülnek be, hogy az ETA azt a napot kapja (eta_for),
+    // amelyre a levél idején a konténer tervezve volt: ha később másik napra kerül, az ETA elavultnak látszik.
+    const flushEta = () => {
+      for (const e of m.etas || []) {
+        if (!e || !e.container) continue;
+        const date = DAY_RE.test(e.date || '') ? e.date : '';
+        if (e.time && TIME_RE.test(e.time)) {
+          mailEta[e.container] = { time: e.time, date, for: (C[e.container] && C[e.container].date) || date, at };
+        } else if (e.time === null) {
+          // „/”, „TBC”: visszavonva. Csak nap („4th NOV”): a más napra szóló korábbi időpont nem érvényes.
+          const cur = mailEta[e.container];
+          if (!date || (cur && (cur.date || cur.for) !== date)) delete mailEta[e.container];
+        }
+      }
+    };
     // Szállítónként külön terv: egy levél csak a saját szállítója konténereit veheti le a listáról.
     // A dátum nélküli tétel (csak sofőr/T1/ETA frissítés) a konténer meglévő napján marad.
     const src = ((m.containers || []).find(c => c && c.src) || {}).src || 'jz';
     const conts = (m.containers || []).filter(c => c && c.id && (c.date || C[c.id]))
       .map(c => (c.date ? c : { ...c, date: C[c.id].date }));
-    if (!conts.length) continue;
+    if (!conts.length) { flushEta(); continue; }
     const dates = (m.dates || []).filter(Boolean);
     dates.forEach(d => forecastDates.add(d));
     const listedAll = new Set(conts.map(c => c.id));
@@ -101,6 +114,19 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       }
     }
     feed.push(ev);
+    flushEta();
+  }
+
+  // Kézi pótlás / javítás (rendszám, MRN, sofőr, telefon): a kézi érték az erősebb, a levélbeli megmarad mellette.
+  for (const x of Object.values(C)) {
+    const man = manual[x.id];
+    x.fixed = {};
+    if (!man) continue;
+    for (const k of FIX_KEYS) {
+      if (!man[k]) continue;
+      x.fixed[k] = x[k] || '';
+      x[k] = man[k];
+    }
   }
 
   // Nyitáskérő levelek párosítása: MRN, konténerszám, végül egy karakter eltérés
@@ -167,7 +193,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     let man = manual[x.id] || {};
     const me = mailEta[x.id];
     if (me && !(man.eta_time && man.eta_set && man.eta_set >= me.at)) {
-      man = { ...man, eta_time: me.time, eta_date: me.date || x.date, eta_for: x.date, eta_set: me.at, updated_by: 'ETA-levél', updated_at: me.at };
+      man = { ...man, eta_time: me.time, eta_date: me.date || me.for || x.date, eta_for: me.for || x.date, eta_set: me.at, updated_by: 'ETA-levél', updated_at: me.at };
     }
     x.files = files[x.id] || [];
     x.eta_date = man.eta_date || '';

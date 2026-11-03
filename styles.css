@@ -370,6 +370,13 @@ button{cursor:pointer}
 .saved{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ok-text)}
 .eta-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:10px;margin-top:14px}
 .eta-grid label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+.fix-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px}
+.fix-grid label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+.fix-grid .field{font-size:14px}
+.fix-grid .field[aria-invalid="true"]{border-color:var(--late, oklch(0.58 0.19 27))}
+.fix-mail{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fixmark{font-size:11px;color:var(--muted);font-family:inherit;margin-left:6px}
+@media (max-width:420px){.fix-grid{grid-template-columns:minmax(0,1fr)}}
 .field{height:48px;padding:0 12px;border-radius:10px;border:1px solid oklch(0.85 0.008 255);background:var(--surface);font-family:var(--mono);font-size:15px;color:var(--ink);transition:border-color .16s var(--ease),box-shadow .16s var(--ease)}
 .field:hover{border-color:oklch(0.62 0.02 255)}
 .field:focus{outline:none;border-color:oklch(0.62 0.16 48);box-shadow:0 0 0 3px oklch(0.72 0.165 52 / .28)}
