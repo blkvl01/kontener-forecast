@@ -2654,10 +2654,12 @@
       toast(`${await writePhotos(dir, id)} fotó mentve: ${PHOTO_DIR}`);
       return true;
     } catch (err) {
-      if (err && err.name === 'AbortError') return false;
+      // Bezárt választó: nincs mentés, de a következő kattintás újra kérdez (a döntést nem jegyezzük meg).
+      if (err && err.name === 'AbortError') { toast('A fotók nem lettek mentve'); return false; }
+      // Letiltott mappaengedély: a képek legalább a Letöltések mappába kerüljenek.
       console.error(err);
-      toast('A fotók mentése nem sikerült');
-      return false;
+      try { toast(`${await downloadPhotos(id)} fotó letöltve`); return true; }
+      catch (_) { toast('A fotók mentése nem sikerült'); return false; }
     }
   }
 
@@ -2685,7 +2687,9 @@
       await savePhotos(id);
       return;
     }
-    if (await savePhotos(id)) mailLater(id);
+    // A levél akkor is megnyitható, ha a mentés elmaradt: a nyitáskérés sosem akadhat el a mappán.
+    await savePhotos(id);
+    mailLater(id);
   }
 
   // ---------- felhasználók ----------
