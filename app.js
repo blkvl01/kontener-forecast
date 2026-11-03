@@ -26,6 +26,7 @@
     cam: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>',
     img: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg>',
     box: '<svg width="16" height="11" viewBox="0 0 22 15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="1.5" width="19" height="12" rx="1"/><path d="M6 4.5v6M9.5 4.5v6M13 4.5v6M16.5 4.5v6"/></svg>',
+    prio: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M5 22V3" fill="none"/><path d="M5 4h13l-3 4.5 3 4.5H5z"/></svg>',
     xls: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13l6 5M15 13l-6 5"/></svg>'
   };
 
@@ -76,6 +77,8 @@
   let ARR = [];
   let STO = [];
   let RAMPS = 10;
+  // Prioritásos konténerek (app_settings.priority), mindenkinek ugyanaz a lista.
+  let PRIO = [];
   let MEMBERS = {};
   const who = email => (email && MEMBERS[email]) || email || '';
   const ROLE_L = { admin: 'Admin', editor: 'Szerkesztő', worker: 'Dolgozó' };
@@ -432,7 +435,7 @@
     if (pho.data) PHOTOS = pho.data;
     STO = sto.map(r => ({ ...r, stored_at: toLocal(r.stored_at) }));
     if (mem.data) MEMBERS = Object.fromEntries(mem.data.map(m => [m.email, m.name || m.email]));
-    if (cfg.data) RAMPS = cfg.data.ramp_count || 10;
+    if (cfg.data) { RAMPS = cfg.data.ramp_count || 10; PRIO = cfg.data.priority || []; }
     MSGS = msgs.map(normMsg);
     MAN = Object.fromEntries(man.map(r => [r.container, normMan(r)]));
     ARR = arr.map(normArr);
@@ -488,7 +491,7 @@
         paintPhotos(row.container);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, p => {
-        if (p.new && p.new.ramp_count) { RAMPS = p.new.ramp_count; scheduleRender(); }
+        if (p.new) { if (p.new.ramp_count) RAMPS = p.new.ramp_count; PRIO = p.new.priority || []; scheduleRender(); }
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_status' }, p => {
         if (p.new) {
@@ -950,6 +953,9 @@
   // Prefix-szűrés: csak kiemel, a számok a teljes hetet mutatják.
   const pxOff = c => !!S.px && !hasPx(c, S.px);
   const pxOn = k => (S.px && S.px !== k ? 'off' : '');
+  // Betárolásig jelölt, utána magától lekerül.
+  const isPrio = c => PRIO.includes(c.id) && phase(c).key !== 'stored';
+  const prioIc = c => (isPrio(c) ? `<span class="prio-ic" title="Prioritás">${IC.prio}</span>` : '');
 
   // Változások: naponként és szállítónként a legutóbbi pre-alert-változat ezt hozta az előzőhöz képest.
   // A nap első előrejelzése nem jelöl mindent újnak; ami azóta máshová került vagy visszajött, kimarad.
@@ -1051,7 +1057,7 @@
     const days = [...Array(7)].map((_, i) => addDays(S.week, i));
     const dec = v => (v == null || v === '' ? '' : String(Math.round(Number(v) * 100) / 100).replace('.', ','));
     const cell = v => { const s = String(v ?? ''); return /[;"\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
-    const rows = [['Dátum', 'Nap', 'Konténer', 'Fuvarlevél', 'Prefix', 'Súly (kg)', 'Colli', 'Szállító', 'Rendszám', 'T1/MRN', 'ETA', 'Érkezett', 'Állapot']];
+    const rows = [['Dátum', 'Nap', 'Konténer', 'Fuvarlevél', 'Prefix', 'Súly (kg)', 'Colli', 'Szállító', 'Rendszám', 'T1/MRN', 'ETA', 'Érkezett', 'Állapot', 'Prioritás']];
     days.forEach(d => onDay(d).forEach(c => {
       const pdd = (c.pdd || []).filter(p => p.no);
       // Egyetlen fuvarlevélnél (vagy ha a szállító nem ad PDD-nkénti adatot) a konténer összesítője kerül a sorba.
@@ -1060,7 +1066,7 @@
         d, DOW[dowIdx(d)], c.id, p.no || '', p.no ? pxOf(p.no) : '',
         dec(own(p, 'kg', c.kg)), dec(own(p, 'ctns', c.ctns)),
         c.fwd || '', plate(c.plate), c.t1 || '', c.eta_time || '',
-        c.arrived && c.arrived_at ? stamp(c.arrived_at) : '', stageText(c)
+        c.arrived && c.arrived_at ? stamp(c.arrived_at) : '', stageText(c), isPrio(c) ? 'igen' : ''
       ]));
     }));
     const csv = '﻿' + rows.map(r => r.map(cell).join(';')).join('\r\n') + '\r\n';
@@ -1116,7 +1122,7 @@
         const m = mk[c.id];
         const cp = cPx(c);
         return `
-        <div class="blk blk-${ph.grp}${late ? ' late' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} ·${esc(late ? late.label : ph.label)}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">
+        <div class="blk blk-${ph.grp}${late ? ' late' : ''}${isPrio(c) ? ' prio' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} ·${esc(late ? late.label : ph.label)}${isPrio(c) ? ' · prioritás' : ''}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">${isPrio(c) ? '<i class="pf" aria-hidden="true"></i>' : ''}
           <span class="blk-l">${m ? `<i class="mk mk-${m}" aria-hidden="true"></i>` : ''}<span class="blk-id">${esc(c.id)}</span></span><span class="blk-r">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span>
         </div>`;
       }).join('');
@@ -1125,6 +1131,7 @@
       const nMov = dchg.filter(x => x.kind === 'mov').length;
       const nOut = dchg.filter(x => x.kind === 'out').length;
       const nAway = ghosts[i].length - nOut;
+      const nPr = list.filter(isPrio).length;
       const chips = [
         nNew && `<span class="cg-new">+${nNew} új</span>`,
         nMov && `<span class="cg-mov">${nMov} áthelyezve ide</span>`,
@@ -1139,12 +1146,12 @@
       const dkeys = wkeys.filter(x => dpx[x]);
       const pxs = dkeys.map(x => `${x} ${dpx[x]}`).join(' · ');
       const chgSay = chips.map(s => s.replace(/<[^>]+>/g, '')).join(', ');
-      const say = `${DOW[i]}, ${longLabel(d)}: ${list.length} konténer${list.length ? `, ${fmtT(kg)}, ${done} betárolva` : ''}${lateN ? `, ${lateN} késik` : ''}${pxs ? `, prefix szerint: ${pxs}` : ''}${chgSay ? `, változás: ${chgSay}` : ''}`;
+      const say = `${DOW[i]}, ${longLabel(d)}: ${list.length} konténer${list.length ? `, ${fmtT(kg)}, ${done} betárolva` : ''}${lateN ? `, ${lateN} késik` : ''}${nPr ? `, ${nPr} prioritás` : ''}${pxs ? `, prefix szerint: ${pxs}` : ''}${chgSay ? `, változás: ${chgSay}` : ''}`;
       return `
         <button type="button" class="day${d === S.today ? ' is-today' : ''}" data-action="day" data-date="${d}" aria-pressed="${d === S.sel}" aria-label="${esc(say)}" style="--i:${i}">
           <div class="day-top"><span class="day-dow">${DOW[i]}</span>${d === S.today ? '<span class="today-tag">MA</span>' : ''}</div>
           <div class="day-num"><span>${parse(d).getDate()}</span></div>
-          <div class="day-chg">${chips.join('')}</div>
+          <div class="day-chg">${nPr ? `<span class="cg-pr">${IC.prio}${nPr} prioritás</span>` : ''}${chips.join('')}</div>
           <div class="stack ${nodata ? 'nodata' : ''}" style="height:${H}px">${blocks}${ghost}${note}</div>
           <div class="day-foot"><span><b>${num(list.length, 'int', 120 + i * 40)}</b><small>konténer</small></span><span class="day-t">${list.length ? fmtT(kg) : '—'}</span></div>
           <div class="day-ctn">${list.length ? `<span>${fmtInt(sumCt(list))} karton</span>${done ? `<span class="day-sto"><i style="--p:${Math.round(done / list.length * 100)}%"></i>${done}/${list.length} betárolva</span>` : ''}` : ''}</div>
@@ -1338,7 +1345,7 @@
       const day = c.state === 'active' ? c.day : c.removed_from;
       const out = c.state === 'removed';
       return `<button type="button" class="qhit" id="qh-${i}" role="option" tabindex="-1" data-action="qopen" data-id="${esc(c.id)}" style="--i:${i}">
-        <span class="qhit-id">${mark(c.id, q)}</span>
+        <span class="qhit-id">${mark(c.id, q)}${prioIc(c)}</span>
         <span class="qhit-meta">${day ? `${DOW_S[dowIdx(day)]} ${short(day)}` : ''} · ${val ? `${esc(where)} ${mark(val, q)}` : esc(where)}</span>
         <span class="ph ph-${out ? 'out' : `${phase(c).grp} phk-${phase(c).key}`}">${esc(out ? ST_LABEL.removed : stageText(c))}</span>
       </button>`;
@@ -1581,6 +1588,7 @@
           <text x="26" y="72" class="ct-sub">${esc(kgTxt)}</text>
           <text x="128" y="72" class="ct-sub">${esc(ctTxt)}</text>
         </g>
+        ${opts.prio ? '<path class="ct-pf" d="M2 6h30L2 36z"/>' : ''}
         ${opts.px != null && !late ? `<rect class="ct-px" x="2" y="6" width="396" height="84" rx="2" style="--h:${opts.px}"/>` : ''}
       </svg>`;
   }
@@ -1609,10 +1617,10 @@
         ? { k: 'k-in', t: 'Érkezett', v: c.arrived_at ? (c.arrived_at.slice(0, 10) === d ? hm(c.arrived_at) : stamp(c.arrived_at)) : '—' }
         : c.eta_time ? { k: 'k-eta', t: 'ETA', v: c.eta_time } : { k: 'k-none', t: 'ETA', v: 'még nincs' };
       return `
-        <button type="button" class="ccard${late ? ' is-late' : ''}" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 11)}">
-          <span class="ct-wrap"><i class="cc-ground"><i class="cc-shadow"></i></i><span class="ct-rig"><span class="ct-sw">${HOIST}${containerSvg(c, cp ? { px: pxHue(cp, keys) } : {})}</span></span></span>
+        <button type="button" class="ccard${late ? ' is-late' : ''}${isPrio(c) ? ' is-prio' : ''}" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 11)}">
+          <span class="ct-wrap"><i class="cc-ground"><i class="cc-shadow"></i></i><span class="ct-rig"><span class="ct-sw">${HOIST}${containerSvg(c, { px: cp ? pxHue(cp, keys) : null, prio: isPrio(c) })}</span></span></span>
           <span class="cc-top">
-            <span class="cc-w"><b>${fmtDec((c.kg || 0) / 1000, 1, 1)}</b><small>t</small></span>
+            <span class="cc-w"><b>${fmtDec((c.kg || 0) / 1000, 1, 1)}</b><small>t</small></span>${isPrio(c) ? `<span class="prio-tag">${IC.prio}Prioritás</span>` : ''}
             <span class="ph ph-${late ? 'late' : `${ph.grp} phk-${ph.key}`}">${esc(late ? late.label : ph.label)}</span>
           </span>
           <span class="cc-sub">${fmtInt(c.ctns)} karton · ${c.pdd.length} PDD${c.ramp ? `<span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}</span>
@@ -1693,7 +1701,7 @@
       if (lane < 0) { lane = lanes.length; lanes.push(0); }
       lanes[lane] = p + span;
       const left = Math.min(p, 84);
-      return `<button type="button" class="pill pill-${c.status === 'arrived' ? 'arrived' : 'eta'}" style="left:${left}%;top:${6 + lane * 44}px;--i:${Math.min(i, 12)}" data-action="open" data-id="${esc(c.id)}"><b>${esc(c.eta_time)}</b><span>${esc(c.id)}</span></button>`;
+      return `<button type="button" class="pill pill-${c.status === 'arrived' ? 'arrived' : 'eta'}${isPrio(c) ? ' prio' : ''}" style="left:${left}%;top:${6 + lane * 44}px;--i:${Math.min(i, 12)}" data-action="open" data-id="${esc(c.id)}"><b>${esc(c.eta_time)}</b><span>${esc(c.id)}</span>${prioIc(c)}</button>`;
     }).join('');
     const h = Math.max(1, lanes.length) * 44 + 34;
     let ticks = '';
@@ -1710,7 +1718,7 @@
         <div class="tl-track"><div class="tl-area" style="height:${h}px">${ticks}${now}${pills}${timed.length ? '' : '<div class="tl-empty">Nincs rögzített ETA</div>'}</div></div>
         ${noEta.length ? `<div class="tray">
           <div class="tray-head"><span>ETA nélkül</span><span class="mono">${noEta.length}</span></div>
-          <div class="tray-list">${noEta.map((c, i) => `<button type="button" class="tray-item" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 8)}"><span>${esc(c.id)}</span><span>${fmtT(c.kg)}</span></button>`).join('')}</div>
+          <div class="tray-list">${noEta.map((c, i) => `<button type="button" class="tray-item" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 8)}"><span>${esc(c.id)}${prioIc(c)}</span><span>${fmtT(c.kg)}</span></button>`).join('')}</div>
         </div>` : ''}
       </section>`;
   }
@@ -1723,8 +1731,8 @@
       if (lt) flags.push(`<div class="flag late">${IC.warn}${esc(lt.label)}</div>`);
       const drv = [c.driver, c.phone].filter(Boolean).join(' · ');
       return `
-        <div class="tr row${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--i:${Math.min(i, 12)}">
-          <div><button type="button" class="cid" data-action="open" data-id="${esc(c.id)}">${esc(c.id)}</button><div class="sub2">${c.pdd.length} PDD</div></div>
+        <div class="tr row${isPrio(c) ? ' prio' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--i:${Math.min(i, 12)}">
+          <div><button type="button" class="cid" data-action="open" data-id="${esc(c.id)}">${esc(c.id)}</button>${prioIc(c)}<div class="sub2">${c.pdd.length} PDD</div></div>
           <div class="cell-mono pddcol">${c.pdd.filter(p => p.no).map(p => `<div>${esc(p.no)}</div>`).join('') || '<span class="dim">—</span>'}</div>
           <div><div class="cell-mono ${c.plate ? '' : 'dim'}">${c.plate ? esc(plate(c.plate)) : 'várható'}</div>${drv ? `<div class="sub2">${esc(drv)}</div>` : ''}</div>
           <span class="cell-mono ${c.t1 ? '' : 'dim'}" style="font-size:12.5px">${esc(c.t1 || '—')}</span>
@@ -1779,10 +1787,11 @@
       if (kg) bg = `oklch(${(0.995 - 0.035 * r).toFixed(3)} ${(0.035 * r).toFixed(3)} 60)`;
       const numCls = d === S.today ? 'today' : (out ? 'out' : '');
       const lateN = list.filter(c => lateInfo(c)).length;
+      const prN = list.filter(isPrio).length;
       return `
-        <button type="button" class="cell ${nodata ? 'nodata' : ''}" style="background-color:${bg};--w:${Math.floor(idx / 7) + (idx % 7)}" data-action="cell" data-date="${d}" aria-pressed="${d === S.calSel}" aria-label="${longLabel(d)}, ${list.length} konténer${lateN ? `, ${lateN} késik` : ''}">
+        <button type="button" class="cell ${nodata ? 'nodata' : ''}" style="background-color:${bg};--w:${Math.floor(idx / 7) + (idx % 7)}" data-action="cell" data-date="${d}" aria-pressed="${d === S.calSel}" aria-label="${longLabel(d)}, ${list.length} konténer${lateN ? `, ${lateN} késik` : ''}${prN ? `, ${prN} prioritás` : ''}">
           <div class="cell-top"><span class="cell-num ${numCls}">${parse(d).getDate()}</span>${list.length ? `<span class="cell-count">${list.length} db</span>` : ''}</div>
-          ${lateN ? `<span class="cell-late">${lateN} késik</span>` : ''}
+          ${lateN || prN ? `<div class="cell-tags">${lateN ? `<span class="cell-late">${lateN} késik</span>` : ''}${prN ? `<span class="cell-prio">${IC.prio}${prN}</span>` : ''}</div>` : ''}
           <div class="pips">${list.map((c, k) => { const ph = phase(c); return `<i class="pip pip-${ph.grp}${lateInfo(c) ? ' pip-late' : ''}" style="--p:${Math.round(ph.p * 100)}%;--k:${Math.min(k, 9)}"></i>`; }).join('')}</div>
           ${list.length ? `<div class="cell-foot"><div class="bar"><i class="${d < S.today ? 'past' : ''}" style="width:${Math.round(r * 100)}%"></i></div><div class="cell-t">${fmtT(kg)}</div></div>` : ''}
         </button>`;
@@ -1814,7 +1823,7 @@
       const etaCls = late ? 'late' : c.arrived ? 'arrived' : (c.eta_time ? 'eta' : '');
       return `
         <button type="button" class="side-item" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 10)}">
-          <span class="side-l"><i class="pip pip-${ph.grp}${late ? ' pip-late' : ''} side-pip" style="--p:${Math.round(ph.p * 100)}%" aria-hidden="true"></i><span class="side-txt"><span class="mono">${esc(c.id)}</span><span class="sub2">${esc(c.plate ? plate(c.plate) : 'rendszám nélkül')} · ${fmtInt(c.kg)} kg</span></span></span>
+          <span class="side-l"><i class="pip pip-${ph.grp}${late ? ' pip-late' : ''} side-pip" style="--p:${Math.round(ph.p * 100)}%" aria-hidden="true"></i><span class="side-txt"><span class="mono">${esc(c.id)}${prioIc(c)}</span><span class="sub2">${esc(c.plate ? plate(c.plate) : 'rendszám nélkül')} · ${fmtInt(c.kg)} kg</span></span></span>
           <span class="side-eta ${etaCls}">${esc(late ? late.label : c.arrived ? stageText(c) : (c.eta_time || '—'))}</span>
         </button>`;
     }).join('');
@@ -1895,8 +1904,8 @@
             </div>` : ''}
           </div>
           <h2 class="sr">${esc(c.id)}</h2>
-          <div class="sheet-ct">${containerSvg(c, { cls: 'ct-lg' })}</div>
-          <div class="badges">${badge}${where ? `<span class="badge b-out">${esc(where)}</span>` : ''}</div>
+          <div class="sheet-ct">${containerSvg(c, { cls: 'ct-lg', prio: isPrio(c) })}</div>
+          <div class="badges">${badge}${isPrio(c) ? `<span class="ph ph-prio ph-lg">${IC.prio}Prioritás</span>` : ''}${where ? `<span class="badge b-out">${esc(where)}</span>` : ''}</div>
         </div>
         <div class="sheet-body">
           <dl class="facts">
@@ -2049,6 +2058,42 @@
       out.push({ container: m[1].replace(/\s/g, ''), time: `${pad(h)}:${pad(mi)}` });
     }
     return out;
+  }
+
+  // ---------- prioritás ----------
+  const canPrio = () => ME && ME.role === 'admin';
+  const prioSum = () => {
+    const n = PRIO.filter(id => { const c = S.data.containers[id]; return !c || phase(c).key !== 'stored'; }).length;
+    return n ? `<b>${n}</b> konténer` : 'Nincs kijelölve';
+  };
+  const parsePrio = text => [...new Set(((text || '').toUpperCase().replace(/[^\S\n]+/g, '').match(/[A-Z]{4}\d{7}/g) || []))];
+  function openPrio() {
+    if (!canPrio()) return;
+    $('#prio-text').value = PRIO.join('\n');
+    renderPrio();
+    $('#prio').showModal();
+    setTimeout(() => $('#prio-text').focus(), 30);
+  }
+  function renderPrio() {
+    const ids = parsePrio($('#prio-text').value);
+    const same = ids.length === PRIO.length && ids.every(id => PRIO.includes(id));
+    $('#prio-save').disabled = same;
+    $('#prio-list').innerHTML = ids.map(id => {
+      const c = S.data.containers[id];
+      const on = c && c.state === 'active';
+      const ph = on ? phase(c) : null;
+      return `<div class="pl-row"><span>${esc(id)}</span><span class="pl-day ${on ? '' : 'unk'}">${on ? esc(`${DOW[dowIdx(c.day)]}, ${short(c.day)}`) : 'még nincs a tervben'}</span>${ph ? `<span class="ph ph-${ph.grp} phk-${ph.key}">${esc(ph.label)}</span>` : '<span></span>'}</div>`;
+    }).join('');
+  }
+  async function savePrio() {
+    const ids = parsePrio($('#prio-text').value);
+    const { error } = await sb.from('app_settings').update({ priority: ids }).eq('id', 1);
+    if (error) { toast('A mentés nem sikerült'); console.error(error); return; }
+    PRIO = ids;
+    $('#prio').close();
+    $('#prio-sum').innerHTML = prioSum();
+    render();
+    toast(ids.length ? 'Prioritás mentve' : 'Prioritás törölve');
   }
 
   let pasteSeen = new Set();
@@ -2871,6 +2916,8 @@
     $('#users-sec').hidden = !admin;
     $('#ramp-sec').hidden = !admin;
     $('#ramp-count').textContent = RAMPS;
+    $('#prio-sec').hidden = !canPrio();
+    $('#prio-sum').innerHTML = prioSum();
     $('#app-sec').hidden = !isExe();
     $('#sync-sec').hidden = isWorker();
     if (admin) loadUsers();
@@ -2995,6 +3042,9 @@
       }
       case 'paste': if (isWorker()) break; $('#paste-text').value = ''; pasteSeen = new Set(); renderPaste(); $('#paste').showModal(); setTimeout(() => $('#paste-text').focus(), 30); break;
       case 'paste-close': $('#paste').close(); break;
+      case 'prio': openPrio(); break;
+      case 'prio-close': $('#prio').close(); break;
+      case 'prio-save': await savePrio(); break;
       case 'paste-save': await savePaste(); break;
       case 'settings-close': $('#settings').close(); break;
       case 'people': openPeople(); break;
@@ -3123,6 +3173,7 @@
     const el = e.target;
     if (el.id === 'q') { renderSearch(); return; }
     if (el.id === 'paste-text') { renderPaste(); return; }
+    if (el.id === 'prio-text') { renderPrio(); return; }
     if (el.id === 'note') {
       clearTimeout(noteTimer);
       const id = el.dataset.id, val = el.value;

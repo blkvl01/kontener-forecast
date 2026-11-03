@@ -1811,3 +1811,27 @@ g .hit{fill:transparent}
   .cp-row time{grid-column:2}
 }
 @media (prefers-reduced-motion: reduce){.chg-pop:not([hidden]){animation:none}}
+
+/* ---- prioritás: sötét jelvény sárga zászlóval (egyik állapotszínnel sem keverhető); a heti blokkon sárga bal szél + sarokjel ---- */
+:root{--prio:oklch(0.88 0.17 95);--prio-bg:oklch(0.22 0.02 255)}
+.blk.prio{box-shadow:inset 0 0 0 1px oklch(0.2 0.02 255 / .55),inset 5px 0 0 var(--prio),inset -4px 0 0 oklch(0.25 0.02 255) !important}
+.blk .pf{position:absolute;left:0;top:0;z-index:1;border-style:solid;border-width:13px 13px 0 0;border-color:var(--prio) transparent transparent transparent;filter:drop-shadow(1px 1px 0 oklch(0.18 0.02 255));pointer-events:none}
+.day-chg .cg-pr{display:inline-flex;align-items:center;gap:4px;background:oklch(0.88 0.17 95 / .16);color:var(--prio)}
+.cg-pr svg{width:10px;height:10px}
+.prio-tag{display:inline-flex;align-items:center;gap:6px;margin-right:auto;align-self:center;padding:3px 10px 3px 8px;border-radius:999px;background:var(--prio-bg);color:oklch(0.97 0.005 255);font-size:12.5px;font-weight:600;white-space:nowrap}
+.prio-tag svg,.ph-prio svg{color:var(--prio)}
+.ph-prio{background:var(--prio-bg);color:oklch(0.97 0.005 255)}
+.ph-prio:before{display:none}
+.sheet-head .ph-prio{background:none;box-shadow:inset 0 0 0 1.5px var(--prio)}
+.prio-ic{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;margin-left:7px;border-radius:5px;background:var(--prio-bg);color:var(--prio);vertical-align:-3px}
+.prio-ic svg{width:10px;height:10px}
+.side-item .prio-ic{background:none;width:auto;margin-left:6px}
+.pill.prio{box-shadow:0 0 0 2px var(--prio-bg)}
+.pill .prio-ic{margin-left:-2px}
+.cell-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.cell-tags .cell-late{margin-top:0}
+.cell-prio{display:inline-flex;align-items:center;gap:4px;padding:1px 6px;border-radius:5px;background:var(--prio-bg);color:oklch(0.97 0.005 255);font-size:12px;font-weight:600}
+.cell-prio svg{width:10px;height:10px;color:var(--prio)}
+.ct .ct-pf{fill:var(--prio);stroke:var(--prio-bg);stroke-width:2;stroke-linejoin:round;pointer-events:none}
+#prio-list .pl-row{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto}
+#prio-list .ph{justify-self:end;font-family:var(--sans);font-size:12px}

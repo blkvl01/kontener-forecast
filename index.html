@@ -12,9 +12,9 @@
 <link rel="preload" href="fonts/barlow-latin-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/barlow-condensed-latin-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/red-hat-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=20261103152930">
-<link rel="stylesheet" href="tour.css?v=20261103152930">
-<script src="boot-role.js?v=20261103152930"></script>
+<link rel="stylesheet" href="styles.css?v=20261103161748">
+<link rel="stylesheet" href="tour.css?v=20261103161748">
+<script src="boot-role.js?v=20261103161748"></script>
 </head>
 <body>
 <svg class="kf-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
@@ -110,6 +110,14 @@
       </button>
     </section>
 
+    <section class="set-sec" id="prio-sec" style="--i:3" hidden>
+      <div class="set-h"><h3>Prioritás</h3></div>
+      <button type="button" class="team-card" data-action="prio">
+        <span class="team-nums" id="prio-sum"></span>
+        <span class="team-go">Konténerek megadása<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></span>
+      </button>
+    </section>
+
     <section class="set-sec" id="ramp-sec" style="--i:3" hidden>
       <div class="set-h"><h3>Rámpák száma</h3></div>
       <div class="stepper-in">
@@ -162,6 +170,22 @@
   </div>
 </dialog>
 
+<dialog id="prio" class="settings" aria-labelledby="prio-title">
+  <div class="settings-inner">
+    <div class="settings-head">
+      <h2 id="prio-title">Prioritásos konténerek</h2>
+      <button type="button" class="x-btn" data-action="prio-close" aria-label="Bezárás"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <label class="sr" for="prio-text">Konténerszámok, soronként egy</label>
+    <textarea id="prio-text" class="paste-text" rows="7" spellcheck="false" placeholder="CICU5713227&#10;TRHU6016750"></textarea>
+    <div class="paste-list" id="prio-list"></div>
+    <div class="settings-actions">
+      <button type="button" class="btn-ghost sm" data-action="prio-close">Mégse</button>
+      <button type="button" class="btn-primary sm" data-action="prio-save" id="prio-save" disabled>Mentés</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="paste" class="settings" aria-labelledby="paste-title">
   <div class="settings-inner">
     <div class="settings-head">
@@ -178,10 +202,10 @@
   </div>
 </dialog>
 
-<script src="vendor/supabase.min.js?v=20261103152930"></script>
-<script src="config.js?v=20261103152930"></script>
-<script src="derive.js?v=20261103152930"></script>
-<script src="tour.js?v=20261103152930"></script>
-<script src="app.js?v=20261103152930"></script>
+<script src="vendor/supabase.min.js?v=20261103161748"></script>
+<script src="config.js?v=20261103161748"></script>
+<script src="derive.js?v=20261103161748"></script>
+<script src="tour.js?v=20261103161748"></script>
+<script src="app.js?v=20261103161748"></script>
 </body>
 </html>
