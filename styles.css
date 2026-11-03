@@ -1488,6 +1488,25 @@ g .hit{fill:transparent}
 .mail-pv dd:hover .cpy{opacity:1}
 .mail-txt dd span{line-height:1.5}
 
+/* konténerfotók */
+.photobox{border:1px solid var(--line);border-radius:16px;background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.ph-n{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;margin-left:4px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line-soft);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
+.ph-add{display:flex;gap:8px;flex-wrap:wrap}
+.ph-add .btn-primary,.ph-add .btn-ghost{display:inline-flex;align-items:center;gap:8px}
+.ph-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.ph-t{position:relative;margin:0;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--surface-2);border:1px solid var(--line-soft)}
+.ph-t.busy{background:linear-gradient(100deg,var(--surface-2) 30%,oklch(0.94 0.004 255) 50%,var(--surface-2) 70%) 0 0/300% 100%;animation:ph-shine 1.2s linear infinite}
+@keyframes ph-shine{to{background-position:-150% 0}}
+.ph-img{display:block;width:100%;height:100%;padding:0;border:0;background:none;cursor:zoom-in}
+.ph-img img{display:block;width:100%;height:100%;object-fit:cover}
+.ph-img img:not([src]){visibility:hidden}
+.ph-x{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:14px;border:0;background:oklch(0.2 0.01 255 / .62);color:#fff;font-size:17px;line-height:1;cursor:pointer;transition:background .15s}
+.ph-x.arm{background:oklch(0.58 0.19 27)}
+#ph-view{padding:0;border:0;background:none;max-width:96vw;max-height:94vh;cursor:zoom-out}
+#ph-view::backdrop{background:oklch(0.15 0.01 255 / .82)}
+#ph-view img{display:block;max-width:96vw;max-height:94vh;border-radius:8px}
+@media (prefers-reduced-motion:reduce){.ph-t.busy{animation:none}}
+
 /* v7.1: beállítások, felhasználólista finomítás, nyitáskérelem aláírás */
 .set2{width:min(560px,calc(100vw - 32px))}
 .set2 .settings-inner{gap:4px}

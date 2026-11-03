@@ -23,6 +23,8 @@
     mail: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/></svg>',
     warn: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
     open: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="oklch(0.4 0.015 255)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+    cam: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+    img: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg>',
     xls: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13l6 5M15 13l-6 5"/></svg>'
   };
 
@@ -415,16 +417,18 @@
 
   async function loadAll(enter) {
     let done = 0;
-    const tick = p => Promise.resolve(p).then(v => { bootProgress(0.25 + 0.6 * (++done / 7)); return v; });
-    const [msgs, man, arr, sync, cfg, mem, sto] = await Promise.all([
+    const tick = p => Promise.resolve(p).then(v => { bootProgress(0.25 + 0.6 * (++done / 8)); return v; });
+    const [msgs, man, arr, sync, cfg, mem, sto, pho] = await Promise.all([
       fetchAll('messages', 'received'),
       fetchAll('manual'),
       fetchAll('arrivals', 'received'),
       sb.from('sync_status').select('*').eq('id', 1).maybeSingle(),
       sb.from('app_settings').select('*').eq('id', 1).maybeSingle(),
       sb.from('members').select('email, name'),
-      fetchAll('storage_events', 'stored_at')
+      fetchAll('storage_events', 'stored_at'),
+      sb.from('photos').select('*').gt('created_at', new Date(Date.now() - PHOTO_TTL).toISOString()).order('created_at')
     ].map(tick));
+    if (pho.data) PHOTOS = pho.data;
     STO = sto.map(r => ({ ...r, stored_at: toLocal(r.stored_at) }));
     if (mem.data) MEMBERS = Object.fromEntries(mem.data.map(m => [m.email, m.name || m.email]));
     if (cfg.data) RAMPS = cfg.data.ramp_count || 10;
@@ -475,6 +479,12 @@
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'storage_events' }, p => {
         if (!STO.some(s => s.id === p.new.id)) STO.push({ ...p.new, stored_at: toLocal(p.new.stored_at) });
         scheduleRender();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'photos' }, p => {
+        const row = p.eventType === 'DELETE' ? p.old : p.new;
+        PHOTOS = PHOTOS.filter(x => x.id !== row.id);
+        if (p.eventType !== 'DELETE') PHOTOS.push(p.new);
+        paintPhotos(row.container);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, p => {
         if (p.new && p.new.ramp_count) { RAMPS = p.new.ramp_count; scheduleRender(); }
@@ -687,7 +697,7 @@
     const email = (session.user.email || '').toLowerCase();
     const { data, error } = await sb.from('members').select('email, role, name').eq('email', email).maybeSingle();
     if (error || !data) { showAuth('denied', email); return; }
-    ME = data;
+    ME = { ...data, uid: session.user.id };
     bootRole(ME.role);
     document.body.classList.toggle('role-worker', isWorker());
     sb.rpc('touch_me').then(() => {}, () => {});
@@ -1891,6 +1901,8 @@
 
           ${active && (c.arrived || c.ramp) ? rampPicker(c) : ''}
 
+          ${photoBox(c)}
+
           ${mailBox(c)}
 
           ${active && !isWorker() ? `
@@ -1919,6 +1931,7 @@
     if (keepScroll) sh.scrollTop = keepScroll;
     refocus(fk, '#drawer');
     if (mode === 'enter' || mode === 'fly' || (had && !sh.contains(document.activeElement))) sh.focus({ preventScroll: true });
+    loadThumbs();
   }
 
   // Kártyáról nyitva a konténerrajz átrepül az adatlap fejlécébe.
@@ -2223,6 +2236,209 @@
     else window.open(data.signedUrl, '_blank', 'noopener');
   }
 
+  // ---------- konténerfotók ----------
+  // A telefonnal készült képek kicsinyítve a konténerhez kerülnek; 12 óra után a szerver (photo-cleanup) törli őket.
+  const PHOTO_TTL = 12 * 3600e3;
+  const PHOTO_DIR = 'Nyitáskérelem fotók';
+  let PHOTOS = [];
+  const PH_BLOB = {}, PH_URL = {}, PH_BUSY = {};
+  const phLoading = new Set();
+  const COARSE = matchMedia('(pointer: coarse)');
+  const livePhotos = id => PHOTOS
+    .filter(p => p.container === id && Date.now() - new Date(p.created_at).getTime() < PHOTO_TTL)
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+  const canDelPhoto = p => !!ME && (p.created_by === ME.uid || !isWorker());
+  const phUrl = path => PH_URL[path] || (PH_BLOB[path] ? (PH_URL[path] = URL.createObjectURL(PH_BLOB[path])) : '');
+
+  function photoBox(c) {
+    const ph = livePhotos(c.id);
+    const busy = PH_BUSY[c.id] || 0;
+    const thumbs = ph.map((p, i) => {
+      const u = phUrl(p.path);
+      return `<figure class="ph-t">
+          <button type="button" class="ph-img" data-action="photo-view" data-ph="${esc(p.path)}" aria-label="${i + 1}. fotó"><img data-ph="${esc(p.path)}" alt=""${u ? ` src="${u}"` : ''}></button>
+          ${canDelPhoto(p) ? `<button type="button" class="ph-x" data-action="photo-del" data-ph="${esc(p.path)}" aria-label="${i + 1}. fotó törlése">×</button>` : ''}
+        </figure>`;
+    }).join('') + '<figure class="ph-t busy" aria-hidden="true"></figure>'.repeat(busy);
+    const add = COARSE.matches
+      ? `<button type="button" class="btn-primary sm" data-action="photo-take" data-src="cam">${IC.cam}Fotó</button>
+         <button type="button" class="btn-ghost sm" data-action="photo-take" data-src="lib">${IC.img}Galéria</button>`
+      : `<button type="button" class="btn-ghost sm" data-action="photo-take" data-src="lib">${IC.img}Képek hozzáadása</button>`;
+    return `
+      <section class="photobox" aria-label="Fotók">
+        <div class="mail-head">
+          <b>Fotók${ph.length ? ` <span class="ph-n">${ph.length}</span>` : ''}</b>
+          <div class="ph-add">${add}</div>
+        </div>
+        <input type="file" id="ph-cam" accept="image/*" capture="environment" multiple hidden data-id="${esc(c.id)}">
+        <input type="file" id="ph-lib" accept="image/*" multiple hidden data-id="${esc(c.id)}">
+        ${thumbs ? `<div class="ph-grid" aria-busy="${busy ? 'true' : 'false'}">${thumbs}</div>` : ''}
+      </section>`;
+  }
+
+  // Csak a fotó- és a levéldoboz épül újra, így a megjegyzésbe gépelt, még nem mentett szöveg megmarad.
+  function paintPhotos(id) {
+    if (!S.drawer || S.drawer !== id) return;
+    const c = S.data.containers[id];
+    const pb = $('#drawer .photobox'), mb = $('#drawer .mailbox');
+    if (!c || !pb) return;
+    const fk = focusKey('#drawer');
+    pb.outerHTML = photoBox(c);
+    if (mb) mb.outerHTML = mailBox(c);
+    refocus(fk, '#drawer');
+    loadThumbs();
+  }
+
+  async function phBlob(path) {
+    if (PH_BLOB[path]) return PH_BLOB[path];
+    const { data, error } = await sb.storage.from('photos').download(path);
+    if (error) throw error;
+    return (PH_BLOB[path] = data);
+  }
+
+  function loadThumbs() {
+    document.querySelectorAll('#drawer img[data-ph]:not([src])').forEach(img => {
+      const p = img.dataset.ph;
+      if (phLoading.has(p)) return;
+      phLoading.add(p);
+      phBlob(p)
+        .then(() => document.querySelectorAll(`#drawer img[data-ph="${CSS.escape(p)}"]`).forEach(i => { i.src = phUrl(p); }))
+        .catch(() => {})
+        .finally(() => phLoading.delete(p));
+    });
+  }
+
+  // Leghosszabb oldal 1920 px, JPEG: egy kép néhány száz KB, gyenge térerőn is felmegy.
+  async function shrink(file) {
+    let src;
+    try { src = await createImageBitmap(file, { imageOrientation: 'from-image' }); }
+    catch (_) {
+      src = await new Promise((res, rej) => {
+        const im = new Image();
+        im.onload = () => res(im);
+        im.onerror = rej;
+        im.src = URL.createObjectURL(file);
+      });
+    }
+    const w = src.width || src.naturalWidth, h = src.height || src.naturalHeight;
+    const k = Math.min(1, 1920 / Math.max(w, h));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+    cv.getContext('2d').drawImage(src, 0, 0, cv.width, cv.height);
+    if (src.close) src.close();
+    return new Promise((res, rej) => cv.toBlob(b => (b ? res(b) : rej(new Error('kép'))), 'image/jpeg', 0.82));
+  }
+
+  async function addPhotos(id, files) {
+    const list = [...files].filter(f => !f.type || f.type.startsWith('image/'));
+    if (!list.length) return;
+    PH_BUSY[id] = (PH_BUSY[id] || 0) + list.length;
+    paintPhotos(id);
+    let ok = 0;
+    for (const f of list) {
+      try {
+        const blob = await shrink(f);
+        const path = `${id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+        let up;
+        for (let t = 0; t < 3; t++) {
+          up = await sb.storage.from('photos').upload(path, blob, { contentType: 'image/jpeg' });
+          if (!up.error || /exist/i.test(up.error.message)) { up.error = null; break; }
+          await sleep(1500 * (t + 1));
+        }
+        if (up.error) throw up.error;
+        const { data, error } = await sb.from('photos').insert({ container: id, path }).select().single();
+        if (error) { sb.storage.from('photos').remove([path]); throw error; }
+        PH_BLOB[path] = blob;
+        PHOTOS = PHOTOS.filter(x => x.id !== data.id).concat(data);
+        ok++;
+      } catch (err) { console.error(err); }
+      PH_BUSY[id]--;
+      paintPhotos(id);
+    }
+    if (ok < list.length) toast(ok ? `${list.length - ok} fotó feltöltése nem sikerült` : 'A feltöltés nem sikerült');
+    else toast(ok > 1 ? `${ok} fotó feltöltve` : 'Fotó feltöltve');
+  }
+
+  async function delPhoto(path) {
+    const p = PHOTOS.find(x => x.path === path);
+    if (!p) return;
+    const { error } = await sb.from('photos').delete().eq('id', p.id);
+    if (error) { toast('A törlés nem sikerült'); return; }
+    sb.storage.from('photos').remove([path]);
+    PHOTOS = PHOTOS.filter(x => x.id !== p.id);
+    paintPhotos(p.container);
+    toast('Fotó törölve');
+  }
+
+  function viewPhoto(path) {
+    const u = phUrl(path);
+    if (!u) return;
+    let d = $('#ph-view');
+    if (!d) {
+      d = document.createElement('dialog');
+      d.id = 'ph-view';
+      d.addEventListener('click', () => d.close());
+      document.body.appendChild(d);
+    }
+    d.innerHTML = `<img src="${u}" alt="">`;
+    d.showModal();
+  }
+
+  // A mentési mappa (File System Access API) az IndexedDB-ben marad meg, így csak egyszer kell kiválasztani.
+  const idb = (mode, fn) => new Promise((res, rej) => {
+    const rq = indexedDB.open('kf', 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
+    rq.onerror = () => rej(rq.error);
+    rq.onsuccess = () => {
+      const tx = rq.result.transaction('kv', mode);
+      const r = fn(tx.objectStore('kv'));
+      tx.oncomplete = () => res(r.result);
+      tx.onerror = () => rej(tx.error);
+    };
+  });
+  const dirGet = () => idb('readonly', s => s.get('photoDir')).catch(() => null);
+  const dirSet = h => idb('readwrite', s => s.put(h, 'photoDir')).catch(() => {});
+  const canDir = () => 'showDirectoryPicker' in window;
+
+  async function pickDir() {
+    const base = await window.showDirectoryPicker({ id: 'kf-photos', mode: 'readwrite', startIn: 'pictures' });
+    const h = base.name === PHOTO_DIR ? base : await base.getDirectoryHandle(PHOTO_DIR, { create: true });
+    await dirSet(h);
+    return h;
+  }
+
+  // Egy konténer képei kerülnek a mappába; az előző konténer itt hagyott képeit előbb törli.
+  const OUR_FILE = /^[A-Z]{4}\d{7}_\d+\.jpg$/i;
+  async function writePhotos(dir, id) {
+    const ph = livePhotos(id);
+    const blobs = await Promise.all(ph.map(p => phBlob(p.path)));
+    const old = [];
+    for await (const [name, h] of dir.entries()) if (h.kind === 'file' && OUR_FILE.test(name)) old.push(name);
+    for (const name of old) await dir.removeEntry(name).catch(() => {});
+    for (let i = 0; i < blobs.length; i++) {
+      const f = await dir.getFileHandle(`${id}_${i + 1}.jpg`, { create: true });
+      const w = await f.createWritable();
+      await w.write(blobs[i]);
+      await w.close();
+    }
+    return blobs.length;
+  }
+
+  // Mappa nélküli böngészőben a képek egyenként a Letöltések mappába kerülnek.
+  async function downloadPhotos(id) {
+    const ph = livePhotos(id);
+    const blobs = await Promise.all(ph.map(p => phBlob(p.path)));
+    blobs.forEach((b, i) => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = `${id}_${i + 1}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    });
+    return blobs.length;
+  }
+
   // ---------- érkezési email ----------
   const MAIL_TO = ['h7wh@hgllog.com', 'e-commerce@hgllog.com', 'eker.vam@hgllog.com'];
   function mailParts(c) {
@@ -2247,12 +2463,14 @@
 
   function mailBox(c) {
     const m = mailParts(c);
-    const miss = [!c.t1 && 'MRN', !c.plate && 'rendszám'].filter(Boolean);
+    const miss = [!c.t1 && 'MRN', !c.plate && 'rendszám', !livePhotos(c.id).length && 'fotó'].filter(Boolean);
     return `
       <section class="mailbox" aria-label="Nyitáskérelem">
         <div class="mail-head">
           <b>Nyitáskérelem</b>
-          <button type="button" class="btn-primary sm mail-go" data-action="mail">${IC.mail}Nyitáskérelem küldése</button>
+          ${MAIL_LATER === c.id
+            ? `<button type="button" class="btn-primary sm mail-go" data-action="mail-open">${IC.mail}Levél megnyitása</button>`
+            : `<button type="button" class="btn-primary sm mail-go" data-action="mail">${IC.mail}Nyitáskérelem küldése</button>`}
         </div>
         ${miss.length ? `<div class="flag warn">${IC.warn}Hiányzik: ${esc(miss.join(', '))}</div>` : ''}
         <dl class="mail-pv">
@@ -2270,18 +2488,55 @@
     return `https://outlook.office.com/mail/deeplink/compose?to=${q(m.to.join(';'))}&subject=${q(m.subject)}&body=${q(m.body + '\n')}`;
   }
 
+  function openWin(url) {
+    const w = window.open(url, '_blank');
+    if (w) w.opener = null;
+    return !!w;
+  }
+
+  // A fotók a kiválasztott mappába (vagy a Letöltésekbe) kerülnek, onnan egy húzással csatolhatók.
+  async function savePhotos(id) {
+    try {
+      if (!canDir()) { toast(`${await downloadPhotos(id)} fotó letöltve`); return true; }
+      let dir = await dirGet();
+      let perm = dir ? await dir.queryPermission({ mode: 'readwrite' }).catch(() => 'denied') : 'none';
+      if (dir && perm === 'prompt') perm = await dir.requestPermission({ mode: 'readwrite' }).catch(() => 'denied');
+      if (!dir || perm !== 'granted') dir = await pickDir();
+      toast(`${await writePhotos(dir, id)} fotó mentve: ${PHOTO_DIR}`);
+      return true;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return false;
+      console.error(err);
+      toast('A fotók mentése nem sikerült');
+      return false;
+    }
+  }
+
+  // Mappaválasztás vagy engedélykérés után a böngésző már letiltaná a felugró ablakot: ilyenkor a levél külön gombbal nyílik.
+  let MAIL_LATER = null;
+  function mailLater(id) { MAIL_LATER = id; paintPhotos(id); }
+
   async function openMail(id) {
     const c = S.data.containers[id];
     if (!c) return;
     const url = composeUrl(mailParts(c));
+    const n = livePhotos(id).length;
     if (isExe()) {
-      if (await exe().open_url(url)) return;
-      toast('Frissítsd az alkalmazást');
+      if (!(await exe().open_url(url))) { toast('Frissítsd az alkalmazást'); return; }
+      if (n) await savePhotos(id);
       return;
     }
-    const w = window.open(url, '_blank');
-    if (w) w.opener = null;
-    else location.href = url;
+    if (!n) { if (!openWin(url)) location.href = url; return; }
+    const dir = canDir() && await dirGet();
+    const ready = !canDir() || (dir && (await dir.queryPermission({ mode: 'readwrite' }).catch(() => '')) === 'granted');
+    if (ready) {
+      const opened = openWin(url);
+      await savePhotos(id);
+      if (!opened) mailLater(id);
+      return;
+    }
+    if (!(await savePhotos(id))) return;
+    if (!openWin(url)) mailLater(id);
   }
 
   // ---------- felhasználók ----------
@@ -2593,6 +2848,20 @@
       case 'save-fix': if (await saveFix(S.drawer, false)) toast('Adatok mentve'); break;
       case 'clear-fix': if (await saveFix(S.drawer, true)) toast('Levél szerinti adatok'); break;
       case 'mail': await openMail(S.drawer); break;
+      case 'mail-open': {
+        const c = S.data.containers[S.drawer];
+        MAIL_LATER = null;
+        if (c) { const url = composeUrl(mailParts(c)); if (!openWin(url)) location.href = url; }
+        paintPhotos(S.drawer);
+        break;
+      }
+      case 'photo-take': { const inp = $(el.dataset.src === 'cam' ? '#ph-cam' : '#ph-lib'); if (inp) inp.click(); break; }
+      case 'photo-view': viewPhoto(el.dataset.ph); break;
+      case 'photo-del':
+        // Első érintésre csak élesedik, a második töröl.
+        if (!el.classList.contains('arm')) { el.classList.add('arm'); const lbl = el.getAttribute('aria-label'); el.setAttribute('aria-label', 'Biztosan törlöd?'); setTimeout(() => { el.classList.remove('arm'); el.setAttribute('aria-label', lbl); }, 2500); break; }
+        await delPhoto(el.dataset.ph);
+        break;
       case 'clear-eta': if (isWorker()) break; if (await saveEta(S.drawer, '', '')) toast('ETA törölve'); break;
       case 'copy':
         try {
@@ -2638,6 +2907,12 @@
       try { await usersFn('role', { email: el.dataset.email, role: el.value }); toast(`Új rang: ${ROLE_L[el.value]}`); }
       catch (err) { toast(err.message); }
       loadUsers();
+      return;
+    }
+    if (el.id === 'ph-cam' || el.id === 'ph-lib') {
+      const files = [...el.files];
+      el.value = '';
+      addPhotos(el.dataset.id, files);
       return;
     }
     if (el.id === 'ramp-input') {
