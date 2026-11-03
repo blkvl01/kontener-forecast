@@ -2423,7 +2423,11 @@
 
   // ---------- beépített kamera ----------
   // Egymás után több kép, jóváhagyás nélkül; a képek alul gyűlnek, törölhetők, és csak a „Feltöltés” küldi fel őket.
-  const CAM = { id: null, stream: null, cap: null, shots: [], busy: false };
+  const CAM = { id: null, stream: null, shots: [], ptrShot: false };
+  const camLive = () => {
+    const v = CAM.stream && $('#cam video');
+    return !!(v && v.videoWidth && CAM.stream.getVideoTracks().some(t => t.readyState === 'live'));
+  };
 
   function camOpen(id) {
     CAM.id = id;
@@ -2433,6 +2437,14 @@
       d.id = 'cam';
       d.setAttribute('aria-label', 'Fotózás');
       d.addEventListener('cancel', e => { e.preventDefault(); camClose(); });
+      // Az exponálás a gomb lenyomásakor történik, nem a felengedéskor (a click csak az ujj felemelése után jön).
+      d.addEventListener('pointerdown', e => {
+        if (!e.target.closest('.cam-shot')) return;
+        CAM.ptrShot = false;
+        if (e.button !== 0 || !camLive()) return;
+        CAM.ptrShot = true;
+        camShot();
+      });
       document.body.appendChild(d);
     }
     d.innerHTML = `
@@ -2468,7 +2480,6 @@
       const v = d.querySelector('video');
       v.srcObject = st;
       v.play().catch(() => {});
-      CAM.cap = 'ImageCapture' in window ? new ImageCapture(st.getVideoTracks()[0]) : null;
       msg.hidden = true;
     } catch (err) {
       msg.hidden = false;
@@ -2484,7 +2495,7 @@
 
   function camStop() {
     if (CAM.stream) CAM.stream.getTracks().forEach(t => t.stop());
-    CAM.stream = null; CAM.cap = null;
+    CAM.stream = null;
   }
 
   function camClose(force) {
@@ -2504,37 +2515,40 @@
     if (d && d.open) d.close();
   }
 
-  function camAdd(blob) {
-    CAM.shots.push({ k: Math.random().toString(36).slice(2), blob, url: URL.createObjectURL(blob) });
+  // A kép azonnal a sávba kerül; ha a JPEG még készül (ready), a feltöltés megvárja.
+  function camAdd(blob, url, ready) {
+    CAM.shots.push({ k: Math.random().toString(36).slice(2), blob, url: url || URL.createObjectURL(blob), ready: ready || Promise.resolve(blob) });
     renderCam();
     const s = $('#cam .cam-strip');
     if (s) s.scrollLeft = s.scrollWidth;
   }
 
-  // Androidon a teljes felbontású fotó (ImageCapture), máshol az élőkép egy kockája.
-  async function camShot() {
+  // A kép az élőkép épp látható kockája, az érintés pillanatában. (Korábban Androidon az ImageCapture.takePhoto()
+  // készítette: az újrafókuszál és fényt mér, így a kép 0,5–2 mp-cel a gombnyomás után, elmozdulva készült.
+  // A kép úgyis 1920 px-re kicsinyül, ezt az élőkép felbontása is adja.)
+  // A vászonra rajzolás szinkron és gyors; a JPEG-kódolás utána, a háttérben fut, így rögtön jöhet a következő kép.
+  function camShot() {
     const d = $('#cam');
     const v = d && d.querySelector('video');
-    if (!CAM.stream || !v || !v.videoWidth) { const n = $('#cam-in-native'); if (n) n.click(); return; }
-    if (CAM.busy) return;
-    CAM.busy = true;
+    if (!camLive()) { const n = $('#cam-in-native'); if (n) n.click(); return; }
+    const k = Math.min(1, 1920 / Math.max(v.videoWidth, v.videoHeight));
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(v.videoWidth * k); cv.height = Math.round(v.videoHeight * k);
+    cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
     const fl = d.querySelector('.cam-flash');
     fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
     if (navigator.vibrate) navigator.vibrate(20);
-    let blob = null;
-    if (CAM.cap) {
-      try { blob = await shrink(await Promise.race([CAM.cap.takePhoto(), sleep(4000).then(() => { throw new Error('idő'); })])); }
-      catch (_) { blob = null; }
-    }
-    if (!blob) {
-      const k = Math.min(1, 1920 / Math.max(v.videoWidth, v.videoHeight));
-      const cv = document.createElement('canvas');
-      cv.width = Math.round(v.videoWidth * k); cv.height = Math.round(v.videoHeight * k);
-      cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
-      blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
-    }
-    CAM.busy = false;
-    if (blob && CAM.id) camAdd(blob);
+    // Kis előnézet azonnal; a teljes kép elkészültéig ez látszik a sávban.
+    const tk = 160 / Math.max(cv.width, cv.height);
+    const tc = document.createElement('canvas');
+    tc.width = Math.round(cv.width * tk); tc.height = Math.round(cv.height * tk);
+    tc.getContext('2d').drawImage(cv, 0, 0, tc.width, tc.height);
+    const ready = new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85)).then(b => {
+      const s = CAM.shots.find(x => x.ready === ready);
+      if (s) s.blob = b;
+      return b;
+    });
+    camAdd(null, tc.toDataURL('image/jpeg', 0.7), ready);
   }
 
   async function camFiles(files) {
@@ -2562,11 +2576,11 @@
     loadThumbs();
   }
 
-  function camSend() {
-    const id = CAM.id, blobs = CAM.shots.map(s => s.blob);
-    if (!id || !blobs.length) return;
+  async function camSend() {
+    const id = CAM.id, pending = CAM.shots.map(s => s.ready);
+    if (!id || !pending.length) return;
     camClose(true);
-    addPhotos(id, blobs, true);
+    addPhotos(id, (await Promise.all(pending)).filter(Boolean), true);
   }
 
   async function delPhoto(path) {
@@ -3083,7 +3097,11 @@
         else { const inp = $('#ph-lib'); if (inp) inp.click(); }
         break;
       case 'cam-close': camClose(); break;
-      case 'cam-shot': await camShot(); break;
+      case 'cam-shot':
+        // Érintésnél már a lenyomás exponált; a click csak billentyűzetről vagy a rendszerkamerás tartalékútnál fotóz.
+        if (CAM.ptrShot && e.detail) { CAM.ptrShot = false; break; }
+        camShot();
+        break;
       case 'cam-lib': { const inp = $('#cam-in-lib'); if (inp) inp.click(); break; }
       case 'cam-send': camSend(); break;
       case 'cam-del': {
