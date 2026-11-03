@@ -24,6 +24,7 @@
     warn: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9L2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
     open: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="oklch(0.4 0.015 255)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
     cam: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+    qr: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="6" height="6" rx="1"/><rect x="14.5" y="3.5" width="6" height="6" rx="1"/><rect x="3.5" y="14.5" width="6" height="6" rx="1"/><path d="M14.5 14.5h2.5v2.5M20.5 14.5v.01M14.5 20.5h.01M17.5 20.5h3v-3"/></svg>',
     img: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg>',
     box: '<svg width="16" height="11" viewBox="0 0 22 15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="1.5" y="1.5" width="19" height="12" rx="1"/><path d="M6 4.5v6M9.5 4.5v6M13 4.5v6M16.5 4.5v6"/></svg>',
     prio: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M5 22V3" fill="none"/><path d="M5 4h13l-3 4.5 3 4.5H5z"/></svg>',
@@ -554,9 +555,10 @@
   }
 
   // ---------- belépés ----------
-  async function usersFn(action, body = {}) {
+  const usersFn = (action, body) => edgeFn('users', action, body);
+  async function edgeFn(name, action, body = {}) {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch(`${CFG.url}/functions/v1/users`, {
+    const res = await fetch(`${CFG.url}/functions/v1/${name}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2319,12 +2321,13 @@
       const u = phUrl(p.path);
       return `<figure class="ph-t">
           <button type="button" class="ph-img" data-action="photo-view" data-ph="${esc(p.path)}" aria-label="${i + 1}. fotó"><img data-ph="${esc(p.path)}" alt=""${u ? ` src="${u}"` : ''}></button>
+          ${p.link_id ? '<span class="ph-qr" title="Telefonról, QR-kóddal feltöltve">QR</span>' : ''}
           ${canDelPhoto(p) ? `<button type="button" class="ph-x" data-action="photo-del" data-ph="${esc(p.path)}" aria-label="${i + 1}. fotó törlése">×</button>` : ''}
         </figure>`;
     }).join('') + '<figure class="ph-t busy" aria-hidden="true"></figure>'.repeat(busy);
     const add = COARSE.matches
       ? `<button type="button" class="btn-primary sm" data-action="photo-take" data-src="cam">${IC.cam}Fotózás</button>`
-      : `<button type="button" class="btn-ghost sm" data-action="photo-take" data-src="lib">${IC.img}Képek hozzáadása</button>`;
+      : `<button type="button" class="btn-ghost sm" data-action="photo-qr">${IC.qr}QR a telefonhoz</button><button type="button" class="btn-ghost sm" data-action="photo-take" data-src="lib">${IC.img}Képek hozzáadása</button>`;
     return `
       <section class="photobox" aria-label="Fotók">
         <div class="mail-head">
@@ -2661,6 +2664,138 @@
       setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
     });
     return blobs.length;
+  }
+
+  // ---------- QR-kód a telefonos fotózáshoz ----------
+  // A QR egy korlátozott, lejáró link (foto.html): bejelentkezés nélkül csak ennek a konténernek a fotói és a rendszáma
+  // érhető el. A már kint lévő QR újranyitáskor ugyanaz marad (a telefonon épp használhatják); az „Új QR-kód” a régit megszünteti.
+  const QR = { id: null, url: '', busy: false };
+  let qrLib = null;
+  const loadQrLib = () => (qrLib ||= new Promise((res, rej) => {
+    if (window.qrcode) { res(window.qrcode); return; }
+    const sc = document.createElement('script');
+    sc.src = `vendor/qrcode.js?v=${(CFG && CFG.version) || ''}`;
+    sc.onload = () => (window.qrcode ? res(window.qrcode) : rej(new Error('qr')));
+    sc.onerror = () => { qrLib = null; rej(new Error('qr')); };
+    document.head.appendChild(sc);
+  }));
+  const photoSite = () => ((window.KF_CONFIG && window.KF_CONFIG.site) || location.origin + location.pathname.replace(/[^/]*$/, ''));
+
+  function qrUntil(ts) {
+    const d = new Date(ts);
+    if (isNaN(d)) return '';
+    const day = iso(d) === S.today ? 'ma' : iso(d) === addDays(S.today, 1) ? 'holnap' : short(iso(d));
+    return `${day} ${pad(d.getHours())}:${pad(d.getMinutes())}-ig`;
+  }
+
+  async function qrDraw(cv, text) {
+    const make = await loadQrLib();
+    const q = make(0, 'M');
+    q.addData(text);
+    q.make();
+    const n = q.getModuleCount(), quiet = 3, cells = n + quiet * 2;
+    const css = 216, dpr = Math.max(1, Math.round(window.devicePixelRatio || 1));
+    const px = Math.floor(css * dpr / cells);
+    cv.width = cv.height = px * cells;
+    cv.style.width = cv.style.height = `${css}px`;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, cv.width, cv.height);
+    g.fillStyle = '#16191f';
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) g.fillRect((c + quiet) * px, (r + quiet) * px, px, px);
+  }
+
+  function qrShell(c) {
+    let d = $('#qr-dlg');
+    if (!d) {
+      d = document.createElement('dialog');
+      d.id = 'qr-dlg';
+      d.className = 'settings qr-dlg';
+      d.setAttribute('aria-labelledby', 'qr-h');
+      d.addEventListener('close', () => { QR.id = null; QR.url = ''; });
+      document.body.appendChild(d);
+    }
+    d.innerHTML = `
+      <div class="qr-in">
+        <div class="settings-head">
+          <h2 id="qr-h">Fotózás telefonnal</h2>
+          <button type="button" class="x-btn" data-action="qr-close" aria-label="Bezárás"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+        <div class="qr-body">
+          <div class="qr-code" aria-live="polite"><span class="qr-wait">QR-kód készül…</span><canvas hidden role="img" aria-label="QR-kód a telefonos fotózáshoz"></canvas></div>
+          <div class="qr-info">
+            <span class="qr-cno">${esc(c.id.slice(0, 4))} ${esc(c.id.slice(4, 10))}<b>${esc(c.id.slice(10))}</b></span>
+            <p>Olvasd be a telefon kamerájával. Belépés nem kell: a telefonon csak ennek a konténernek a fotói és a rendszáma érhető el.</p>
+            <dl class="qr-dl">
+              <div><dt>Rendszám</dt><dd>${c.plate ? esc(plate(c.plate)) : '<span class="dim">nincs megadva, a telefonon megadható</span>'}</dd></div>
+              <div><dt>Érvényes</dt><dd class="qr-exp">…</dd></div>
+              <div><dt>Készítette</dt><dd class="qr-by">…</dd></div>
+            </dl>
+            <div class="qr-btns">
+              <button type="button" class="btn-ghost sm" data-action="qr-copy" disabled>${IC.copy}Link másolása</button>
+              <button type="button" class="btn-ghost sm" data-action="qr-new" disabled>Új QR-kód</button>
+              <button type="button" class="btn-ghost sm qr-rev" data-action="qr-revoke" disabled>Visszavonás</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    if (!d.open) d.showModal();
+    return d;
+  }
+
+  async function qrLoad(fresh) {
+    const id = QR.id, c = id && S.data.containers[id];
+    const d = $('#qr-dlg');
+    if (!c || !d || QR.busy) return;
+    QR.busy = true;
+    const box = d.querySelector('.qr-code'), cv = box.querySelector('canvas'), wait = box.querySelector('.qr-wait');
+    d.querySelectorAll('.qr-btns button').forEach(b => { b.disabled = true; });
+    try {
+      const r = await edgeFn('photo-link', fresh ? 'relink' : 'link', { container: id, plate: (c.fixed && 'plate' in c.fixed ? c.fixed.plate : c.plate) || '' });
+      if (QR.id !== id) return;
+      QR.url = `${photoSite()}foto.html#t=${r.token}`;
+      await qrDraw(cv, QR.url);
+      cv.hidden = false;
+      wait.hidden = true;
+      d.querySelector('.qr-exp').textContent = qrUntil(r.expires_at);
+      d.querySelector('.qr-by').textContent = `${who(r.by) || '—'}, ${hm(toLocal(r.created_at))}`;
+      d.querySelectorAll('.qr-btns button').forEach(b => { b.disabled = false; });
+      if (fresh) toast('Új QR-kód, a régi megszűnt');
+    } catch (err) {
+      if (QR.id !== id) return;
+      cv.hidden = true;
+      wait.hidden = false;
+      wait.textContent = /Failed to fetch|NetworkError|Load failed/i.test(err.message) || err.message === 'qr'
+        ? 'A QR-kód most nem készíthető el. Ellenőrizd a kapcsolatot, és nyisd meg újra.'
+        : err.message;
+      const nb = d.querySelector('[data-action="qr-new"]');
+      if (nb) nb.disabled = false;
+    } finally {
+      QR.busy = false;
+    }
+  }
+
+  function qrOpen(id) {
+    const c = S.data.containers[id];
+    if (!c) return;
+    QR.id = id;
+    QR.url = '';
+    qrShell(c);
+    qrLoad(false);
+  }
+
+  async function qrRevoke(el) {
+    if (el.dataset.confirm !== '1') {
+      el.dataset.confirm = '1';
+      el.textContent = 'Biztosan?';
+      setTimeout(() => { if (el.isConnected) { el.dataset.confirm = ''; el.textContent = 'Visszavonás'; } }, 2500);
+      return;
+    }
+    try {
+      await edgeFn('photo-link', 'revoke', { container: QR.id });
+      $('#qr-dlg').close();
+      toast('A QR-kód megszűnt');
+    } catch (err) { toast(err.message); }
   }
 
   // ---------- érkezési email ----------
@@ -3092,6 +3227,13 @@
         break;
       }
       case 'photo-help': if (window.KFTour && ME) window.KFTour.photoHelp(ME.role, el); break;
+      case 'photo-qr': qrOpen(S.drawer); break;
+      case 'qr-close': $('#qr-dlg').close(); break;
+      case 'qr-new': await qrLoad(true); break;
+      case 'qr-revoke': await qrRevoke(el); break;
+      case 'qr-copy':
+        try { await navigator.clipboard.writeText(QR.url); toast('Link másolva'); } catch (_) { toast('A másolás nem sikerült'); }
+        break;
       case 'photo-take':
         if (el.dataset.src === 'cam') camOpen(S.drawer);
         else { const inp = $('#ph-lib'); if (inp) inp.click(); }
