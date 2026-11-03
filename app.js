@@ -2262,8 +2262,7 @@
         </figure>`;
     }).join('') + '<figure class="ph-t busy" aria-hidden="true"></figure>'.repeat(busy);
     const add = COARSE.matches
-      ? `<button type="button" class="btn-primary sm" data-action="photo-take" data-src="cam">${IC.cam}Fotó</button>
-         <button type="button" class="btn-ghost sm" data-action="photo-take" data-src="lib">${IC.img}Galéria</button>`
+      ? `<button type="button" class="btn-primary sm" data-action="photo-take" data-src="cam">${IC.cam}Fotózás</button>`
       : `<button type="button" class="btn-ghost sm" data-action="photo-take" data-src="lib">${IC.img}Képek hozzáadása</button>`;
     return `
       <section class="photobox" aria-label="Fotók">
@@ -2271,7 +2270,6 @@
           <b>Fotók${ph.length ? ` <span class="ph-n">${ph.length}</span>` : ''}</b>
           <div class="ph-add">${add}</div>
         </div>
-        <input type="file" id="ph-cam" accept="image/*" capture="environment" multiple hidden data-id="${esc(c.id)}">
         <input type="file" id="ph-lib" accept="image/*" multiple hidden data-id="${esc(c.id)}">
         ${thumbs ? `<div class="ph-grid" aria-busy="${busy ? 'true' : 'false'}">${thumbs}</div>` : ''}
       </section>`;
@@ -2279,6 +2277,7 @@
 
   // Csak a fotó- és a levéldoboz épül újra, így a megjegyzésbe gépelt, még nem mentett szöveg megmarad.
   function paintPhotos(id) {
+    if (CAM.id === id) renderCam();
     if (!S.drawer || S.drawer !== id) return;
     const c = S.data.containers[id];
     const pb = $('#drawer .photobox'), mb = $('#drawer .mailbox');
@@ -2298,12 +2297,12 @@
   }
 
   function loadThumbs() {
-    document.querySelectorAll('#drawer img[data-ph]:not([src])').forEach(img => {
+    document.querySelectorAll('img[data-ph]:not([src])').forEach(img => {
       const p = img.dataset.ph;
       if (phLoading.has(p)) return;
       phLoading.add(p);
       phBlob(p)
-        .then(() => document.querySelectorAll(`#drawer img[data-ph="${CSS.escape(p)}"]`).forEach(i => { i.src = phUrl(p); }))
+        .then(() => document.querySelectorAll(`img[data-ph="${CSS.escape(p)}"]`).forEach(i => { i.src = phUrl(p); }))
         .catch(() => {})
         .finally(() => phLoading.delete(p));
     });
@@ -2330,15 +2329,16 @@
     return new Promise((res, rej) => cv.toBlob(b => (b ? res(b) : rej(new Error('kép'))), 'image/jpeg', 0.82));
   }
 
-  async function addPhotos(id, files) {
-    const list = [...files].filter(f => !f.type || f.type.startsWith('image/'));
+  // ready: a kamerából érkező képek már kicsinyítve vannak.
+  async function addPhotos(id, files, ready) {
+    const list = [...files].filter(f => ready || !f.type || f.type.startsWith('image/'));
     if (!list.length) return;
     PH_BUSY[id] = (PH_BUSY[id] || 0) + list.length;
     paintPhotos(id);
     let ok = 0;
     for (const f of list) {
       try {
-        const blob = await shrink(f);
+        const blob = ready ? f : await shrink(f);
         const path = `${id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
         let up;
         for (let t = 0; t < 3; t++) {
@@ -2358,6 +2358,154 @@
     }
     if (ok < list.length) toast(ok ? `${list.length - ok} fotó feltöltése nem sikerült` : 'A feltöltés nem sikerült');
     else toast(ok > 1 ? `${ok} fotó feltöltve` : 'Fotó feltöltve');
+  }
+
+  // ---------- beépített kamera ----------
+  // Egymás után több kép, jóváhagyás nélkül; a képek alul gyűlnek, törölhetők, és csak a „Feltöltés” küldi fel őket.
+  const CAM = { id: null, stream: null, cap: null, shots: [], busy: false };
+
+  function camOpen(id) {
+    CAM.id = id;
+    let d = $('#cam');
+    if (!d) {
+      d = document.createElement('dialog');
+      d.id = 'cam';
+      d.setAttribute('aria-label', 'Fotózás');
+      d.addEventListener('cancel', e => { e.preventDefault(); camClose(); });
+      document.body.appendChild(d);
+    }
+    d.innerHTML = `
+      <div class="cam-top">
+        <button type="button" class="cam-x" data-action="cam-close" aria-label="Bezárás">×</button>
+        <span class="cam-id">${esc(id)}</span>
+      </div>
+      <div class="cam-view">
+        <video playsinline muted autoplay></video>
+        <div class="cam-msg" hidden></div>
+        <div class="cam-flash"></div>
+      </div>
+      <div class="cam-strip"></div>
+      <div class="cam-bar">
+        <button type="button" class="cam-lib" data-action="cam-lib">${IC.img}<span>Galéria</span></button>
+        <button type="button" class="cam-shot" data-action="cam-shot" aria-label="Fotó készítése"><i></i></button>
+        <button type="button" class="cam-send" data-action="cam-send" disabled>Feltöltés</button>
+      </div>
+      <input type="file" id="cam-in-lib" accept="image/*" multiple hidden>
+      <input type="file" id="cam-in-native" accept="image/*" capture="environment" hidden>`;
+    d.showModal();
+    renderCam();
+    camStart();
+  }
+
+  async function camStart() {
+    const d = $('#cam'), msg = d.querySelector('.cam-msg');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { msg.hidden = false; msg.textContent = 'Érintsd meg a gombot a fotózáshoz'; return; }
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } } });
+      if (!d.open || CAM.stream) { st.getTracks().forEach(t => t.stop()); return; }
+      CAM.stream = st;
+      const v = d.querySelector('video');
+      v.srcObject = st;
+      v.play().catch(() => {});
+      CAM.cap = 'ImageCapture' in window ? new ImageCapture(st.getVideoTracks()[0]) : null;
+      msg.hidden = true;
+    } catch (err) {
+      msg.hidden = false;
+      msg.textContent = err && err.name === 'NotAllowedError' ? 'A kamera nincs engedélyezve a böngészőben' : 'A kamera nem érhető el';
+    }
+  }
+
+  // Másik alkalmazásra váltás után a rendszer leállíthatja a kamerát: visszatéréskor újraindul.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !CAM.id) return;
+    if (!CAM.stream || CAM.stream.getVideoTracks().every(t => t.readyState === 'ended')) { camStop(); camStart(); }
+  });
+
+  function camStop() {
+    if (CAM.stream) CAM.stream.getTracks().forEach(t => t.stop());
+    CAM.stream = null; CAM.cap = null;
+  }
+
+  function camClose(force) {
+    const d = $('#cam');
+    const x = d && d.querySelector('.cam-x');
+    // Feltöltetlen kép elvetése előtt egy második érintést kér.
+    if (!force && CAM.shots.length && x && !x.classList.contains('arm')) {
+      x.classList.add('arm');
+      x.textContent = 'Elveted?';
+      setTimeout(() => { if (x.isConnected) { x.classList.remove('arm'); x.textContent = '×'; } }, 2500);
+      return;
+    }
+    camStop();
+    CAM.shots.forEach(s => URL.revokeObjectURL(s.url));
+    CAM.shots = [];
+    CAM.id = null;
+    if (d && d.open) d.close();
+  }
+
+  function camAdd(blob) {
+    CAM.shots.push({ k: Math.random().toString(36).slice(2), blob, url: URL.createObjectURL(blob) });
+    renderCam();
+    const s = $('#cam .cam-strip');
+    if (s) s.scrollLeft = s.scrollWidth;
+  }
+
+  // Androidon a teljes felbontású fotó (ImageCapture), máshol az élőkép egy kockája.
+  async function camShot() {
+    const d = $('#cam');
+    const v = d && d.querySelector('video');
+    if (!CAM.stream || !v || !v.videoWidth) { const n = $('#cam-in-native'); if (n) n.click(); return; }
+    if (CAM.busy) return;
+    CAM.busy = true;
+    const fl = d.querySelector('.cam-flash');
+    fl.classList.remove('go'); void fl.offsetWidth; fl.classList.add('go');
+    if (navigator.vibrate) navigator.vibrate(20);
+    let blob = null;
+    if (CAM.cap) {
+      try { blob = await shrink(await Promise.race([CAM.cap.takePhoto(), sleep(4000).then(() => { throw new Error('idő'); })])); }
+      catch (_) { blob = null; }
+    }
+    if (!blob) {
+      const k = Math.min(1, 1920 / Math.max(v.videoWidth, v.videoHeight));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(v.videoWidth * k); cv.height = Math.round(v.videoHeight * k);
+      cv.getContext('2d').drawImage(v, 0, 0, cv.width, cv.height);
+      blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+    }
+    CAM.busy = false;
+    if (blob && CAM.id) camAdd(blob);
+  }
+
+  async function camFiles(files) {
+    for (const f of files) {
+      if (f.type && !f.type.startsWith('image/')) continue;
+      try { camAdd(await shrink(f)); } catch (_) { toast('Egy kép nem olvasható'); }
+    }
+  }
+
+  function renderCam() {
+    const d = $('#cam');
+    if (!d || !d.open || !CAM.id) return;
+    const up = livePhotos(CAM.id).map((p, i) => `<figure class="ph-t up">
+        <button type="button" class="ph-img" data-action="photo-view" data-ph="${esc(p.path)}" aria-label="Feltöltött ${i + 1}. fotó"><img data-ph="${esc(p.path)}" alt=""${phUrl(p.path) ? ` src="${phUrl(p.path)}"` : ''}></button>
+        ${canDelPhoto(p) ? `<button type="button" class="ph-x" data-action="photo-del" data-ph="${esc(p.path)}" aria-label="Feltöltött ${i + 1}. fotó törlése">×</button>` : ''}
+      </figure>`).join('');
+    const mine = CAM.shots.map((s, i) => `<figure class="ph-t">
+        <img src="${s.url}" alt="">
+        <button type="button" class="ph-x" data-action="cam-del" data-k="${s.k}" aria-label="${i + 1}. új fotó törlése">×</button>
+      </figure>`).join('');
+    d.querySelector('.cam-strip').innerHTML = up + mine;
+    const send = d.querySelector('.cam-send');
+    send.disabled = !CAM.shots.length;
+    send.textContent = CAM.shots.length ? `Feltöltés (${CAM.shots.length})` : 'Feltöltés';
+    loadThumbs();
+  }
+
+  function camSend() {
+    const id = CAM.id, blobs = CAM.shots.map(s => s.blob);
+    if (!id || !blobs.length) return;
+    camClose(true);
+    addPhotos(id, blobs, true);
   }
 
   async function delPhoto(path) {
@@ -2856,7 +3004,19 @@
         paintPhotos(S.drawer);
         break;
       }
-      case 'photo-take': { const inp = $(el.dataset.src === 'cam' ? '#ph-cam' : '#ph-lib'); if (inp) inp.click(); break; }
+      case 'photo-take':
+        if (el.dataset.src === 'cam') camOpen(S.drawer);
+        else { const inp = $('#ph-lib'); if (inp) inp.click(); }
+        break;
+      case 'cam-close': camClose(); break;
+      case 'cam-shot': await camShot(); break;
+      case 'cam-lib': { const inp = $('#cam-in-lib'); if (inp) inp.click(); break; }
+      case 'cam-send': camSend(); break;
+      case 'cam-del': {
+        const s = CAM.shots.find(x => x.k === el.dataset.k);
+        if (s) { URL.revokeObjectURL(s.url); CAM.shots = CAM.shots.filter(x => x !== s); renderCam(); }
+        break;
+      }
       case 'photo-view': viewPhoto(el.dataset.ph); break;
       case 'photo-del':
         // Első érintésre csak élesedik, a második töröl.
@@ -2910,7 +3070,13 @@
       loadUsers();
       return;
     }
-    if (el.id === 'ph-cam' || el.id === 'ph-lib') {
+    if (el.id === 'cam-in-lib' || el.id === 'cam-in-native') {
+      const files = [...el.files];
+      el.value = '';
+      camFiles(files);
+      return;
+    }
+    if (el.id === 'ph-lib') {
       const files = [...el.files];
       el.value = '';
       addPhotos(el.dataset.id, files);
