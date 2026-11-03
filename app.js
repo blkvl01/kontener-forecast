@@ -935,6 +935,17 @@
   const pxKeys = n => [...PX_KNOWN, ...Object.keys(n).filter(k => !PX_KNOWN.includes(k)).sort()];
   const pxHue = (k, keys) => PX_HUE[k] ?? PX_SPARE[(keys.indexOf(k) - PX_KNOWN.length) % PX_SPARE.length];
   const hasPx = (c, px) => (c.pdd || []).some(p => p.no && pxOf(p.no) === px);
+  // A konténer fő prefixe: amelyikből a legtöbb fuvarlevele van; fuvarlevél nélkül a szállítójáé.
+  const SRC_PX = { jz: 'J1z', dmt: 'SZDm', nep: 'Oy' };
+  function cPx(c) {
+    const n = pxCount([c]);
+    return Object.keys(n).sort((a, b) => n[b] - n[a])[0] || SRC_PX[c.src] || '';
+  }
+  function pxCountC(list) {
+    const n = {};
+    list.forEach(c => { const k = cPx(c); if (k) n[k] = (n[k] || 0) + 1; });
+    return n;
+  }
   // Prefix-szűrés: csak kiemel, a számok a teljes hetet mutatják.
   const pxOff = c => !!S.px && !hasPx(c, S.px);
   const pxOn = k => (S.px && S.px !== k ? 'off' : '');
@@ -1102,8 +1113,9 @@
         const ph = phase(c);
         const late = lateInfo(c);
         const m = mk[c.id];
+        const cp = cPx(c);
         return `
-        <div class="blk blk-${ph.grp}${late ? ' late' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)} · ${esc(late ? late.label : ph.label)}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">
+        <div class="blk blk-${ph.grp}${late ? ' late' : ''}${cp ? ' pxo' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px${cp ? `;--h:${pxHue(cp, wkeys)}` : ''}" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} · ${esc(late ? late.label : ph.label)}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">
           <span class="blk-l">${m ? `<i class="mk mk-${m}" aria-hidden="true"></i>` : ''}<span class="blk-id">${esc(c.id)}</span></span><span class="blk-r">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span>
         </div>`;
       }).join('');
@@ -1122,11 +1134,11 @@
       const note = nodata && d >= S.today ? '<div class="stack-note">Még nincs előrejelzés</div>' : '';
       const done = list.filter(c => phase(c).key === 'stored').length;
       const lateN = list.filter(c => lateInfo(c)).length;
-      const dpx = pxCount(list);
+      const dpx = pxCountC(list);
       const dkeys = wkeys.filter(x => dpx[x]);
       const pxs = dkeys.map(x => `${x} ${dpx[x]}`).join(' · ');
       const chgSay = chips.map(s => s.replace(/<[^>]+>/g, '')).join(', ');
-      const say = `${DOW[i]}, ${longLabel(d)}: ${list.length} konténer${list.length ? `, ${fmtT(kg)}, ${done} betárolva` : ''}${lateN ? `, ${lateN} késik` : ''}${pxs ? `, fuvarlevél: ${pxs}` : ''}${chgSay ? `, változás: ${chgSay}` : ''}`;
+      const say = `${DOW[i]}, ${longLabel(d)}: ${list.length} konténer${list.length ? `, ${fmtT(kg)}, ${done} betárolva` : ''}${lateN ? `, ${lateN} késik` : ''}${pxs ? `, prefix szerint: ${pxs}` : ''}${chgSay ? `, változás: ${chgSay}` : ''}`;
       return `
         <button type="button" class="day${d === S.today ? ' is-today' : ''}" data-action="day" data-date="${d}" aria-pressed="${d === S.sel}" aria-label="${esc(say)}" style="--i:${i}">
           <div class="day-top"><span class="day-dow">${DOW[i]}</span>${d === S.today ? '<span class="today-tag">MA</span>' : ''}</div>
