@@ -2619,9 +2619,7 @@
           <b>Nyitáskérelem</b>
           ${MAIL_LATER === c.id
             ? `<button type="button" class="btn-primary sm mail-go" data-action="mail-open">${IC.mail}Levél megnyitása</button>`
-            : SAVE_LATER === c.id
-              ? `<button type="button" class="btn-primary sm mail-go" data-action="photo-save">${IC.img}Fotók mentése a mappába</button>`
-              : `<button type="button" class="btn-primary sm mail-go" data-action="mail">${IC.mail}Nyitáskérelem küldése</button>`}
+            : `<button type="button" class="btn-primary sm mail-go" data-action="mail">${IC.mail}Nyitáskérelem küldése</button>`}
         </div>
         ${miss.length ? `<div class="flag warn">${IC.warn}Hiányzik: ${esc(miss.join(', '))}</div>` : ''}
         <dl class="mail-pv">
@@ -2678,14 +2676,17 @@
       return;
     }
     if (!n) { if (!openWin(url)) location.href = url; return; }
-    // A levél mindig azonnal nyílik. Ha a mappához még engedély kell, azt külön gomb kéri (két engedélykérés egy kattintásra a felugró ablakot tiltaná).
+    // Engedélyezett mappánál egy kattintás: levél + mentés. Ha engedély kell, előbb csak a mentés fut (a felhasználó itt marad és látja),
+    // a levél a „Levél megnyitása” gombbal nyílik (engedélykérés után a böngésző a felugró ablakot tiltaná).
     const dir = canDir() && await dirGet();
     const ready = !canDir() || (dir && (await dir.queryPermission({ mode: 'readwrite' }).catch(() => '')) === 'granted');
-    if (!openWin(url)) location.href = url;
-    if (ready) await savePhotos(id);
-    else { SAVE_LATER = id; paintPhotos(id); }
+    if (ready) {
+      if (!openWin(url)) location.href = url;
+      await savePhotos(id);
+      return;
+    }
+    if (await savePhotos(id)) mailLater(id);
   }
-  let SAVE_LATER = null;
 
   // ---------- felhasználók ----------
   function inviteUrl(key) {
@@ -3001,11 +3002,6 @@
         MAIL_LATER = null;
         if (c) { const url = composeUrl(mailParts(c)); if (!openWin(url)) location.href = url; }
         paintPhotos(S.drawer);
-        break;
-      }
-      case 'photo-save': {
-        const id = S.drawer;
-        if (await savePhotos(id)) { SAVE_LATER = null; paintPhotos(id); }
         break;
       }
       case 'photo-take':
