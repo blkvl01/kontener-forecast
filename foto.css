@@ -59,8 +59,7 @@ main{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
 .box .hd .n{color:var(--muted);font-weight:500}
 .link{border:0;background:none;padding:6px 0 6px 10px;display:inline-flex;align-items:center;gap:5px;color:var(--orange-text);font-weight:600;font-size:14px}
 .link svg{width:15px;height:15px}
-.plate{display:inline-flex;align-self:flex-start;align-items:stretch;font-family:var(--mono);font-weight:600;font-size:17px;border-radius:6px;background:#fff;color:var(--ink);border:2px solid var(--ink);overflow:hidden;white-space:nowrap;max-width:100%}
-.plate .eu{background:oklch(0.45 0.15 260);color:#fff;font-size:9px;font-family:var(--sans);font-weight:700;padding:0 4px 3px;display:flex;align-items:flex-end}
+.plate{display:inline-flex;align-self:flex-start;align-items:stretch;font-family:var(--mono);font-weight:600;font-size:17px;border-radius:6px;background:#fff;color:var(--ink);border:2px solid var(--ink);padding:0 2px;overflow:hidden;white-space:nowrap;max-width:100%}
 .plate span{padding:3px 8px;overflow:hidden;text-overflow:ellipsis}
 .plate.none span{color:var(--muted);font-family:var(--sans);font-weight:500;font-size:15px}
 .fixed{font-size:12px;color:var(--muted)}
@@ -147,3 +146,106 @@ main{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
 #view::backdrop{background:#000}
 
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition:none !important}}
+
+/* ---------- nyitó animáció: daru → fókusz → írisz → fotólap (≈1,2 mp) ----------
+   A főalkalmazás nyitó jelenetének világa: sötét konténerudvar, daru, narancs konténer, redőnykapu.
+   Csak a kf-intro osztállyal fut (foto-boot.js dönt az első képkocka előtt). */
+.intro{display:none}
+.kf-intro .intro{display:block}
+.kf-intro body{overflow:hidden}
+.intro{--ex:cubic-bezier(.16,1,.3,1);--io:cubic-bezier(.77,0,.18,1);--qt:cubic-bezier(.25,1,.5,1);--fill:oklch(0.7 0.155 50);
+  position:fixed;inset:0;z-index:100;overflow:hidden;color:var(--yard-text);
+  background-color:var(--yard);
+  background-image:linear-gradient(180deg,oklch(1 0 0 / .03),transparent 35%,transparent 70%,oklch(0 0 0 / .25)),
+    repeating-linear-gradient(180deg,oklch(1 0 0 / .05) 0 1px,transparent 1px 3px,oklch(0 0 0 / .16) 3px 5px,transparent 5px 24px)}
+.in-glow{position:absolute;left:50%;bottom:-28vh;width:150vmax;height:62vh;margin-left:-75vmax;border-radius:50%;background:radial-gradient(closest-side,oklch(0.7 0.16 50 / .28),oklch(0.7 0.16 50 / 0));animation:in-fade .5s var(--qt) backwards}
+.in-hud{position:absolute;left:0;right:0;top:0;display:flex;justify-content:space-between;align-items:center;padding:calc(env(safe-area-inset-top) + 18px) max(20px,env(safe-area-inset-right)) 0 max(20px,env(safe-area-inset-left));font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--yard-muted);animation:in-drop .5s var(--ex) .08s backwards}
+.in-rec{display:inline-flex;align-items:center;gap:8px;color:var(--yard-text);font-weight:600}
+.in-rec i{width:8px;height:8px;border-radius:50%;background:oklch(0.62 0.22 27);box-shadow:0 0 8px oklch(0.62 0.22 27 / .8);animation:in-blink .9s steps(2,jump-none) infinite}
+.in-stage{position:absolute;left:50%;top:46%;width:min(340px,82vw);transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:30px}
+.in-shot{position:relative;width:100%;padding:22px 18px}
+.in-shot:before,.in-shot:after{content:"";position:absolute;border-radius:3px;opacity:0;pointer-events:none}
+.in-shot:before{inset:-10px -10px -40px;z-index:-2;background:oklch(0.97 0.006 85);box-shadow:0 30px 50px -18px oklch(0.05 0.02 255 / .8)}
+.in-shot:after{inset:0;z-index:-1;background:var(--yard) linear-gradient(180deg,oklch(0.3 0.03 240),oklch(0.18 0.02 255))}
+
+/* daru és konténer */
+.in-hoist{position:absolute;left:18px;right:18px;top:22px;height:0;animation:in-lower .5s var(--ex) backwards}
+.in-cable{position:absolute;left:50%;bottom:4px;width:2px;height:60vh;margin-left:-1px;background:linear-gradient(to top,oklch(0.62 0.02 255),oklch(0.45 0.02 255 / 0));animation:in-release .3s var(--qt) .44s forwards}
+.in-spreader{position:absolute;left:4%;right:4%;bottom:0;height:7px;border-radius:2px;background:oklch(0.42 0.02 255);box-shadow:inset 0 1px 0 oklch(1 0 0 / .12);animation:in-release .3s var(--qt) .44s forwards}
+.in-box{position:relative;width:100%;aspect-ratio:400 / 96;animation:in-lower .5s var(--ex) backwards,in-settle .28s var(--qt) .44s}
+.in-ct{display:block;width:100%;height:100%;overflow:visible;filter:drop-shadow(0 16px 18px oklch(0.05 0.02 255 / .55))}
+.ic-body{fill:var(--fill)}
+.ic-ribs line{stroke:oklch(0.2 0.02 255 / .2);stroke-width:5}
+.ic-door rect{fill:oklch(0.64 0.15 50)}
+.ic-door line{stroke:oklch(0.25 0.02 255 / .55);stroke-width:2.5}
+.ic-door .ic-seal{fill:oklch(0.82 0.16 95)}
+.ic-frame rect{fill:oklch(0.32 0.02 255)}
+.ic-cast rect{fill:oklch(0.24 0.02 255)}
+.in-code{position:absolute;left:7%;top:24%;font-family:var(--mono);font-size:clamp(15px,5.2vw,20px);font-weight:700;letter-spacing:.04em;color:oklch(0.99 0 0);text-shadow:0 1px 0 oklch(0 0 0 / .25);white-space:nowrap}
+.in-code b{display:inline-block;margin-left:.25em;padding:0 .22em;outline:1.5px solid currentColor;outline-offset:-1px}
+.in-code .ch{display:inline-block;animation:in-flip .42s var(--ex) backwards;animation-delay:calc(var(--i) * 26ms)}
+.in-iso{position:absolute;left:7%;top:56%;font-family:var(--mono);font-size:10px;font-weight:600;color:oklch(0.98 0 0 / .8);letter-spacing:.06em}
+.in-sheen{position:absolute;top:6%;bottom:6%;left:-30%;width:22%;background:linear-gradient(100deg,transparent,oklch(1 0 0 / .32) 50%,transparent);animation:in-sheen 1.3s var(--io) .45s infinite;pointer-events:none}
+
+/* kereső: sarokjelölők a képernyő széléről a konténerre, AF-négyzet */
+.in-brk i{position:absolute;width:26px;height:26px;border:0 solid oklch(0.98 0 0);opacity:0;transition:border-color .15s}
+.in-brk .tl{left:0;top:0;border-width:3px 0 0 3px;--fx:-34vw;--fy:-30vh}
+.in-brk .tr{right:0;top:0;border-width:3px 3px 0 0;--fx:34vw;--fy:-30vh}
+.in-brk .bl{left:0;bottom:0;border-width:0 0 3px 3px;--fx:-34vw;--fy:30vh}
+.in-brk .br{right:0;bottom:0;border-width:0 3px 3px 0;--fx:34vw;--fy:30vh}
+.in-brk i{animation:in-conv .46s var(--ex) .08s forwards,in-breathe 1s var(--io) .56s infinite alternate}
+.in-af{position:absolute;left:50%;top:50%;width:46px;height:30px;margin:-15px 0 0 -23px;border:1.5px solid oklch(0.98 0 0 / .85);border-radius:3px;opacity:0;animation:in-af .34s var(--ex) .3s forwards,in-pulse .7s var(--io) .66s infinite alternate}
+.in-af:after{content:"";position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;background:currentColor;color:oklch(0.98 0 0 / .85)}
+
+.in-name{display:flex;font-family:var(--cond);font-size:26px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--yard-text)}
+.in-name span{display:inline-block;animation:in-flip .45s var(--ex) backwards;animation-delay:calc(.16s + var(--i) * 20ms)}
+.in-name i{width:.45em}
+.in-rail{position:absolute;left:0;right:0;bottom:0;height:calc(env(safe-area-inset-bottom) + 12px);background-color:oklch(0.72 0.165 52);background-image:repeating-linear-gradient(90deg,oklch(0 0 0 / .18) 0 2px,transparent 2px 11px);box-shadow:0 -2px 0 oklch(0.14 0.02 255),0 -5px 0 oklch(0.3 0.02 255)}
+
+/* írisz: hat penge a középpont felé, egy villanás */
+.in-iris{position:absolute;inset:0;pointer-events:none;visibility:hidden}
+.in-iris i{position:absolute;left:50%;top:50%;width:220vmax;height:220vmax;margin:-110vmax 0 0 -110vmax;
+  clip-path:polygon(50% 50%,14% 0,86% 0);
+  background:linear-gradient(104deg,oklch(0.15 0.012 255) 0 46%,oklch(0.36 0.02 255) 47.5% 48.5%,oklch(0.11 0.01 255) 50%);
+  transform:rotate(calc(var(--k) * 60deg - 30deg)) translateY(-80vmax)}
+.in-flash{position:absolute;inset:0;background:oklch(1 0 0);opacity:0;pointer-events:none}
+
+/* exponálás */
+.intro.shoot .in-brk i{border-color:oklch(0.76 0.17 55);animation:in-lock .2s var(--ex) forwards}
+.intro.shoot .in-af{animation:none;opacity:1;color:oklch(0.76 0.17 55);border-color:oklch(0.76 0.17 55);transform:scale(.86);transition:transform .15s var(--ex)}
+.intro.shoot .in-af:after{background:oklch(0.76 0.17 55)}
+.intro.shoot .in-iris{visibility:visible}
+.intro.shoot .in-iris i{animation:in-iris .34s var(--io) .08s both}
+.intro.shoot .in-flash{animation:in-flash .42s var(--qt) .2s}
+.intro.shoot .in-rec i{animation:none;background:oklch(0.76 0.17 55);box-shadow:0 0 10px oklch(0.76 0.17 55 / .9)}
+/* fotólap: a kép kinyomtatódik és felrepül, a háttér redőnykapuként felhúzódik */
+.intro.print{animation:in-door .46s var(--io) .08s forwards}
+.intro.print .in-shot:before,.intro.print .in-shot:after{opacity:1;transition:opacity .12s}
+.intro.print .in-shot{animation:in-printed .54s var(--ex) forwards}
+.intro.print .in-brk,.intro.print .in-af,.intro.print .in-sheen{opacity:0;transition:opacity .1s}
+.intro.print .in-name,.intro.print .in-hud{opacity:0;transform:translateY(-8px);transition:opacity .2s,transform .2s}
+.intro.abort{animation:in-out .25s var(--qt) forwards}
+
+@keyframes in-fade{from{opacity:0}}
+@keyframes in-drop{from{opacity:0;transform:translateY(-10px)}}
+@keyframes in-blink{50%{opacity:.25}}
+@keyframes in-lower{from{transform:translateY(-42vh)}}
+@keyframes in-release{to{transform:translateY(-20px);opacity:0}}
+@keyframes in-settle{30%{transform:translateY(2px)}}
+@keyframes in-sheen{to{transform:translateX(520%)}}
+@keyframes in-flip{from{opacity:0;transform:perspective(300px) rotateX(-100deg) translateY(.15em)}}
+@keyframes in-conv{from{opacity:0;transform:translate(var(--fx),var(--fy)) scale(1.8)}to{opacity:1;transform:none}}
+@keyframes in-breathe{to{transform:scale(1.06)}}
+@keyframes in-af{from{opacity:0;transform:scale(1.8)}to{opacity:1;transform:none}}
+@keyframes in-pulse{to{transform:scale(.88);opacity:.6}}
+@keyframes in-lock{0%{opacity:1;transform:scale(1.06)}60%{transform:scale(.9)}100%{opacity:1;transform:scale(.94)}}
+@keyframes in-iris{
+  0%{transform:rotate(calc(var(--k) * 60deg - 30deg)) translateY(-80vmax)}
+  48%,56%{transform:rotate(calc(var(--k) * 60deg)) translateY(0)}
+  100%{transform:rotate(calc(var(--k) * 60deg + 26deg)) translateY(-80vmax)}}
+@keyframes in-flash{0%{opacity:0}18%{opacity:.85}100%{opacity:0}}
+@keyframes in-printed{to{transform:translateY(-30vh) scale(.44) rotate(-5deg)}}
+@keyframes in-door{to{transform:translateY(-100%)}}
+@keyframes in-out{to{opacity:0}}
+.back{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;margin:-4px 0 6px -6px;padding:6px 8px;border:0;border-radius:8px;background:none;color:var(--yard-muted);font-size:14px;font-weight:500}
+.back:active{background:var(--yard-2)}

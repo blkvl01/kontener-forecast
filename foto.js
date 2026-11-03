@@ -7,6 +7,9 @@
   const CFG = window.KF_CONFIG || {};
   const FN = `${CFG.url}/functions/v1/photo-link`;
   const TOKEN = (location.hash.match(/[#&]t=([0-9a-f]{32}[\w-]{22})(?![\w-])/) || [])[1] || '';
+  // A gépi QR és a telefonos Fotózás gomb a konténerszámot is átadja: a nyitó jelenet rögtön azt mutatja.
+  const HINT = (location.hash.match(/[#&]c=([A-Z]{4}\d{7})/) || [])[1] || '';
+  const FROM_APP = /[#&]from=app\b/.test(location.hash);
   const $ = s => document.querySelector(s);
   const main = $('#main');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -18,8 +21,45 @@
     img: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-9 9"/></svg>',
     pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>',
     wifi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><path d="M12 19h.01"/><path d="M3 3l18 18"/></svg>',
+    back: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>',
     lock: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
   };
+
+  // ---------- nyitó jelenet ----------
+  // Daru → fókusz → írisz → fotólap. Az adatok betöltése alatt a kereső „fókuszál”; az exponálás akkor jön,
+  // amikor az adatok megvannak és a daru letette a konténert (legalább ~0,55 mp).
+  const INTRO = document.documentElement.classList.contains('kf-intro') ? document.getElementById('intro') : null;
+  function introCode(id) {
+    const el = document.getElementById('in-code');
+    if (!el || !id || el.dataset.id === id) return;
+    el.dataset.id = id;
+    let i = 0;
+    const ch = t => [...t].map(x => `<span class="ch" style="--i:${i++}">${esc(x)}</span>`).join('');
+    el.innerHTML = `${ch(id.slice(0, 4))} ${ch(id.slice(4, 10))}<b>${ch(id.slice(10))}</b>`;
+  }
+  function introEnd() {
+    if (INTRO) INTRO.remove();
+    document.documentElement.classList.remove('kf-intro');
+  }
+  async function introPlay(id) {
+    if (!INTRO || !INTRO.isConnected) return;
+    introCode(id);
+    const wait = 520 - performance.now();
+    if (wait > 0) await sleep(wait);
+    if (!HINT) await sleep(240); // a most beírt konténerszám előbb kirajzolódik
+    INTRO.classList.add('shoot');
+    if (navigator.vibrate) setTimeout(() => navigator.vibrate(14), 170);
+    await sleep(280);
+    INTRO.classList.add('print');
+    await sleep(560);
+    introEnd();
+  }
+  function introAbort() {
+    if (!INTRO || !INTRO.isConnected) return;
+    INTRO.classList.add('abort');
+    setTimeout(introEnd, 260);
+  }
+  if (INTRO) introCode(HINT);
 
   // ---------- szerver ----------
   class Gone extends Error {}
@@ -120,11 +160,12 @@
     const chips = [
       INFO.arrived_at ? `<span class="chip live">Megérkezett ${esc(hm(INFO.arrived_at))}</span>` : '',
       INFO.ramp ? `<span class="chip">Rámpa ${esc(INFO.ramp)}</span>` : '',
-      `<span class="chip">QR ${esc(until(INFO.expires_at))}</span>`
+      FROM_APP ? '' : `<span class="chip">QR ${esc(until(INFO.expires_at))}</span>`
     ].join('');
     const pl = plateTxt(INFO.plate);
     main.innerHTML = `
       <header class="band">
+        ${FROM_APP ? `<button type="button" class="back" data-a="back">${IC.back}Vissza a konténerhez</button>` : ''}
         <span class="lbl">Konténer</span>
         <span class="cno">${fmtC(INFO.container)}</span>
         <div class="chips">${chips}</div>
@@ -133,7 +174,7 @@
         ${banner()}
         <section class="box" aria-label="Rendszám">
           <div class="hd"><span class="lbl">Rendszám</span><button type="button" class="link" data-a="plate">${IC.pen}Módosítás</button></div>
-          ${pl ? `<span class="plate"><span class="eu">H</span><span>${esc(pl)}</span></span>` : '<span class="plate none"><span class="eu">H</span><span>nincs megadva</span></span>'}
+          ${pl ? `<span class="plate"><span>${esc(pl)}</span></span>` : '<span class="plate none"><span>nincs megadva</span></span>'}
           ${INFO.plate_fixed ? '<span class="fixed">Kézzel javítva</span>' : ''}
         </section>
         <section class="box" aria-label="Fotók">
@@ -174,7 +215,9 @@
       INFO = out;
       if (first) await restoreQueue();
       paint();
+      if (first) introPlay(out.container);
     } catch (e) {
+      if (first) introAbort();
       if (e instanceof Gone) {
         if (!INFO) { gone(e.message); return; }
         EXPIRED = e.message; paint(); return;
@@ -590,6 +633,10 @@
       case 'view': view(el.dataset.k); break;
       case 'plate': if (!EXPIRED) plateOpen(); break;
       case 'plate-close': $('#plate').close(); break;
+      case 'back':
+        if (history.length > 1) history.back();
+        else location.replace(`./#c=${INFO ? INFO.container : HINT}`);
+        break;
       case 'retry': main.innerHTML = '<div class="load"><i></i><span>Betöltés…</span></div>'; load(true); break;
     }
   });
@@ -611,6 +658,7 @@
   setInterval(() => { if (!document.hidden && INFO && !EXPIRED) load(); }, 60000);
 
   inputs();
+  if (!TOKEN || !CFG.url) introAbort();
   if (!TOKEN || !CFG.url) gone('Ez az oldal a gépen készült QR-kóddal nyitható meg. Kérd meg a kollégát, hogy nyissa meg a konténert, és mutassa a QR-kódot.');
   else load(true);
 })();
