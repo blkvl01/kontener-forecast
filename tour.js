@@ -20,7 +20,7 @@
   const SHEET_W = { ...SHEET, sel: ['.sheet .facts'], title: 'Adatlap', text: 'Konténerre kattintva nyílik az adatlapja (most az első).\nRendszám, T1/MRN, súly, karton, ETA és sofőr olvasható róla; a rámpa és a megjegyzés is itt adható meg.' };
   const SHEET_E = { ...SHEET, sel: ['.sheet .facts'], title: 'Adatlap', text: 'Konténerre kattintva nyílik az adatlapja (most az első).\nRendszám, T1/MRN, súly, karton és sofőr olvasható róla; az ETA, a rámpa és a megjegyzés is itt adható meg.' };
   const MAILBOX = { ...SHEET, sel: ['.sheet .mailbox'], title: 'Nyitáskérelem', text: 'Előre kitöltött levél: címzettek, tárgy (konténerszám, MRN, mai dátum) és szöveg (az adatok között a fuvarlevélszámokkal), mezőnként másolható.\nA Rendszám sorban az előre bejelentett rendszám áll: küldés előtt a valós rendszámmal össze kell vetni.\nHiányzó MRN-t vagy rendszámot sárga jelzés mutat.' };
-  const MAILGO = { ...SHEET, sel: ['.sheet .mail-go'], pad: 6, title: 'Küldés', text: 'A gomb új levelet nyit az Outlook webes felületén ezekkel az adatokkal és a saját aláírással.\nA képeket és a dokumentációt a levélhez kell csatolni; a küldés az Outlookban történik.' };
+  const MAILGO = { ...SHEET, sel: ['.sheet .mail-go'], pad: 6, title: 'Küldés', text: 'A gomb új levelet nyit az Outlook webes felületén ezekkel az adatokkal és a saját aláírással, a konténer fotóit pedig a Képek\\Nyitáskérelem mappába menti.\nA képeket és a dokumentációt a levélhez kell csatolni; a küldés az Outlookban történik.\nA fotózás menetét a gomb melletti ? mutatja be.' };
   const VIEWS_W = { sel: ['.tabs', '.search'], union: true, title: 'Nézetek és keresés', text: 'Hét: heti áttekintés, Naptár: havi nézet.\nA keresés konténerszámra, MRN-re, rendszámra és PDD-re is működik.' };
   const VIEWS_E = { ...VIEWS_W, text: 'Hét: heti áttekintés, Naptár: havi nézet, Statisztika: darabszám és átfutás 7, 28 vagy 90 napra.\nA keresés konténerszámra, MRN-re, rendszámra és PDD-re is működik.' };
   const PASTE = { sel: ['.period [data-action="paste"]'], title: 'ETA beillesztése', text: 'A levélben kapott „KONTÉNER// … ETA 11:30” blokkok ide illeszthetők be, egyszerre több is.' };
@@ -34,6 +34,17 @@
     editor: [{ title: TITLE, text: `${INTRO}\nA Szerkesztő rangban az ETA is módosítható.` }, YARD, SHEET_E, MAILBOX, MAILGO, VIEWS_E, PASTE, HELP],
     admin: [{ title: TITLE, text: `${INTRO}\nAz Admin rangban a felhasználók kezelése és a beállítások is elérhetők.` }, YARD, SHEET_E, MAILBOX, MAILGO, VIEWS_E, PASTE, SYNC, SETTINGS, HELP]
   };
+
+  // A Nyitáskérelem melletti ? : a fotózás és a képek csatolásának menete, a nyitott adatlapon.
+  const PHOTO_STEPS = [
+    { title: 'Fotók és nyitáskérelem', text: 'A konténer fotói telefonon készülnek az adatlapon, a nyitáskérelem gépről megy ki, a képekkel együtt.\nA feltöltött fotók 12 óra után maguktól törlődnek.' },
+    { sel: ['.sheet .photobox [data-action="photo-take"]'], pad: 6, title: 'Fotózás telefonon', text: 'A Fotózás gomb a kamerát nyitja meg az oldalon belül.\nA nagy kör gombbal egymás után több kép készíthető, képenkénti jóváhagyás nélkül. A Galéria gombbal a telefonon lévő képek is hozzáadhatók.\nGépen ugyanitt a Képek hozzáadása gomb látszik: fájlból tölt fel.' },
+    { sel: ['.sheet .photobox [data-action="photo-take"]'], pad: 6, title: 'Feltöltés', text: 'Fotózás közben a képek alul gyűlnek; a × törli őket, a már feltöltötteket is.\nA Feltöltés gomb egyszerre küldi fel az összeset. Feltöltés nélkül bezárva a képek elvesznek: ilyenkor a bezárás gomb még egyszer rákérdez.' },
+    { sel: ['.sheet .ph-grid', '.sheet .photobox'], title: 'Feltöltött képek', text: 'A feltöltött képek itt látszanak, minden gépen és telefonon, frissítés nélkül.\nKépre kattintva nagyban nyílik meg; a × két érintéssel törli.\nHa nincs még fotó, a Nyitáskérelem dobozban a „Hiányzik” sor ezt is jelzi.' },
+    { sel: ['.sheet .mail-go'], pad: 6, title: 'Nyitáskérelem küldése', text: 'Gépen a gomb megnyitja az Outlook-levelet, és közben a fotókat a Képek\\Nyitáskérelem mappába menti (KONTÉNER_1.jpg, _2.jpg …).\nA mappában mindig csak az utoljára küldött konténer képei vannak.' },
+    { sel: ['.sheet .mail-go'], pad: 6, title: 'Első alkalommal', text: 'A böngésző megkérdezi, hova mentsen: a Képek mappát kell kiválasztani, és engedélyezni a szerkesztést. A „Mindig engedélyezés” választásával többet nem kérdez.\nIlyenkor a levél nem nyílik meg azonnal: a gomb „Levél megnyitása” feliratra vált, azzal nyílik meg.\nHa az engedélykérés bezárul, a levél akkor is megnyitható, és a következő küldésnél újra kérdez.' },
+    { sel: ['.sheet .mailbox'], title: 'Csatolás az Outlookban', text: 'A mappát a böngésző nem tudja magától megnyitni.\nA levélben: Csatolás → Tallózás ezen a számítógépen → Képek\\Nyitáskérelem → Ctrl+A → Megnyitás, majd a dokumentáció.\nTipp: a Nyitáskérelem mappát érdemes a Gyorselérésbe rögzíteni.' }
+  ];
 
   let T = null;
 
@@ -179,11 +190,15 @@
     removeEventListener('keydown', onKey, true);
     removeEventListener('resize', onResize);
     if (t.sheetOpen) t.sheet.close();
+    // Nyitott adatlap mellett a háttér inert marad (az adatlap modális).
     const app = $('#app');
-    if (app) app.inert = false;
+    if (app) app.inert = !!$('#drawer .sheet');
     t.root.classList.add('bye');
     setTimeout(() => t.root.remove(), RM.matches ? 0 : 220);
-    if (t.opener) { const b = $('[data-action="tour"]'); if (b) b.focus({ preventScroll: true }); }
+    if (t.opener) {
+      const b = t.opener instanceof Element && t.opener.isConnected ? t.opener : $(t.openerSel || '[data-action="tour"]');
+      if (b) b.focus({ preventScroll: true });
+    }
   }
 
   function onResize() { layout(); }
@@ -203,10 +218,12 @@
   }
 
   // o.sheet: { pick() -> konténer azonosító | null, open(id), close() } az adatlapos lépésekhez; nélküle azok kimaradnak.
+  // o.steps / o.label: saját lépéssor (pl. a fotózás súgója) a szerepkör túrája helyett.
   function start(role, o = {}) {
-    if (T || !STEPS[role]) return false;
+    const list = o.steps || STEPS[role];
+    if (T || !list) return false;
     const sheet = o.sheet && o.sheet.pick() ? o.sheet : null;
-    const steps = STEPS[role].filter(s => (s.sheet ? !!sheet : !s.sel || targets(s).length));
+    const steps = list.filter(s => (s.sheet ? !!sheet : !s.sel || targets(s).length));
     const root = document.createElement('div');
     root.className = 'tour';
     root.dataset.role = role;
@@ -220,9 +237,9 @@
         <div class="tour-body" aria-live="polite"><div class="tour-art">${IC_CT}</div><h3></h3><div class="tour-txt"></div></div>
         <div class="tour-foot"><span class="tour-ticks" aria-hidden="true">${steps.map(() => '<i></i>').join('')}</span><span class="tour-btns"><button type="button" class="tour-b ghost" data-act="back"></button><button type="button" class="tour-b is-primary" data-act="next"></button></span></div>
       </div></div>`;
-    root.querySelector('.tour-role').textContent = ROLE_L[role] || role;
+    root.querySelector('.tour-role').textContent = o.label || ROLE_L[role] || role;
     T = {
-      root, steps, role, sheet, sheetOpen: false, i: 0, side: null, rk: '', ck: '', raf: 0, mvT: 0, opener: !!o.opener,
+      root, steps, role, sheet, sheetOpen: false, i: 0, side: null, rk: '', ck: '', raf: 0, mvT: 0, opener: o.opener || null, openerSel: o.openerSel,
       ring: root.querySelector('.tour-ring'), card: root.querySelector('.tour-card'),
       body: root.querySelector('.tour-body'), title: root.querySelector('h3'), text: root.querySelector('.tour-txt'),
       n: root.querySelector('.tour-n'), ticks: [...root.querySelectorAll('.tour-ticks i')],
@@ -274,5 +291,7 @@
     })();
   }
 
-  window.KFTour = { start, auto, get active() { return !!T; } };
+  const photoHelp = (role, opener) => start(role, { steps: PHOTO_STEPS, label: 'Fotózás', opener, openerSel: '.sheet [data-action="photo-help"]' });
+
+  window.KFTour = { start, auto, photoHelp, get active() { return !!T; } };
 })();

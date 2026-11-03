@@ -2617,9 +2617,12 @@
       <section class="mailbox" aria-label="Nyitáskérelem">
         <div class="mail-head">
           <b>Nyitáskérelem</b>
+          <span class="mail-act">
+          <button type="button" class="ibtn mail-help" data-action="photo-help" aria-label="Súgó: fotózás és nyitáskérelem" title="Súgó: fotózás és nyitáskérelem">${IC.help}</button>
           ${MAIL_LATER === c.id
             ? `<button type="button" class="btn-primary sm mail-go" data-action="mail-open">${IC.mail}Levél megnyitása</button>`
             : `<button type="button" class="btn-primary sm mail-go" data-action="mail">${IC.mail}Nyitáskérelem küldése</button>`}
+          </span>
         </div>
         ${miss.length ? `<div class="flag warn">${IC.warn}Hiányzik: ${esc(miss.join(', '))}</div>` : ''}
         <dl class="mail-pv">
@@ -3008,6 +3011,7 @@
         paintPhotos(S.drawer);
         break;
       }
+      case 'photo-help': if (window.KFTour && ME) window.KFTour.photoHelp(ME.role, el); break;
       case 'photo-take':
         if (el.dataset.src === 'cam') camOpen(S.drawer);
         else { const inp = $('#ph-lib'); if (inp) inp.click(); }

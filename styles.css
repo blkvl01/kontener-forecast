@@ -1489,6 +1489,9 @@ g .hit{fill:transparent}
 .mail-txt dd span{line-height:1.5}
 
 /* konténerfotók */
+.mail-act{display:inline-flex;align-items:center;gap:6px;margin-left:auto}
+.mail-help{width:40px;height:40px;color:var(--muted)}
+.mail-help:hover{color:var(--ink-2)}
 .photobox{border:1px solid var(--line);border-radius:16px;background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:12px}
 .ph-n{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;margin-left:4px;border-radius:10px;background:var(--surface-2);border:1px solid var(--line-soft);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}
 .ph-add{display:flex;gap:8px;flex-wrap:wrap}
