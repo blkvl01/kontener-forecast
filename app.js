@@ -837,8 +837,8 @@
     if (enter && !$('#app').hidden && !$('#app').classList.contains('boot-wait')) {
       awaitReveal(v);
       // Csak a belépő zónák számai számolnak fel; a helyben maradó részek nem villannak.
-      const roots = { yard: '.yard', main: '.main', cal: '.month-main', side: '.side', stats: '.statsv', unit: '.yard, .main' };
-      enter.split(' ').forEach(z => { if (roots[z]) v.querySelectorAll(roots[z]).forEach(r => countUp(r, 0, z === 'unit' ? S.numFrom : null)); });
+      const roots = { yard: '.yard', main: '.main', cal: '.month-main', side: '.side', stats: '.statsv' };
+      enter.split(' ').forEach(z => { if (roots[z]) v.querySelectorAll(roots[z]).forEach(r => countUp(r)); });
     }
     diffFlash(!!enter);
     rememberP();
@@ -1326,7 +1326,7 @@
         const cp = cPx(c);
         return `
         <div class="blk blk-${ph.grp}${late ? ' late' : ''}${isPrio(c) ? ' prio' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} ·${esc(late ? late.label : ph.label)}${isPrio(c) ? ' · prioritás' : ''}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">${isPrio(c) ? '<i class="pf" aria-hidden="true"></i>' : ''}
-          ${pddCells(c, ph)}<span class="blk-l">${m ? `<i class="mk mk-${m}" aria-hidden="true"></i>` : ''}<span class="blk-id">${esc(c.id)}</span></span><span class="blk-r"><span class="blk-v">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span><b class="blk-n${pddOf(c).length ? '' : ' zero'}">${IC.awb}${pddOf(c).length}</b></span>
+          <span class="blk-l">${m ? `<i class="mk mk-${m}" aria-hidden="true"></i>` : ''}<span class="blk-id">${esc(c.id)}</span></span>${pddCells(c, ph)}<span class="blk-r"><span class="blk-v">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span><b class="blk-n${pddOf(c).length ? '' : ' zero'}">${IC.awb}${pddOf(c).length}</b></span>
         </div>`;
       }).join('');
       const ghost = ghosts[i].map(g => `<div class="blk-ghost" style="height:${GH}px"><s>${esc(g.id)}</s><em>${esc(g.t)}</em></div>`).join('');
@@ -1372,8 +1372,8 @@
     // A rekeszek ugyanazt a töltés-nyelvet beszélik, mint a konténer, így a jelmagyarázat mindkét módban azonos.
     const legend = [['Tervben', 0, 'plan'], ['Megérkezett', 25, 'live'], ['Nyitás', 75, 'live'], ['Betárolva', 100, 'done'], ['Késik', 0, 'plan lg-late']]
       .map(([t, p, g], i) => `<span style="--i:${i}"><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
-    // Egységváltáskor a régi mód osztályával rajzol, és a következő lépésben vált (CSS-átmenet a két mód között).
-    const uCls = (S.unitFrom || S.unit) === 'pdd' ? ' u-pdd' : '';
+    // A mód csak ezen az osztályon múlik; a blokkok markupja mindkét módban azonos (lásd swapUnit).
+    const uCls = UP() ? ' u-pdd' : '';
     return `
       <section class="yard${uCls}" aria-label="Heti érkezések">
         <div class="yard-top">
@@ -1390,6 +1390,34 @@
       ${dayPanel()}`;
   }
 
+  // Egységváltás újrarajzolás nélkül: a .yard módosztálya azonnal vált (a rekeszek, feliratok és a csúszka
+  // CSS-átmenettel mennek át a meglévő elemeken), a számok és szövegek pedig helyben cserélődnek, a régi
+  // értékükről számolva. A teljes nézet újraépítése lassú gépen elnyelné az átmenet első felét.
+  function swapUnit() {
+    const view = $('#view');
+    const y = view.querySelector('.yard');
+    if (S.view !== 'week' || !y) { render(); return; }
+    const from = snapNums();
+    y.classList.toggle('u-pdd', UP());
+    y.querySelectorAll('.us-opt').forEach(b => b.setAttribute('aria-checked', String(b.dataset.v === S.unit)));
+    const tpl = document.createElement('div');
+    tpl.innerHTML = weekView();
+    // A becserélt részek ne játsszák le újra a nézet belépő animációját (a #view ev-* osztálya még rajta lehet).
+    tpl.querySelectorAll('.day-chg, .day-foot, .day-ctn, .day-px, .day-pxt, .wk-foot, .main .stats').forEach(e => e.classList.add('k-swap'));
+    tpl.querySelectorAll('.yard .day').forEach(nd => {
+      const od = y.querySelector(`.day[data-date="${nd.dataset.date}"]`);
+      if (!od) return;
+      od.setAttribute('aria-label', nd.getAttribute('aria-label'));
+      ['.day-chg', '.day-foot', '.day-ctn'].forEach(s => { const o = od.querySelector(s), n = nd.querySelector(s); if (o && n) o.replaceWith(n); });
+      od.querySelectorAll(':scope > .day-px, :scope > .day-pxt').forEach(e => e.remove());
+      nd.querySelectorAll(':scope > .day-px, :scope > .day-pxt').forEach(e => od.appendChild(e));
+    });
+    const swap = s => { const o = view.querySelector(s), n = tpl.querySelector(s); if (o && n) o.replaceWith(n); };
+    swap('.wk-foot');
+    swap('.main .stats');
+    ['.yard', '.main .stats'].forEach(s => { const r = view.querySelector(s); if (r) countUp(r, 0, from); });
+  }
+
   // Konténer / fuvarlevél kapcsoló. A csúszka és a kiemelt felirat a .yard módosztályát követi.
   function unitSwitch() {
     const opt = (v, ic, t, sub) => `<button type="button" class="us-opt" role="radio" aria-checked="${S.unit === v}" data-action="unit" data-v="${v}">${ic}<span>${t}<small>${sub}</small></span></button>`;
@@ -1399,16 +1427,17 @@
         ${opt('pdd', IC.awb, 'Fuvarlevél', 'PDD')}
       </div>`;
   }
-  // Fuvarlevél-réteg: a konténer annyi rekeszre bomlik, ahány fuvarlevele van. Minden rekesz ugyanazzal a
+  // Fuvarlevél-réteg: a több fuvarleveles konténer annyi rekeszre bomlik, ahány fuvarlevele van. Minden rekesz ugyanazzal a
   // haladás-töltéssel mutatja a saját állapotát, a betárolt fuvarlevélé tele. Mindkét módban a DOM-ban van,
   // a láthatóságát a .yard módosztálya vezérli.
   function pddCells(c, ph) {
     const ps = pddOf(c);
-    if (!ps.length) return '';
+    // Egy fuvarlevélnél a rekesz maga a konténer: nincs mit szétbontani, csak a szám jelenik meg.
+    if (ps.length < 2) return '';
     const st = c.storedPdd || {};
     // Betárolás közben a még be nem tárolt fuvarlevél a nyitás szintjén áll.
     const rest = ph.key === 'storing' ? PHASE.opened[1] : ph.p;
-    return `<span class="blk-cells" aria-hidden="true">${ps.map((p, k) => {
+    return `<span class="blk-cells" aria-hidden="true" style="--n:${Math.min(ps.length, 9)}">${ps.map((p, k) => {
       const on = ph.key === 'stored' || !!st[p.no.toUpperCase()];
       return `<i class="c-${on ? 'done' : ph.grp}" style="--cp:${Math.round((on ? 1 : rest) * 100)}%;--ci:${Math.min(k, 8)}"></i>`;
     }).join('')}</span>`;
@@ -3405,20 +3434,12 @@
     switch (a) {
       case 'view': switchView(el.dataset.view); break;
       case 'chg': setChg(!S.chg); break;
-      case 'unit': {
+      case 'unit':
         if (S.unit === el.dataset.v) break;
-        // A régi mód osztályával rajzol, a számlálók a régi értékükről indulnak; a reflow után vált a mód,
-        // így a rekeszek, a felirat és a csúszka CSS-átmenettel mennek át.
-        S.numFrom = snapNums();
-        S.unitFrom = S.unit;
         S.unit = el.dataset.v;
         try { localStorage.setItem('kf-unit', S.unit); } catch (_) { /* privát mód */ }
-        render('unit');
-        S.unitFrom = S.numFrom = null;
-        const y = $('#view .yard');
-        if (y) { void y.offsetWidth; y.classList.toggle('u-pdd', UP()); }
+        swapUnit();
         break;
-      }
       case 'px': S.px = el.dataset.v && S.px !== el.dataset.v ? el.dataset.v : null; render(); break;
       case 'export': exportWeek(); break;
       case 'prev': nav(-1); break;
