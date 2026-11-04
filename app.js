@@ -1451,12 +1451,15 @@
     let prev = null, last = -1;
     const items = STAGES.map((k, i) => {
       const at = atOf(k);
+      // Nyitásról nem jött levél, de egy későbbi lépés igazolja: kész, idő nélkül (az időtartam a következő lépésre kerül).
+      const implied = !at && k === 'opened' && !!c.opened_implied;
       // Az időtartamok a nyitáskéréstől (érkezési levél) indulnak, mint a statisztikában.
       const dur = at && prev && k !== 'arrive' ? fmtDur(minutesBetween(prev, at)) : '';
       if (at) { prev = k === 'arrive' ? (first || at) : at; last = i; }
+      if (implied) last = i;
       const lab = k === 'stored' && !st.stored && c.storage ? `Betárolás ${c.storage.done}/${c.storage.total}` : STAGE_LABEL[k];
       return `
-        <li class="${at ? 'done' : ''}" style="--i:${i}">
+        <li class="${at || implied ? 'done' : ''}" style="--i:${i}">
           <span class="sp-dot" aria-hidden="true"></span>
           <span class="sp-lab">${esc(lab)}</span>
           <span class="sp-at">${at ? esc(hm(at)) : '—'}</span>

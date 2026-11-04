@@ -146,6 +146,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
   const all = Object.values(C);
   const byT1 = {};
   all.forEach(x => { if (x.t1) byT1[x.t1.replace(/\s/g, '').toUpperCase()] = x; });
+  const fold = s => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const arr = (arrivals || []).slice().sort((a, b) => (a.received < b.received ? -1 : 1));
   for (const a of arr) {
     const hits = new Set();
@@ -163,6 +164,10 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       if (!x.auto_arrival || a.received < x.auto_arrival.at) x.auto_arrival = { at: a.received, sender: a.sender || '' };
       x.stages = x.stages || {};
       if (st !== 'other' && (!x.stages[st] || a.received < x.stages[st].at)) x.stages[st] = { at: a.received, sender: a.sender || '' };
+      // „Érkeztetés rendben” (vám): eddig mindig a nyitás után jött, ezért a nyitás bizonyítéka.
+      if (st === 'other' && /erkeztetes/.test(fold(a.snippet)) && (!x.customs_ok || a.received < x.customs_ok.at)) {
+        x.customs_ok = { at: a.received, sender: a.sender || '' };
+      }
       x.history.push({ at: a.received, kind: 'stage', stage: st, sender: a.sender || '', snippet: a.snippet || '' });
     });
   }
@@ -213,6 +218,13 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     }
     x.stages = x.stages || {};
     x.stage = ['stored', 'released', 'opened', 'approved', 'request'].find(k => x.stages[k]) || '';
+    // Nyitásról nem mindig jön levél. Ha egy későbbi lépés (elengedés, betárolás, vámos érkeztetés) megtörtént,
+    // a nyitás is megtörtént: a mérföldkő kész, de pontos ideje nincs (a statisztika nem számol vele).
+    const st = x.stages;
+    x.opened_implied = !st.opened && (st.request || st.approved || x.arrived)
+      ? [st.released && st.released.at, x.storage && x.storage.first, x.customs_ok && x.customs_ok.at].filter(Boolean).sort()[0] || ''
+      : '';
+    if (x.opened_implied && (x.stage === 'approved' || x.stage === 'request' || !x.stage)) x.stage = 'opened';
     x.ramp = man.ramp || null;
     x.ramp_set = man.ramp_set || '';
     x.note = man.note || '';
