@@ -790,7 +790,6 @@
   const pddOf = c => (c.pdd || []).filter(p => p.no);
   const sumPdd = l => l.reduce((s, c) => s + pddOf(c).length, 0);
   const sumPddSt = l => l.reduce((s, c) => s + (c.storage ? Math.min(c.storage.done, pddOf(c).length || c.storage.done) : 0), 0);
-  const UTAG = '<i class="u-tag" title="Ez az adat konténerre szól">konténer</i>';
 
   // ---------- render ----------
   // enter: belépő zónák szóközzel ('boot', 'yard', 'main', 'cal', 'side', 'stats'); üresen nincs belépő animáció.
@@ -1043,7 +1042,7 @@
     };
     const kpi = (lab, v, dl, i, on) => `<div class="wk-kpi${on ? ' on' : ''}" style="--i:${i}"><small>${lab}</small><b>${v}</b>${dl}</div>`;
     const U = UP();
-    const arrived = flat.filter(c => c.arrived).length;
+    const arrived = U ? sumPdd(flat.filter(c => c.arrived)) : flat.filter(c => c.arrived).length;
     const stored = U ? sumPddSt(flat) : flat.filter(c => phase(c).key === 'stored').length;
     const prog = (lab, n, col, of = flat.length) => `<div class="wk-prog-row"><span>${lab}</span><i style="--p:${of ? Math.round(n / of * 100) : 0}%;--c:${col}"></i><b>${n}/${of}</b></div>`;
     const bar = keys.filter(k => wpx[k]).map(k => `<i class="${pxOn(k)}" style="flex:${wpx[k]};--h:${pxHue(k, keys)}"></i>`).join('');
@@ -1057,13 +1056,13 @@
           <div class="wk-acts"><button type="button" class="wk-btn" data-action="export"${flat.length ? '' : ' disabled'}>${IC.xls}Excel</button></div>
         </div>
         <div class="wk-kpis">
-          ${kpi('Konténer', num(flat.length, 'int', 200), delta(flat.length, prev.length, fmtInt, true), 0, !U)}
+          ${U ? '' : kpi('Konténer', num(flat.length, 'int', 200), delta(flat.length, prev.length, fmtInt, true), 0, true)}
           ${kpi('Fuvarlevél', num(pdd, 'int', 240), delta(pdd, ppdd, fmtInt, U), 1, U)}
           ${kpi('Colli', num(sumCt(flat), 'int', 280), delta(sumCt(flat), sumCt(prev), fmtInt), 2)}
           ${kpi('Súly', `${num(sumKg(flat) / 1000, 'd1', 320)}<em>t</em>`, delta(sumKg(flat), sumKg(prev), fmtT), 3)}
           <div class="wk-prog" style="--i:4"><small>Állapot</small>
-            ${prog(`Megérkezett${U ? UTAG : ''}`, arrived, 'var(--fill-live)')}
-            ${prog(U ? 'Betárolt PDD' : 'Betárolva', stored, 'oklch(0.86 0.12 85)', U ? pdd : flat.length)}
+            ${prog('Megérkezett', arrived, 'var(--fill-live)', U ? pdd : flat.length)}
+            ${prog('Betárolva', stored, 'oklch(0.86 0.12 85)', U ? pdd : flat.length)}
           </div>
         </div>
         <div class="wk-pre">
@@ -1312,21 +1311,26 @@
         const m = mk[c.id];
         const cp = cPx(c);
         return `
-        <div class="blk blk-${ph.grp}${late ? ' late' : ''}${isPrio(c) ? ' prio' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} ·${esc(late ? late.label : ph.label)}${isPrio(c) ? ' · prioritás' : ''}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">${isPrio(c) ? '<i class="pf" aria-hidden="true"></i>' : ''}
-          ${UP() ? pddCells(c) : ''}<span class="blk-l">${m ? `<i class="mk mk-${m}" aria-hidden="true"></i>` : ''}<span class="blk-id">${esc(c.id)}</span></span><span class="blk-r">${UP() ? `<b class="blk-n">${pddOf(c).length}</b> PDD` : esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span>
+        <div class="blk blk-${ph.grp}${UP() ? ' pddv' : ''}${late ? ' late' : ''}${isPrio(c) ? ' prio' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} ·${esc(late ? late.label : ph.label)}${isPrio(c) ? ' · prioritás' : ''}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">${isPrio(c) ? '<i class="pf" aria-hidden="true"></i>' : ''}
+          ${UP() ? pddCells(c) : ''}<span class="blk-l">${m ? `<i class="mk mk-${m}" aria-hidden="true"></i>` : ''}<span class="blk-id">${esc(c.id)}</span></span><span class="blk-r">${UP() ? `<b class="blk-n">${IC.awb}${pddOf(c).length}</b>` : esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span>
         </div>`;
       }).join('');
       const ghost = ghosts[i].map(g => `<div class="blk-ghost" style="height:${GH}px"><s>${esc(g.id)}</s><em>${esc(g.t)}</em></div>`).join('');
-      const nNew = dchg.filter(x => x.kind === 'new').length;
-      const nMov = dchg.filter(x => x.kind === 'mov').length;
-      const nOut = dchg.filter(x => x.kind === 'out').length;
-      const nAway = ghosts[i].length - nOut;
-      const nPr = list.filter(isPrio).length;
+      // Fuvarlevél-módban a változások is fuvarlevélben számolnak (a konténer összes fuvarlevele mozdult).
+      const wOf = id => (UP() ? pddOf(S.data.containers[id] || {}).length : 1);
+      const sumW = xs => xs.reduce((n, x) => n + wOf(x.id), 0);
+      const nNew = sumW(dchg.filter(x => x.kind === 'new'));
+      const nMov = sumW(dchg.filter(x => x.kind === 'mov'));
+      const outs = dchg.filter(x => x.kind === 'out');
+      const nOut = sumW(outs);
+      const nAway = sumW(ghosts[i]) - nOut;
+      const nPr = UP() ? sumPdd(list.filter(isPrio)) : list.filter(isPrio).length;
+      const uS = UP() ? ' PDD' : '';
       const chips = [
-        nNew && `<span class="cg-new">+${nNew} új</span>`,
-        nMov && `<span class="cg-mov">${nMov} áthelyezve ide</span>`,
-        nAway && `<span class="cg-out">${nAway} áthelyezve innen</span>`,
-        nOut && `<span class="cg-out">${nOut} kikerült</span>`
+        nNew && `<span class="cg-new">+${nNew}${uS} új</span>`,
+        nMov && `<span class="cg-mov">${nMov}${uS} áthelyezve ide</span>`,
+        nAway > 0 && `<span class="cg-out">${nAway}${uS} áthelyezve innen</span>`,
+        nOut && `<span class="cg-out">${nOut}${uS} kikerült</span>`
       ].filter(Boolean);
       const nodata = !hasForecast(d) && !list.length;
       const note = nodata && d >= S.today ? '<div class="stack-note">Még nincs előrejelzés</div>' : '';
@@ -1343,16 +1347,20 @@
         <button type="button" class="day${d === S.today ? ' is-today' : ''}" data-action="day" data-date="${d}" aria-pressed="${d === S.sel}" aria-label="${esc(say)}" style="--i:${i}">
           <div class="day-top"><span class="day-dow">${DOW[i]}</span>${d === S.today ? '<span class="today-tag">MA</span>' : ''}</div>
           <div class="day-num"><span>${parse(d).getDate()}</span></div>
-          <div class="day-chg">${nPr ? `<span class="cg-pr">${IC.prio}${nPr} prioritás</span>` : ''}${chips.join('')}</div>
+          <div class="day-chg">${nPr ? `<span class="cg-pr">${IC.prio}${nPr}${uS} prioritás</span>` : ''}${chips.join('')}</div>
           <div class="stack ${nodata ? 'nodata' : ''}" style="height:${H}px">${blocks}${ghost}${note}</div>
           <div class="day-foot"><span><b>${num(tot, 'int', 120 + i * 40)}</b><small>${U ? 'fuvarlevél' : 'konténer'}</small></span><span class="day-t">${list.length ? fmtT(kg) : '—'}</span></div>
-          <div class="day-ctn">${list.length ? `<span>${U ? `${list.length} konténer` : `${fmtInt(sumCt(list))} colli`}</span>${done ? `<span class="day-sto"><i style="--p:${Math.round(done / Math.max(1, tot) * 100)}%"></i>${done}/${tot} betárolva</span>` : ''}` : ''}</div>
+          <div class="day-ctn">${list.length ? `<span>${fmtInt(sumCt(list))} colli</span>${done ? `<span class="day-sto"><i style="--p:${Math.round(done / Math.max(1, tot) * 100)}%"></i>${done}/${tot} betárolva</span>` : ''}` : ''}</div>
           ${dkeys.length ? `<div class="day-px" aria-hidden="true">${dkeys.map(x => `<i class="${pxOn(x)}" style="flex:${dpx[x]};--h:${pxHue(x, wkeys)}"></i>`).join('')}</div><div class="day-pxt">${IC.box}<span>${esc(pxs)}</span></div>` : ''}
         </button>`;
     }).join('');
 
-    const legend = [['Tervben', 0, 'plan'], ['Megérkezett', 25, 'live'], ['Nyitás', 75, 'live'], ['Betárolva', 100, 'done'], ['Késik', 0, 'plan lg-late']]
-      .map(([t, p, g], i) => `<span style="--i:${i}"><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
+    // Fuvarlevél-módban a jelmagyarázat a szeletek színeit mutatja (fuvarlevelenkénti állapot).
+    const legend = UP()
+      ? [['Tervben', ''], ['Megérkezett', 'arr'], ['Betárolva', 'on'], ['Késik', 'late']]
+        .map(([t, k], i) => `<span style="--i:${i}"><i class="lg-cell ${k}"><b></b><b></b></i>${t}</span>`).join('')
+      : [['Tervben', 0, 'plan'], ['Megérkezett', 25, 'live'], ['Nyitás', 75, 'live'], ['Betárolva', 100, 'done'], ['Késik', 0, 'plan lg-late']]
+        .map(([t, p, g], i) => `<span style="--i:${i}"><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
     return `
       <section class="yard" aria-label="Heti érkezések">
         <div class="yard-top">
@@ -1380,11 +1388,13 @@
       </div>`;
   }
   // A konténerblokk a fuvarlevelei szerint szeletelődik; a betárolt fuvarlevél szelete kitöltött.
+  // Szeletenként a fuvarlevél saját állapota: betárolva (sárga), a konténerrel megérkezett (narancs), tervben (szürke).
+  // A szeletek közti rés a háttér színe, így vékony és szürke blokkon is megszámolható.
   function pddCells(c) {
     const ps = pddOf(c);
-    if (!ps.length) return '';
+    if (!ps.length) return '<span class="blk-cells" aria-hidden="true"><i class="none"></i></span>';
     const st = c.storedPdd || {};
-    return `<span class="blk-cells" aria-hidden="true">${ps.map((p, k) => `<i class="${st[p.no.toUpperCase()] ? 'on' : ''}" style="--ci:${Math.min(k, 8)}"></i>`).join('')}</span>`;
+    return `<span class="blk-cells" aria-hidden="true">${ps.map((p, k) => `<i class="${st[p.no.toUpperCase()] ? 'on' : c.arrived ? 'arr' : ''}" style="--ci:${Math.min(k, 8)}"></i>`).join('')}</span>`;
   }
 
   // ---------- folyamat, késés, rámpa ----------
@@ -1848,14 +1858,14 @@
   function dayPanel() {
     const d = S.sel;
     const list = onDay(d);
-    const withEta = list.filter(etaDone).length;
-    const arrived = list.filter(c => c.arrived).length;
+    const withEtaL = list.filter(etaDone), arrivedL = list.filter(c => c.arrived);
+    // Fuvarlevél-módban minden mutató fuvarlevélben: a fuvarlevél a konténerével érkezik, kap ETA-t és késik.
     const U = UP();
-    const tot = U ? sumPdd(list) : list.length;
+    const W = l => (U ? sumPdd(l) : l.length);
+    const tot = W(list);
     const stored = U ? sumPddSt(list) : list.filter(c => phase(c).key === 'stored').length;
-    const late = list.filter(c => lateInfo(c)).length;
+    const late = W(list.filter(c => lateInfo(c)));
     const of = n => `<span class="of"> / ${n}</span>`;
-    const ut = U ? UTAG : '';
     // Üres nap: nincs 0 / 0-s gyűrűsor és üres idővonal, csak a dátum és az ok.
     if (!list.length) {
       return `
@@ -1869,13 +1879,13 @@
         <div class="dayhead">
           <div class="title-row"><h1><span class="slot">${DOW[dowIdx(d)]}</span></h1><span class="sub">${longLabel(d)}</span></div>
           <dl class="stats">
-            <div style="--i:0"><dt>${U ? 'Fuvarlevél' : 'Konténer'}</dt><dd>${num(tot, 'int', 140)}${U ? `<small class="st-sub">${list.length} konténer</small>` : ''}</dd></div>
+            <div style="--i:0"><dt>${U ? 'Fuvarlevél' : 'Konténer'}</dt><dd>${num(tot, 'int', 140)}</dd></div>
             <div style="--i:1"><dt>Bruttó súly</dt><dd>${num(sumKg(list), 't', 190)}</dd></div>
             <div style="--i:2"><dt>Colli</dt><dd>${num(sumCt(list), 'int', 240)}</dd></div>
-            <div class="st-ring" style="--i:3">${ring(withEta, list.length, 'eta')}<span><dt>ETA${ut}</dt><dd>${num(withEta, 'int', 290)}${of(list.length)}</dd></span></div>
-            <div class="st-ring" style="--i:4">${ring(arrived, list.length, 'live')}<span><dt>Megérkezett${ut}</dt><dd>${num(arrived, 'int', 340)}${of(list.length)}</dd></span></div>
-            <div class="st-ring" style="--i:5">${ring(stored, tot, 'done')}<span><dt>Betárolva</dt><dd>${num(stored, 'int', 390)}${of(tot)}</dd></span></div>
-            ${late ? `<div class="st-late st-ring" style="--i:6">${ring(late, list.length, 'late')}<span><dt>Késik${ut}</dt><dd>${num(late, 'int', 440)}</dd></span></div>` : ''}
+            <div class="st-ring" style="--i:3">${ring(W(withEtaL), tot, 'eta')}<span><dt>ETA</dt><dd>${num(W(withEtaL), 'int', 290)}${of(tot)}</dd></span></div>
+            <div class="st-ring" style="--i:4">${ring(W(arrivedL), tot, 'live')}<span><dt>Megérkezett</dt><dd>${num(W(arrivedL), 'int', 340)}${of(tot)}</dd></span></div>
+            <div class="st-ring${late ? '' : ' st-full'}" style="--i:5">${ring(stored, tot, 'done')}<span><dt>Betárolva</dt><dd>${num(stored, 'int', 390)}${of(tot)}</dd></span></div>
+            ${late ? `<div class="st-late st-ring" style="--i:6">${ring(late, tot, 'late')}<span><dt>Késik</dt><dd>${num(late, 'int', 440)}</dd></span></div>` : ''}
           </dl>
         </div>
         ${rampStrip(d, list)}
@@ -1895,14 +1905,19 @@
     const lo = Math.max(0, Math.min(6, Math.floor(Math.min(...hs, 24))));
     const hi = Math.min(24, Math.max(20, Math.ceil(Math.max(...hs, 0) + (nh !== null && Math.max(...hs) === nh ? 0.25 : 1))));
     const pos = h => (h - lo) / (hi - lo) * 100;
-    const span = 15;
+    // A címke (időpont + konténerszám) kb. 150 px: keskeny képernyőn ennyi százalékot foglal a sávból.
+    const narrow = matchMedia('(max-width: 760px)').matches;
+    const tw = narrow ? Math.max(220, document.documentElement.clientWidth - 62) : 0;
+    const pw = narrow ? 152 / tw * 100 : 15;
+    const span = narrow ? pw + 2 : 15;
+    const maxLeft = narrow ? Math.max(0, 100 - pw) : 84;
     const lanes = [];
     const pills = timed.map((c, i) => {
-      const p = pos(toH(c.eta_time));
-      let lane = lanes.findIndex(end => end <= p);
+      // A sávot a ténylegesen kirajzolt (a jobb szélen visszahúzott) helyhez osztjuk, így a címkék nem fedik egymást.
+      const left = Math.min(pos(toH(c.eta_time)), maxLeft);
+      let lane = lanes.findIndex(end => end <= left);
       if (lane < 0) { lane = lanes.length; lanes.push(0); }
-      lanes[lane] = p + span;
-      const left = Math.min(p, 84);
+      lanes[lane] = left + span;
       return `<button type="button" class="pill pill-${c.status === 'arrived' ? 'arrived' : 'eta'}${isPrio(c) ? ' prio' : ''}" style="left:${left}%;top:${6 + lane * 44}px;--i:${Math.min(i, 12)}" data-action="open" data-id="${esc(c.id)}"><b>${esc(c.eta_time)}</b><span>${esc(c.id)}</span>${prioIc(c)}</button>`;
     }).join('');
     const h = Math.max(1, lanes.length) * 44 + 34;
@@ -1913,7 +1928,7 @@
       if (major) ticks += `<span class="tl-lab" style="left:${pos(x)}%;--i:${x - lo}">${pad(x)}</span>`;
     }
     let now = '';
-    if (nh !== null && nh >= lo && nh <= hi) now = `<div class="tl-now" style="left:${pos(nh)}%"></div><span class="tl-now-lab" style="left:${pos(nh)}%">${pad(n.getHours())}:${pad(n.getMinutes())}</span>`;
+    if (nh !== null && nh >= lo && nh <= hi) now = `<div class="tl-now" style="left:${pos(nh)}%"></div><span class="tl-now-lab${pos(nh) > 90 ? ' edge-r' : pos(nh) < 10 ? ' edge-l' : ''}" style="left:${pos(nh)}%">${pad(n.getHours())}:${pad(n.getMinutes())}</span>`;
     const noEta = list.filter(c => !c.eta_time && c.status !== 'arrived');
     return `
       <section class="panel timeline" aria-label="Idővonal" data-reveal>
@@ -2581,8 +2596,6 @@
   // ---------- konténerfotók ----------
   // A telefonnal készült képek kicsinyítve a konténerhez kerülnek; 12 óra után a szerver (photo-cleanup) törli őket.
   const PHOTO_TTL = 12 * 3600e3;
-  // A böngésző nem írhat magától fix útvonalra: a választó a Képek mappában nyílik, és abban jön létre ez az almappa.
-  const PHOTO_DIR = 'Nyitáskérelem';
   let PHOTOS = [];
   const PH_BLOB = {}, PH_URL = {}, PH_BUSY = {};
   const phLoading = new Set();
@@ -2890,50 +2903,12 @@
     d.showModal();
   }
 
-  // A mentési mappa (File System Access API) az IndexedDB-ben marad meg, így csak egyszer kell kiválasztani.
-  const idb = (mode, fn) => new Promise((res, rej) => {
-    const rq = indexedDB.open('kf', 1);
-    rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
-    rq.onerror = () => rej(rq.error);
-    rq.onsuccess = () => {
-      const tx = rq.result.transaction('kv', mode);
-      const r = fn(tx.objectStore('kv'));
-      tx.oncomplete = () => res(r.result);
-      tx.onerror = () => rej(tx.error);
-    };
-  });
-  const dirGet = () => idb('readonly', s => s.get('photoDir')).catch(() => null);
-  const dirSet = h => idb('readwrite', s => s.put(h, 'photoDir')).catch(() => {});
-  const canDir = () => 'showDirectoryPicker' in window;
-
-  async function pickDir() {
-    const base = await window.showDirectoryPicker({ id: 'kf-photos', mode: 'readwrite', startIn: 'pictures' });
-    const h = base.name.toLowerCase() === PHOTO_DIR.toLowerCase() ? base : await base.getDirectoryHandle(PHOTO_DIR, { create: true });
-    await dirSet(h);
-    return h;
-  }
-
-  // Egy konténer képei kerülnek a mappába; az előző konténer itt hagyott képeit előbb törli.
-  const OUR_FILE = /^[A-Z]{4}\d{7}_\d+\.jpg$/i;
-  async function writePhotos(dir, id) {
-    const ph = livePhotos(id);
-    const blobs = await Promise.all(ph.map(p => phBlob(p.path)));
-    const old = [];
-    for await (const [name, h] of dir.entries()) if (h.kind === 'file' && OUR_FILE.test(name)) old.push(name);
-    for (const name of old) await dir.removeEntry(name).catch(() => {});
-    for (let i = 0; i < blobs.length; i++) {
-      const f = await dir.getFileHandle(`${id}_${i + 1}.jpg`, { create: true });
-      const w = await f.createWritable();
-      await w.write(blobs[i]);
-      await w.close();
-    }
-    return blobs.length;
-  }
-
-  // Mappa nélküli böngészőben a képek egyenként a Letöltések mappába kerülnek.
+  // A konténer képei a Letöltések mappába kerülnek (KONTÉNER_1.jpg, _2.jpg …), mappaválasztás és engedélykérés nélkül.
+  // A már betöltött képek azonnal mennek, így a levél ugyanabban a kattintásban nyílhat (a böngésző nem tiltja le).
+  const photosCached = id => livePhotos(id).every(p => PH_BLOB[p.path]);
   async function downloadPhotos(id) {
     const ph = livePhotos(id);
-    const blobs = await Promise.all(ph.map(p => phBlob(p.path)));
+    const blobs = photosCached(id) ? ph.map(p => PH_BLOB[p.path]) : await Promise.all(ph.map(p => phBlob(p.path)));
     blobs.forEach((b, i) => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(b);
@@ -3134,6 +3109,12 @@
           </span>
         </div>
         ${miss.length ? `<div class="flag warn">${IC.warn}Hiányzik: ${esc(miss.join(', '))}</div>` : ''}
+        ${MAIL_DONE && MAIL_DONE.id === c.id ? `<div class="mail-att" role="status">
+          <b>${IC.check}${MAIL_DONE.n} fotó a Letöltések mappában</b>
+          <span class="mono">${esc(c.id)}_1.jpg${MAIL_DONE.n > 1 ? ` … _${MAIL_DONE.n}.jpg` : ''}</span>
+          <ol><li>Húzd be a képeket a levélbe a böngésző letöltési listájából (jobb felül), vagy</li><li>a levélben: <b>Csatolás</b> → <b>Tallózás ezen a számítógépen</b> → <b>Letöltések</b>, jelöld ki a képeket.</li></ol>
+          <small>Ha a böngésző megkérdezi, engedélyezd a több fájl letöltését (csak első alkalommal).</small>
+        </div>` : ''}
         <details class="mail-more"${MAIL_OPEN ? ' open' : ''}>
           <summary>Levél előnézete<span>${esc(m.subject)}</span></summary>
           <dl class="mail-pv">
@@ -3158,29 +3139,10 @@
     return !!w;
   }
 
-  // A fotók a kiválasztott mappába (vagy a Letöltésekbe) kerülnek, onnan egy húzással csatolhatók.
-  async function savePhotos(id) {
-    try {
-      if (!canDir()) { toast(`${await downloadPhotos(id)} fotó letöltve`); return true; }
-      let dir = await dirGet();
-      let perm = dir ? await dir.queryPermission({ mode: 'readwrite' }).catch(() => 'denied') : 'none';
-      if (dir && perm === 'prompt') perm = await dir.requestPermission({ mode: 'readwrite' }).catch(() => 'denied');
-      if (!dir || perm !== 'granted') dir = await pickDir();
-      toast(`${await writePhotos(dir, id)} fotó mentve: ${PHOTO_DIR}`);
-      return true;
-    } catch (err) {
-      // Bezárt választó: nincs mentés, de a következő kattintás újra kérdez (a döntést nem jegyezzük meg).
-      if (err && err.name === 'AbortError') { toast('A fotók nem lettek mentve'); return false; }
-      // Letiltott mappaengedély: a képek legalább a Letöltések mappába kerüljenek.
-      console.error(err);
-      try { toast(`${await downloadPhotos(id)} fotó letöltve`); return true; }
-      catch (_) { toast('A fotók mentése nem sikerült'); return false; }
-    }
-  }
-
-  // Mappaválasztás vagy engedélykérés után a böngésző már letiltaná a felugró ablakot: ilyenkor a levél külön gombbal nyílik.
+  // A webes Outlook linkből csatolmányt nem fogad: a képek a Letöltésekbe kerülnek, a levélbe onnan húzhatók be.
+  // Ha a böngésző mégis letiltja az új ablakot, a levél egy külön gombbal nyílik.
   let MAIL_LATER = null;
-  function mailLater(id) { MAIL_LATER = id; paintPhotos(id); }
+  let MAIL_DONE = null; // { id, n }: a képek letöltve, a csatolás menete a dobozban látszik
 
   async function openMail(id) {
     const c = S.data.containers[id];
@@ -3189,22 +3151,17 @@
     const n = livePhotos(id).length;
     if (isExe()) {
       if (!(await exe().open_url(url))) { toast('Frissítsd az alkalmazást'); return; }
-      if (n) await savePhotos(id);
+      if (n) { try { MAIL_DONE = { id, n: await downloadPhotos(id) }; } catch (_) { toast('A fotók letöltése nem sikerült'); } paintPhotos(id); }
       return;
     }
-    if (!n) { if (!openWin(url)) location.href = url; return; }
-    // Engedélyezett mappánál egy kattintás: levél + mentés. Ha engedély kell, előbb csak a mentés fut (a felhasználó itt marad és látja),
-    // a levél a „Levél megnyitása” gombbal nyílik (engedélykérés után a böngésző a felugró ablakot tiltaná).
-    const dir = canDir() && await dirGet();
-    const ready = !canDir() || (dir && (await dir.queryPermission({ mode: 'readwrite' }).catch(() => '')) === 'granted');
-    if (ready) {
-      if (!openWin(url)) location.href = url;
-      await savePhotos(id);
-      return;
+    if (n) {
+      try { MAIL_DONE = { id, n: await downloadPhotos(id) }; }
+      catch (_) { toast('A fotók letöltése nem sikerült'); }
     }
-    // A levél akkor is megnyitható, ha a mentés elmaradt: a nyitáskérés sosem akadhat el a mappán.
-    await savePhotos(id);
-    mailLater(id);
+    MAIL_LATER = openWin(url) ? null : id;
+    if (MAIL_LATER) toast('A böngésző letiltotta az új ablakot: nyisd meg a levelet a gombbal');
+    else if (n && MAIL_DONE) toast(`${MAIL_DONE.n} fotó a Letöltések mappában`);
+    paintPhotos(id);
   }
 
   // ---------- felhasználók ----------
