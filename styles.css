@@ -1814,8 +1814,9 @@ g .hit{fill:transparent}
 
 /* ---- prioritás: sötét jelvény sárga zászlóval (egyik állapotszínnel sem keverhető); a heti blokkon sárga bal szél + sarokjel ---- */
 :root{--prio:oklch(0.88 0.17 95);--prio-bg:oklch(0.22 0.02 255)}
-.blk.prio{box-shadow:inset 0 0 0 1px oklch(0.2 0.02 255 / .55),inset 5px 0 0 var(--prio),inset -4px 0 0 oklch(0.25 0.02 255) !important}
-.blk .pf{position:absolute;left:0;top:0;z-index:1;border-style:solid;border-width:13px 13px 0 0;border-color:var(--prio) transparent transparent transparent;filter:drop-shadow(1px 1px 0 oklch(0.18 0.02 255));pointer-events:none}
+/* sárga bal szél + sarokjel külön elemként, hogy a fuvarlevél-rekeszek fölött is látsszon */
+.blk .pf{position:absolute;left:0;top:0;bottom:0;z-index:2;width:5px;background:var(--prio);pointer-events:none}
+.blk .pf:after{content:"";position:absolute;left:0;top:0;border-style:solid;border-width:13px 13px 0 0;border-color:var(--prio) transparent transparent transparent;filter:drop-shadow(1px 1px 0 oklch(0.18 0.02 255))}
 .day-chg .cg-pr{display:inline-flex;align-items:center;gap:4px;background:oklch(0.88 0.17 95 / .16);color:var(--prio)}
 .cg-pr svg{width:10px;height:10px}
 .prio-tag{display:inline-flex;align-items:center;gap:6px;margin-right:auto;align-self:center;padding:3px 10px 3px 8px;border-radius:999px;background:var(--prio-bg);color:oklch(0.97 0.005 255);font-size:12.5px;font-weight:600;white-space:nowrap}
@@ -1895,41 +1896,45 @@ g .hit{fill:transparent}
 
 /* Konténer / fuvarlevél kapcsoló */
 .unit-sw{position:relative;display:inline-grid;grid-template-columns:1fr 1fr;padding:3px;border-radius:10px;background:oklch(0.16 0.015 255);border:1px solid var(--yard-line)}
-.us-ind{position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:7px;background:var(--orange);box-shadow:0 4px 14px -6px oklch(0.72 0.165 52 / .7);pointer-events:none}
-.unit-sw.is-pdd .us-ind{transform:translateX(100%)}
-.ev-unit .unit-sw:not(.is-pdd) .us-ind{animation:us-to-ct .42s var(--ease-expo)}
-.ev-unit .unit-sw.is-pdd .us-ind{animation:us-to-pdd .42s var(--ease-expo)}
-@keyframes us-to-ct{from{transform:translateX(100%)}}
-@keyframes us-to-pdd{from{transform:translateX(0)}}
+.us-ind{position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:7px;background:var(--orange);box-shadow:0 4px 14px -6px oklch(0.72 0.165 52 / .7);pointer-events:none;transition:transform .42s var(--ease-expo)}
+.u-pdd .us-ind{transform:translateX(100%)}
 .us-opt{position:relative;z-index:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 14px;border:0;border-radius:7px;background:none;color:var(--yard-muted);font-size:13px;font-weight:600;transition:color .25s var(--ease)}
 .us-opt:hover{color:var(--yard-text)}
-.us-opt[aria-checked="true"]{color:var(--orange-ink)}
+.yard:not(.u-pdd) .us-opt[data-v="ct"],.u-pdd .us-opt[data-v="pdd"]{color:var(--orange-ink)}
 .us-opt span{display:flex;flex-direction:column;align-items:flex-start;line-height:1.05}
 .us-opt small{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.06em;opacity:.7}
 .us-opt svg{flex:none}
 .wk-kpi.on small{color:var(--orange)}
 .wk-kpi.on b{color:#fff}
 .stats dd .st-sub{display:block;margin-top:-2px;font-size:11.5px;font-weight:500;color:var(--muted)}
-/* fuvarlevél-módban a konténerblokk a fuvarleveleire bomlik: szeletenként saját állapotszín,
-   a szeletek között a háttér sötét rése (vékony és szürke blokkon is megszámolható) */
-.blk.pddv{background-image:none;background-color:oklch(0.17 0.015 255);box-shadow:inset 0 0 0 1px oklch(0.12 0.015 255) !important}
-.blk.pddv:before{display:none}
-.blk>.blk-cells{position:absolute;top:2px;bottom:2px;left:3px;right:3px;display:flex;gap:3px;pointer-events:none}
-.blk-cells i{flex:1;min-width:6px;border-radius:2px;
-  background-color:oklch(0.66 0.012 255);
-  background-image:repeating-linear-gradient(90deg,oklch(0 0 0 / .13) 0 2px,transparent 2px 7px),linear-gradient(180deg,oklch(1 0 0 / .14),transparent 40%,oklch(0 0 0 / .12));
-  box-shadow:inset 0 0 0 1px oklch(0 0 0 / .18)}
-.blk-cells i.arr{background-color:var(--fill-live)}
-.blk-cells i.on{background-color:var(--fill-done)}
-.blk-cells i.none{background:repeating-linear-gradient(135deg,oklch(0.4 0.015 255) 0 4px,oklch(0.3 0.015 255) 4px 8px)}
+/* Fuvarlevél-réteg: ugyanaz a konténer, a fuvarleveleire bontva. Minden rekesz a konténerblokk töltés-nyelvét
+   használja (betárolt fuvarlevél: tele). Konténer-módban a rekeszek összezárva és rejtve; váltáskor a rések
+   kinyílnak (scaleX) és a réteg beúszik, visszafelé fordítva. Csak transform és opacity animál. */
+.blk>.blk-cells{position:absolute;inset:0;z-index:0;display:flex;gap:3px;border-radius:inherit;background:oklch(0.2 0.02 255);opacity:0;pointer-events:none;transition:opacity .2s var(--ease) .14s}
+.u-pdd .blk>.blk-cells{opacity:1;transition-delay:0s}
+.blk-cells i{flex:1;min-width:0;border-radius:2px;transform:scaleX(1.12);transition:transform .45s var(--ease-expo);
+  background-image:repeating-linear-gradient(90deg,oklch(0 0 0 / .07) 0 2px,transparent 2px 8px),linear-gradient(90deg,var(--fill-live) 0 var(--cp),oklch(0.9 0.005 255) var(--cp) 100%);
+  box-shadow:inset 0 0 0 1px oklch(0.2 0.02 255 / .55),inset 3px 0 0 oklch(0.25 0.02 255),inset -3px 0 0 oklch(0.25 0.02 255)}
+.u-pdd .blk-cells i{transform:none;transition-delay:calc(var(--ci) * 40ms)}
+.blk-cells i.c-plan{background-image:repeating-linear-gradient(90deg,oklch(0 0 0 / .08) 0 2px,transparent 2px 8px);background-color:oklch(0.62 0.012 255)}
+.blk-cells i.c-done{background-image:repeating-linear-gradient(90deg,oklch(0 0 0 / .06) 0 2px,transparent 2px 8px),linear-gradient(100deg,oklch(0.74 0.15 55),oklch(0.86 0.12 85))}
 .blk-l,.blk-r{position:relative;z-index:1}
-.blk.pddv .blk-id{color:oklch(0.15 0.02 255);text-shadow:0 0 3px oklch(1 0 0 / .35)}
-.blk.pddv .blk-r{display:flex;align-items:center}
-.blk-r .blk-n{display:inline-flex;align-items:center;gap:4px;padding:1px 6px 1px 5px;border-radius:5px;background:oklch(0.17 0.02 255 / .9);color:oklch(0.98 0.004 255);font-size:12px;line-height:16px;box-shadow:0 0 0 1px oklch(1 0 0 / .14)}
+/* fuvarlevél-módban a konténerszám világos táblára kerül, hogy a rekeszek rése ne törje meg;
+   a tábla mindkét módban ott van (a felirat nem mozdul), csak beúszik */
+.blk-id{position:relative;padding:1px 6px;margin-left:-6px;border-radius:4px;transition:color 0s linear .14s}
+.blk-id:before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;background:oklch(0.97 0.006 255 / .94);box-shadow:inset 0 0 0 1px oklch(0 0 0 / .22);opacity:0;transition:opacity .2s var(--ease)}
+/* a betű színe egy lépésben vált: befelé azonnal, visszafelé a tábla elhalványulása után (különben a szürke blokkon egy pillanatra eltűnne) */
+.u-pdd .blk-id{color:oklch(0.17 0.02 255) !important;transition-delay:0s}
+.u-pdd .blk-id:before{opacity:1}
+/* jobb oldal: súly / ETA és a fuvarlevél-szám ugyanazon a helyen, keresztáttűnéssel */
+.blk-r{display:grid;justify-items:end;align-items:center}
+.blk-r>*{grid-area:1 / 1;transition:opacity .2s var(--ease),transform .38s var(--ease-expo)}
+.blk-r .blk-n{display:inline-flex;align-items:center;gap:4px;padding:1px 6px 1px 5px;border-radius:5px;background:oklch(0.17 0.02 255 / .92);color:oklch(0.98 0.004 255);font-size:12px;line-height:16px;box-shadow:0 0 0 1px oklch(1 0 0 / .14);opacity:0;transform:translateY(-60%)}
+.blk-r .blk-n.zero{opacity:0 !important}
 .blk-r .blk-n svg{width:10px;height:12px;opacity:.85}
-.ev-unit .blk-cells i{animation:k-cell .45s var(--ease-expo) backwards;animation-delay:calc(var(--j, 0) * 28ms + var(--ci) * 45ms)}
-@keyframes k-cell{from{opacity:0;transform:scaleY(.2)}}
-@media (prefers-reduced-motion:reduce){.ev-unit .blk-cells i,.ev-unit .us-ind{animation:none}}
+.u-pdd .blk-r .blk-v{opacity:0;transform:translateY(60%)}
+.u-pdd .blk-r .blk-n{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.blk>.blk-cells,.blk-cells i,.blk-r>*,.us-ind,.blk-id,.blk-id:before{transition:none}}
 .wk-prog-row>span{white-space:nowrap}
 .ph-add .busy{opacity:.6;pointer-events:none}
 .ph-add .busy svg{animation:k-spin-cam .9s linear infinite}
@@ -1984,11 +1989,6 @@ g .hit{fill:transparent}
 }
 .tl-now-lab.edge-r{translate:calc(-100% + 1px) 0;border-top-right-radius:0}
 .tl-now-lab.edge-l{translate:-1px 0;border-top-left-radius:0}
-.legend .lg-cell{display:inline-flex;gap:2px;width:30px !important;height:12px !important;padding:1px;border-radius:2px !important;background:oklch(0.17 0.015 255)}
-.lg-cell b{flex:1;border-radius:1px;background:oklch(0.66 0.012 255)}
-.lg-cell.arr b{background:var(--fill-live)}
-.lg-cell.on b{background:var(--fill-done)}
-.lg-cell.late{outline:2px solid var(--late);outline-offset:1px}
 /* Nyitáskérelem: a letöltött képek csatolásának menete */
 .mail-att{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:10px;background:oklch(0.97 0.025 160);border:1px solid oklch(0.86 0.06 160);font-size:13px;color:var(--ink-2)}
 .mail-att>b{display:flex;align-items:center;gap:6px;color:var(--ok-text);font-weight:600}

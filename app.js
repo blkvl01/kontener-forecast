@@ -341,27 +341,41 @@
   const FMT = { int: v => fmtInt(v), t: v => fmtT(v), d1: v => fmtDec(v, 0, 1), dur: v => fmtDur(v) };
   const num = (v, f = 'int', d = 0) => `<span class="cnt" data-n="${v}" data-f="${f}" data-d="${d}">${FMT[f](v)}</span>`;
 
-  // Számlálás nulláról a végértékig; az alapállapot a végérték, így hiba esetén is helyes szám látszik.
+  // Számláló azonosítója a nézetben: a nap (data-date) vagy a szakasz, és a sorszáma azon belül.
+  // Egységváltáskor ezzel a régi értékről számol az újra, nem nulláról.
+  function numKey(el) {
+    const box = el.closest('[data-date], .wk-foot, .stats');
+    return `${box ? box.dataset.date || box.className.split(' ')[0] : ''}|${box ? [...box.querySelectorAll('[data-n]')].indexOf(el) : -1}`;
+  }
+  function snapNums() {
+    const m = {};
+    $('#view').querySelectorAll('[data-n]').forEach(el => { m[numKey(el)] = Number(el.dataset.n); });
+    return m;
+  }
+
+  // Számlálás nulláról (vagy from esetén a régi értékről) a végértékig; az alapállapot a végérték, így hiba esetén is helyes szám látszik.
   // Egyetlen képkocka-ciklus az összes számlálónak, és csak akkor ír a DOM-ba, ha a kiírt szöveg változik.
-  function countUp(root, offset = 0) {
+  function countUp(root, offset = 0, from = null) {
     if (RM.matches || document.hidden) return;
     const items = [];
     const base = performance.now() + offset;
     root.querySelectorAll('[data-n]').forEach(el => {
       if (el.closest('.await')) return;
       const to = Number(el.dataset.n), f = FMT[el.dataset.f] || FMT.int;
-      if (!to) return;
-      const last = f(0);
+      const v0 = from ? from[numKey(el)] ?? to : 0;
+      if (to === v0) return;
+      const last = f(v0);
       el.textContent = last;
-      items.push({ el, to, f, t0: base + Number(el.dataset.d || 0), last });
+      // Egységváltásnál késleltetés nélkül, rövidebben: a szám a rekeszekkel együtt vált.
+      items.push({ el, to, v0, f, t0: base + (from ? 0 : Number(el.dataset.d || 0)), last });
     });
     if (!items.length) return;
-    const dur = 750;
+    const dur = from ? 480 : 750;
     const step = now => {
       let live = false;
       for (const it of items) {
         const k = Math.min(1, Math.max(0, (now - it.t0) / dur));
-        const txt = it.f(k >= 1 ? it.to : it.to * (1 - Math.pow(2, -10 * k)));
+        const txt = it.f(k >= 1 ? it.to : it.v0 + (it.to - it.v0) * (1 - Math.pow(2, -10 * k)));
         if (txt !== it.last) { it.el.textContent = txt; it.last = txt; }
         if (k < 1) live = true;
       }
@@ -824,7 +838,7 @@
       awaitReveal(v);
       // Csak a belépő zónák számai számolnak fel; a helyben maradó részek nem villannak.
       const roots = { yard: '.yard', main: '.main', cal: '.month-main', side: '.side', stats: '.statsv', unit: '.yard, .main' };
-      enter.split(' ').forEach(z => { if (roots[z]) v.querySelectorAll(roots[z]).forEach(r => countUp(r)); });
+      enter.split(' ').forEach(z => { if (roots[z]) v.querySelectorAll(roots[z]).forEach(r => countUp(r, 0, z === 'unit' ? S.numFrom : null)); });
     }
     diffFlash(!!enter);
     rememberP();
@@ -1056,7 +1070,7 @@
           <div class="wk-acts"><button type="button" class="wk-btn" data-action="export"${flat.length ? '' : ' disabled'}>${IC.xls}Excel</button></div>
         </div>
         <div class="wk-kpis">
-          ${U ? '' : kpi('Konténer', num(flat.length, 'int', 200), delta(flat.length, prev.length, fmtInt, true), 0, true)}
+          ${kpi('Konténer', num(flat.length, 'int', 200), delta(flat.length, prev.length, fmtInt, !U), 0, !U)}
           ${kpi('Fuvarlevél', num(pdd, 'int', 240), delta(pdd, ppdd, fmtInt, U), 1, U)}
           ${kpi('Colli', num(sumCt(flat), 'int', 280), delta(sumCt(flat), sumCt(prev), fmtInt), 2)}
           ${kpi('Súly', `${num(sumKg(flat) / 1000, 'd1', 320)}<em>t</em>`, delta(sumKg(flat), sumKg(prev), fmtT), 3)}
@@ -1311,8 +1325,8 @@
         const m = mk[c.id];
         const cp = cPx(c);
         return `
-        <div class="blk blk-${ph.grp}${UP() ? ' pddv' : ''}${late ? ' late' : ''}${isPrio(c) ? ' prio' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} ·${esc(late ? late.label : ph.label)}${isPrio(c) ? ' · prioritás' : ''}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">${isPrio(c) ? '<i class="pf" aria-hidden="true"></i>' : ''}
-          ${UP() ? pddCells(c) : ''}<span class="blk-l">${m ? `<i class="mk mk-${m}" aria-hidden="true"></i>` : ''}<span class="blk-id">${esc(c.id)}</span></span><span class="blk-r">${UP() ? `<b class="blk-n">${IC.awb}${pddOf(c).length}</b>` : esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span>
+        <div class="blk blk-${ph.grp}${late ? ' late' : ''}${isPrio(c) ? ' prio' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} ·${esc(late ? late.label : ph.label)}${isPrio(c) ? ' · prioritás' : ''}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">${isPrio(c) ? '<i class="pf" aria-hidden="true"></i>' : ''}
+          ${pddCells(c, ph)}<span class="blk-l">${m ? `<i class="mk mk-${m}" aria-hidden="true"></i>` : ''}<span class="blk-id">${esc(c.id)}</span></span><span class="blk-r"><span class="blk-v">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span><b class="blk-n${pddOf(c).length ? '' : ' zero'}">${IC.awb}${pddOf(c).length}</b></span>
         </div>`;
       }).join('');
       const ghost = ghosts[i].map(g => `<div class="blk-ghost" style="height:${GH}px"><s>${esc(g.id)}</s><em>${esc(g.t)}</em></div>`).join('');
@@ -1355,14 +1369,13 @@
         </button>`;
     }).join('');
 
-    // Fuvarlevél-módban a jelmagyarázat a szeletek színeit mutatja (fuvarlevelenkénti állapot).
-    const legend = UP()
-      ? [['Tervben', ''], ['Megérkezett', 'arr'], ['Betárolva', 'on'], ['Késik', 'late']]
-        .map(([t, k], i) => `<span style="--i:${i}"><i class="lg-cell ${k}"><b></b><b></b></i>${t}</span>`).join('')
-      : [['Tervben', 0, 'plan'], ['Megérkezett', 25, 'live'], ['Nyitás', 75, 'live'], ['Betárolva', 100, 'done'], ['Késik', 0, 'plan lg-late']]
-        .map(([t, p, g], i) => `<span style="--i:${i}"><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
+    // A rekeszek ugyanazt a töltés-nyelvet beszélik, mint a konténer, így a jelmagyarázat mindkét módban azonos.
+    const legend = [['Tervben', 0, 'plan'], ['Megérkezett', 25, 'live'], ['Nyitás', 75, 'live'], ['Betárolva', 100, 'done'], ['Késik', 0, 'plan lg-late']]
+      .map(([t, p, g], i) => `<span style="--i:${i}"><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
+    // Egységváltáskor a régi mód osztályával rajzol, és a következő lépésben vált (CSS-átmenet a két mód között).
+    const uCls = (S.unitFrom || S.unit) === 'pdd' ? ' u-pdd' : '';
     return `
-      <section class="yard" aria-label="Heti érkezések">
+      <section class="yard${uCls}" aria-label="Heti érkezések">
         <div class="yard-top">
           ${chg.length
             ? `<button type="button" class="chg-btn" data-action="chg" aria-expanded="${!!S.chg}" aria-controls="chg-pop">Változások <span class="n">${chg.length}</span></button>${changesPop(chg)}`
@@ -1377,24 +1390,28 @@
       ${dayPanel()}`;
   }
 
-  // Konténer / fuvarlevél kapcsoló. A csúszka a kiválasztott egységre áll.
+  // Konténer / fuvarlevél kapcsoló. A csúszka és a kiemelt felirat a .yard módosztályát követi.
   function unitSwitch() {
-    const U = UP();
     const opt = (v, ic, t, sub) => `<button type="button" class="us-opt" role="radio" aria-checked="${S.unit === v}" data-action="unit" data-v="${v}">${ic}<span>${t}<small>${sub}</small></span></button>`;
-    return `<div class="unit-sw${U ? ' is-pdd' : ''}" role="radiogroup" aria-label="Számolás egysége">
+    return `<div class="unit-sw" role="radiogroup" aria-label="Számolás egysége">
         <i class="us-ind" aria-hidden="true"></i>
         ${opt('ct', IC.box, 'Konténer', 'db')}
         ${opt('pdd', IC.awb, 'Fuvarlevél', 'PDD')}
       </div>`;
   }
-  // A konténerblokk a fuvarlevelei szerint szeletelődik; a betárolt fuvarlevél szelete kitöltött.
-  // Szeletenként a fuvarlevél saját állapota: betárolva (sárga), a konténerrel megérkezett (narancs), tervben (szürke).
-  // A szeletek közti rés a háttér színe, így vékony és szürke blokkon is megszámolható.
-  function pddCells(c) {
+  // Fuvarlevél-réteg: a konténer annyi rekeszre bomlik, ahány fuvarlevele van. Minden rekesz ugyanazzal a
+  // haladás-töltéssel mutatja a saját állapotát, a betárolt fuvarlevélé tele. Mindkét módban a DOM-ban van,
+  // a láthatóságát a .yard módosztálya vezérli.
+  function pddCells(c, ph) {
     const ps = pddOf(c);
-    if (!ps.length) return '<span class="blk-cells" aria-hidden="true"><i class="none"></i></span>';
+    if (!ps.length) return '';
     const st = c.storedPdd || {};
-    return `<span class="blk-cells" aria-hidden="true">${ps.map((p, k) => `<i class="${st[p.no.toUpperCase()] ? 'on' : c.arrived ? 'arr' : ''}" style="--ci:${Math.min(k, 8)}"></i>`).join('')}</span>`;
+    // Betárolás közben a még be nem tárolt fuvarlevél a nyitás szintjén áll.
+    const rest = ph.key === 'storing' ? PHASE.opened[1] : ph.p;
+    return `<span class="blk-cells" aria-hidden="true">${ps.map((p, k) => {
+      const on = ph.key === 'stored' || !!st[p.no.toUpperCase()];
+      return `<i class="c-${on ? 'done' : ph.grp}" style="--cp:${Math.round((on ? 1 : rest) * 100)}%;--ci:${Math.min(k, 8)}"></i>`;
+    }).join('')}</span>`;
   }
 
   // ---------- folyamat, késés, rámpa ----------
@@ -3388,12 +3405,20 @@
     switch (a) {
       case 'view': switchView(el.dataset.view); break;
       case 'chg': setChg(!S.chg); break;
-      case 'unit':
+      case 'unit': {
         if (S.unit === el.dataset.v) break;
+        // A régi mód osztályával rajzol, a számlálók a régi értékükről indulnak; a reflow után vált a mód,
+        // így a rekeszek, a felirat és a csúszka CSS-átmenettel mennek át.
+        S.numFrom = snapNums();
+        S.unitFrom = S.unit;
         S.unit = el.dataset.v;
         try { localStorage.setItem('kf-unit', S.unit); } catch (_) { /* privát mód */ }
         render('unit');
+        S.unitFrom = S.numFrom = null;
+        const y = $('#view .yard');
+        if (y) { void y.offsetWidth; y.classList.toggle('u-pdd', UP()); }
         break;
+      }
       case 'px': S.px = el.dataset.v && S.px !== el.dataset.v ? el.dataset.v : null; render(); break;
       case 'export': exportWeek(); break;
       case 'prev': nav(-1); break;
