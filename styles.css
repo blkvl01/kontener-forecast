@@ -1517,7 +1517,10 @@ g .hit{fill:transparent}
 .cam-top{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + 8px) 12px 8px}
 .cam-x{min-width:44px;height:44px;padding:0 12px;border:0;border-radius:22px;background:oklch(1 0 0 / .14);color:#fff;font-size:22px;line-height:1;cursor:pointer}
 .cam-x.arm{background:oklch(0.58 0.19 27);font-size:14px;font-weight:600}
-.cam-id{font-size:14px;font-weight:600;letter-spacing:.04em;font-variant-numeric:tabular-nums;opacity:.85}
+.cam-pick{position:relative;flex:1;min-width:0}
+.cam-pick select{width:100%;height:44px;padding:0 36px 0 14px;border:0;border-radius:22px;background:oklch(1 0 0 / .14);color:#fff;font:inherit;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;text-overflow:ellipsis;appearance:none;-webkit-appearance:none;cursor:pointer}
+.cam-pick select option{color:#000}
+.cam-pick:after{content:"";position:absolute;right:16px;top:50%;width:8px;height:8px;border-right:2px solid #fff;border-bottom:2px solid #fff;transform:translateY(-70%) rotate(45deg);pointer-events:none}
 .cam-view{position:relative;flex:1;min-height:0;overflow:hidden}
 .cam-view video{display:block;width:100%;height:100%;object-fit:contain;background:#000}
 .cam-msg{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;font-size:15px;color:oklch(0.86 0 0)}

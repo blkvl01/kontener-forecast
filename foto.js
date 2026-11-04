@@ -6,10 +6,19 @@
 
   const CFG = window.KF_CONFIG || {};
   const FN = `${CFG.url}/functions/v1/photo-link`;
-  const TOKEN = (location.hash.match(/[#&]t=([0-9a-f]{32}[\w-]{22})(?![\w-])/) || [])[1] || '';
+  // Konténerváltáskor (csak a telefonos Fotózás gombbal nyitva) a belépő kicserélődik.
+  let TOKEN = (location.hash.match(/[#&]t=([0-9a-f]{32}[\w-]{22})(?![\w-])/) || [])[1] || '';
   // A gépi QR és a telefonos Fotózás gomb a konténerszámot is átadja: a nyitó jelenet rögtön azt mutatja.
   const HINT = (location.hash.match(/[#&]c=([A-Z]{4}\d{7})/) || [])[1] || '';
   const FROM_APP = /[#&]from=app\b/.test(location.hash);
+  // A váltható konténerek listáját az alkalmazás írja ki (a még meg nem érkezettek); 12 óránál régebbi nem számít.
+  const LIST = (() => {
+    if (!FROM_APP) return [];
+    try {
+      const v = JSON.parse(localStorage.getItem('kf-photo-list') || 'null');
+      return v && Date.now() - v.at < 12 * 3600e3 && Array.isArray(v.list) ? v.list : [];
+    } catch (_) { return []; }
+  })();
   const $ = s => document.querySelector(s);
   const main = $('#main');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -22,6 +31,7 @@
     pen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>',
     wifi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><path d="M12 19h.01"/><path d="M3 3l18 18"/></svg>',
     back: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="M11 18l-6-6 6-6"/></svg>',
+    swap: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4L3 8l4 4"/><path d="M3 8h14"/><path d="M17 20l4-4-4-4"/><path d="M21 16H7"/></svg>',
     lock: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
   };
 
@@ -80,7 +90,7 @@
 
   // ---------- állapot ----------
   let INFO = null;                 // konténer, rendszám, fotók (szerver)
-  let Q = [];                      // feltöltési sor: { k, blob, url, state: 'enc'|'wait'|'up'|'fail'|'bad', next, tries }
+  let Q = [];                      // feltöltési sor: { k, c, t, blob, url, state: 'enc'|'wait'|'up'|'fail'|'bad', next, tries } (c: konténer, t: belépő)
   const ID2K = {};                 // feltöltött kép szerver-azonosítója → helyi kulcs (a helyi kép marad látható)
   const LOCAL = {};                // helyi kulcs → blob URL
   const SURL = {};                 // fotó azonosító → aláírt URL és ideje
@@ -104,11 +114,13 @@
       seen.add(k);
       out.push({ k, url: LOCAL[k] || p.url, mine: p.mine, state: OK_AT[k] && Date.now() - OK_AT[k] < 3000 ? 'ok' : '', at: p.at });
     }
-    for (const [k, r] of RECENT) if (!seen.has(k)) { seen.add(k); out.push({ k, url: LOCAL[k], mine: true, state: 'ok', at: r.at }); }
-    for (const it of Q) if (!seen.has(it.k)) out.push({ k: it.k, url: it.url, mine: true, state: it.state, at: it.at });
+    for (const [k, r] of RECENT) if (!seen.has(k) && here(r)) { seen.add(k); out.push({ k, url: LOCAL[k], mine: true, state: 'ok', at: r.at }); }
+    for (const it of Q) if (!seen.has(it.k) && here(it)) out.push({ k: it.k, url: it.url, mine: true, state: it.state, at: it.at });
     return out.filter(x => !HIDE.has(x.k));
   }
-  const waiting = () => Q.filter(q => !HIDE.has(q.k) && q.state !== 'bad');
+  // A sorban más konténerek képei is lehetnek (váltás után a háttérben mennek fel); a lap csak a mostaniét mutatja.
+  const here = x => !x.c || !INFO || x.c === INFO.container;
+  const waiting = () => Q.filter(q => here(q) && !HIDE.has(q.k) && q.state !== 'bad');
 
   // ---------- megjelenítés ----------
   function gone(msg, retry) {
@@ -144,8 +156,8 @@
 
   function banner() {
     if (EXPIRED) return `<div class="banner">${IC.lock}<span><b>${esc(EXPIRED)}</b>${waiting().length ? ` ${waiting().length} kép a telefonon maradt: olvass be új QR-kódot ennél a konténernél, és onnan felmegy.` : ''}</span></div>`;
-    const stuck = Q.filter(q => !HIDE.has(q.k) && (q.state === 'fail' || (q.state === 'wait' && !navigator.onLine)));
-    const bad = Q.filter(q => !HIDE.has(q.k) && q.state === 'bad');
+    const stuck = Q.filter(q => here(q) && !HIDE.has(q.k) && (q.state === 'fail' || (q.state === 'wait' && !navigator.onLine)));
+    const bad = Q.filter(q => here(q) && !HIDE.has(q.k) && q.state === 'bad');
     if (bad.length) return `<div class="banner">${IC.wifi}<span><b>${bad.length} kép nem tölthető fel.</b> ${esc(bad[0].msg || '')} Töröld, és fotózd újra.</span></div>`;
     if (stuck.length) return `<div class="banner">${IC.wifi}<span><b>Gyenge a térerő.</b> ${stuck.length} kép a telefonon vár, és magától felmegy, amint lesz jel.</span></div>`;
     return '';
@@ -167,7 +179,7 @@
       <header class="band">
         ${FROM_APP ? `<button type="button" class="back" data-a="back">${IC.back}Vissza a konténerhez</button>` : ''}
         <span class="lbl">Konténer</span>
-        <span class="cno">${fmtC(INFO.container)}</span>
+        <span class="cno-row"><span class="cno">${fmtC(INFO.container)}</span>${LIST.length > 1 ? `<button type="button" class="swap" data-a="pick">${IC.swap}Váltás</button>` : ''}</span>
         <div class="chips">${chips}</div>
       </header>
       <div class="body">
@@ -199,23 +211,26 @@
   }
 
   // ---------- adat ----------
+  function apply(out) {
+    // Az aláírt URL minden lekéréskor más: a már betöltött képek a régi (még érvényes) címükön maradnak,
+    // különben percenként újra letöltődne minden kép.
+    out.photos.forEach(p => {
+      const c = SURL[p.id];
+      if (c && Date.now() - c.t < 50 * 60000) p.url = c.u;
+      else if (p.url) SURL[p.id] = { u: p.url, t: Date.now() };
+    });
+    // A szerver listájában már szereplő friss képeket nem kell külön tartani.
+    const ids = new Set(out.photos.map(p => p.id));
+    for (const [k, r] of RECENT) if (ids.has(r.id) || Date.now() - r.t > 120000) RECENT.delete(k);
+    INFO = out;
+  }
+
   async function load(first) {
     try {
-      const out = await call('info');
-      // Az aláírt URL minden lekéréskor más: a már betöltött képek a régi (még érvényes) címükön maradnak,
-      // különben percenként újra letöltődne minden kép.
-      out.photos.forEach(p => {
-        const c = SURL[p.id];
-        if (c && Date.now() - c.t < 50 * 60000) p.url = c.u;
-        else if (p.url) SURL[p.id] = { u: p.url, t: Date.now() };
-      });
-      // A szerver listájában már szereplő friss képeket nem kell külön tartani.
-      const ids = new Set(out.photos.map(p => p.id));
-      for (const [k, r] of RECENT) if (ids.has(r.id) || Date.now() - r.t > 120000) RECENT.delete(k);
-      INFO = out;
+      apply(await call('info'));
       if (first) await restoreQueue();
       paint();
-      if (first) introPlay(out.container);
+      if (first) introPlay(INFO.container);
     } catch (e) {
       if (first) introAbort();
       if (e instanceof Gone) {
@@ -246,16 +261,17 @@
       t.onerror = () => rej(t.error);
     });
   }
-  const idbPut = it => tx('readwrite', s => s.put({ k: it.k, container: INFO.container, blob: it.blob, at: it.at })).catch(() => {});
+  const idbPut = it => tx('readwrite', s => s.put({ k: it.k, container: it.c, t: it.t, blob: it.blob, at: it.at })).catch(() => {});
   const idbDel = k => tx('readwrite', s => s.delete(k)).catch(() => {});
 
+  // A belépőjükkel együtt mentett képek bármelyik konténerhez felmennek; a régiek (belépő nélkül) csak a sajátjukhoz.
   async function restoreQueue() {
     let rows = [];
     try { rows = await tx('readonly', s => s.getAll()) || []; } catch (_) { return; }
-    rows.filter(r => r.container === INFO.container && r.blob).forEach(r => {
+    rows.filter(r => r.blob && (r.t || r.container === INFO.container)).forEach(r => {
       if (Q.some(q => q.k === r.k)) return;
       LOCAL[r.k] = URL.createObjectURL(r.blob);
-      Q.push({ k: r.k, blob: r.blob, url: LOCAL[r.k], state: 'wait', at: r.at, tries: 0 });
+      Q.push({ k: r.k, c: r.container, t: r.t || TOKEN, blob: r.blob, url: LOCAL[r.k], state: 'wait', at: r.at, tries: 0 });
     });
     if (Q.length) pump();
   }
@@ -269,7 +285,7 @@
     LOCAL[k] = url;
     let it = Q.find(q => q.k === k);
     if (it) Object.assign(it, { blob, url, state: 'wait' });
-    else Q.push(it = { k, blob, url, state: 'wait', at: new Date().toISOString(), tries: 0 });
+    else Q.push(it = { k, c: INFO.container, t: TOKEN, blob, url, state: 'wait', at: new Date().toISOString(), tries: 0 });
     idbPut(it);
     pump();
     paint();
@@ -294,7 +310,7 @@
 
   async function upOne(it) {
     try {
-      const res = await fetch(`${FN}?a=upload`, { method: 'POST', headers: headers({ 'Content-Type': 'image/jpeg', 'x-kf-link': TOKEN }), body: it.blob });
+      const res = await fetch(`${FN}?a=upload`, { method: 'POST', headers: headers({ 'Content-Type': 'image/jpeg', 'x-kf-link': it.t || TOKEN }), body: it.blob });
       let out = {};
       try { out = await res.json(); } catch (_) { /* üres válasz */ }
       if (res.status === 401 || res.status === 410) { it.state = 'wait'; EXPIRED = out.error || 'Ez a QR-kód lejárt.'; return; }
@@ -303,8 +319,8 @@
       ID2K[out.id] = it.k;
       LOCAL[it.k] = it.url;
       OK_AT[it.k] = Date.now();
-      RECENT.set(it.k, { id: out.id, at: out.at, t: Date.now() });
-      if (INFO && !INFO.photos.some(p => p.id === out.id)) INFO.photos.push({ id: out.id, at: out.at, url: '', mine: true });
+      RECENT.set(it.k, { id: out.id, at: out.at, t: Date.now(), c: it.c });
+      if (INFO && here(it) && !INFO.photos.some(p => p.id === out.id)) INFO.photos.push({ id: out.id, at: out.at, url: '', mine: true });
       Q = Q.filter(q => q !== it);
       idbDel(it.k);
       // Feltöltés közben törölték: most már a szerverről törlődik.
@@ -432,7 +448,8 @@
     d.innerHTML = `
       <div class="cam-top">
         <button type="button" class="cam-x" data-a="cam-close" aria-label="Bezárás">×</button>
-        <span class="cam-id"><span class="cno">${fmtC(INFO.container)}</span><span class="p">${esc(plateTxt(INFO.plate) || 'rendszám nélkül')}</span></span>
+        ${LIST.length > 1 ? `<button type="button" class="swap cam-swap" data-a="pick">${IC.swap}Váltás</button>` : ''}
+        <span class="cam-id"></span>
       </div>
       <div class="cam-view">
         <video playsinline muted autoplay></video>
@@ -502,7 +519,7 @@
     tc.width = Math.round(cv.width * tk); tc.height = Math.round(cv.height * tk);
     tc.getContext('2d').drawImage(cv, 0, 0, tc.width, tc.height);
     const key = newKey();
-    Q.push({ k: key, blob: null, url: tc.toDataURL('image/jpeg', 0.7), state: 'enc', at: new Date().toISOString(), tries: 0 });
+    Q.push({ k: key, c: INFO.container, t: TOKEN, blob: null, url: tc.toDataURL('image/jpeg', 0.7), state: 'enc', at: new Date().toISOString(), tries: 0 });
     SESSION.push(key);
     paint();
     cv.toBlob(b => {
@@ -516,6 +533,12 @@
   function renderCam() {
     const d = $('#cam');
     if (!d || !d.open || !INFO) return;
+    // A fejléc csak konténerváltáskor (vagy rendszám-javításkor) rajzolódik újra.
+    const id = d.querySelector('.cam-id'), idKey = `${INFO.container}|${INFO.plate}`;
+    if (id.dataset.k !== idKey) {
+      id.dataset.k = idKey;
+      id.innerHTML = `<span class="cno">${fmtC(INFO.container)}</span><span class="p">${esc(plateTxt(INFO.plate) || 'rendszám nélkül')}</span>`;
+    }
     const all = items();
     const mine = SESSION.map(k => all.find(x => x.k === k)).filter(Boolean);
     const s = d.querySelector('.cam-strip');
@@ -601,6 +624,71 @@
     });
   }
 
+  // ---------- konténerváltás ----------
+  // A még meg nem érkezett konténerek között lehet váltani; a már készült képek a saját konténerükhöz mennek fel.
+  function pickLabel(x) {
+    const now = new Date(), t = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const dd = n => { const d = new Date(now); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+    const day = x.day === t ? 'ma' : x.day === dd(1) ? 'holnap' : x.day === dd(-1) ? 'tegnap' : x.day ? `${x.day.slice(5).replace('-', '.')}.` : '';
+    return [[day, x.eta && `ETA ${x.eta}`].filter(Boolean).join(' '), x.plate].filter(Boolean).join(' · ');
+  }
+
+  function pickOpen() {
+    let d = $('#pick');
+    if (!d) {
+      d = document.createElement('dialog');
+      d.id = 'pick';
+      d.className = 'sheet';
+      d.setAttribute('aria-labelledby', 'pick-h');
+      d.addEventListener('click', e => { if (e.target === d) d.close(); });
+      document.body.appendChild(d);
+    }
+    const cur = INFO ? INFO.container : '';
+    d.innerHTML = `
+      <form method="dialog">
+        <span class="grab" aria-hidden="true"></span>
+        <h2 id="pick-h">Konténer váltása</h2>
+        <div class="pick-list">${LIST.map(x => {
+          const left = Q.filter(q => q.c === x.id && !HIDE.has(q.k) && q.state !== 'bad').length;
+          return `<button type="button" class="pick-it${x.id === cur ? ' on' : ''}" data-a="pick-go" data-id="${esc(x.id)}"${x.id === cur ? ' aria-current="true"' : ''}>
+            <span class="cno">${fmtC(x.id)}</span>
+            <span class="pick-sub">${esc(pickLabel(x))}${left ? ` · <b>${left} kép feltöltés alatt</b>` : ''}</span>
+          </button>`;
+        }).join('')}</div>
+        <button type="button" class="btn ln sm" data-a="pick-close">Mégse</button>
+      </form>`;
+    d.showModal();
+    const on = d.querySelector('.pick-it.on');
+    if (on) on.scrollIntoView({ block: 'center' });
+  }
+
+  let switching = false;
+  async function switchTo(id) {
+    if (!INFO || id === INFO.container || switching) return;
+    switching = true;
+    const btns = document.querySelectorAll('[data-a="pick-go"]');
+    btns.forEach(b => { b.disabled = true; });
+    // A függő törlések még a mostani belépővel futnak le.
+    await Promise.all([...PENDING.keys()].map(k => commitDel(k)));
+    const old = TOKEN;
+    try {
+      const x = LIST.find(i => i.id === id);
+      const out = await call('hop', { container: id, plate: (x && x.plate) || '' });
+      TOKEN = out.token;
+      apply(await call('info'));
+      history.replaceState(null, '', `${location.pathname}${location.search}#t=${TOKEN}&c=${id}&from=app`);
+      const d = $('#pick');
+      if (d && d.open) d.close();
+      if (navigator.vibrate) navigator.vibrate(14);
+      paint();
+    } catch (e) {
+      TOKEN = old;
+      toast(e.message || 'A váltás nem sikerült');
+      btns.forEach(b => { b.disabled = false; });
+    }
+    switching = false;
+  }
+
   // ---------- nagy nézet ----------
   function view(k) {
     const x = items().find(i => i.k === k);
@@ -633,6 +721,9 @@
       case 'view': view(el.dataset.k); break;
       case 'plate': if (!EXPIRED) plateOpen(); break;
       case 'plate-close': $('#plate').close(); break;
+      case 'pick': if (!EXPIRED) pickOpen(); break;
+      case 'pick-go': switchTo(el.dataset.id); break;
+      case 'pick-close': $('#pick').close(); break;
       case 'back':
         if (history.length > 1) history.back();
         else location.replace(`./#c=${INFO ? INFO.container : HINT}`);

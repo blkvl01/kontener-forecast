@@ -4,11 +4,13 @@
 //   link    { container, plate }  → az aktív link (ha nincs, új)        → { token, expires_at, created_at, by }
 //   relink  { container, plate }  → a régi megszűnik, új készül          → ugyanaz
 //   revoke  { container }         → a konténer minden linkje megszűnik   → { ok }
+//   (link/relink { multi: true }: a telefonos Fotózás gomb belépője, amely más konténerre is átválthat)
 // Telefonon (QR, bejelentkezés nélkül, t = token):
 //   info    { t }                 → konténer, rendszám, fotók (aláírt URL-lel)
 //   upload  ?a=upload, fejléc x-kf-link: token, törzs: JPEG       → { id, at }
 //   delete  { t, id }             → csak az ezzel a linkkel feltöltött fotó törölhető
 //   plate   { t, plate }          → a rendszám kézi javítása (manual tábla)
+//   hop     { t, container, plate } → csak multi belépővel: belépő egy másik konténerhez (ugyanannak a tagnak) → { token, … }
 //
 // Telepítés: supabase functions deploy photo-link --no-verify-jwt
 // (A telefon nem küld felhasználói tokent; a jogosultságot a függvény maga ellenőrzi.)
@@ -59,7 +61,7 @@ function same(a: string, b: string) {
   return d === 0;
 }
 
-type Link = { id: string; container: string; plate_hint: string; created_by: string | null; created_by_email: string | null; created_at: string; expires_at: string; revoked_at: string | null; uploads: number };
+type Link = { id: string; container: string; plate_hint: string; created_by: string | null; created_by_email: string | null; created_at: string; expires_at: string; revoked_at: string | null; uploads: number; multi: boolean };
 
 async function linkFromToken(t: unknown): Promise<Link> {
   const m = typeof t === 'string' ? t.match(TOKEN_RE) : null;
@@ -107,8 +109,15 @@ async function linkOut(l: Link) {
   return { token: await tokenOf(l.id), expires_at: l.expires_at, created_at: l.created_at, by: l.created_by_email };
 }
 
+type Who = { uid: string | null; email: string | null };
+
 async function getOrCreate(req: Request, body: Record<string, unknown>, fresh: boolean) {
   const me = await member(req);
+  return linkFor({ uid: me.uid, email: me.email }, body, fresh, body.multi === true);
+}
+
+// multi: a telefonos Fotózás gomb belépője (más konténerre is átválthat); a QR-kódé mindig egyetlen konténeré.
+async function linkFor(who: Who, body: Record<string, unknown>, fresh: boolean, multi: boolean) {
   const container = String(body.container || '');
   if (!CONT_RE.test(container)) throw new HttpError(400, 'Hibás konténerszám.');
   const plate = cleanPlate(body.plate);
@@ -117,8 +126,11 @@ async function getOrCreate(req: Request, body: Record<string, unknown>, fresh: b
     await db.from('photo_links').update({ revoked_at: now }).eq('container', container).is('revoked_at', null);
   } else {
     // A már kint lévő QR marad érvényes (a telefonon épp használhatják); csak a levélbeli rendszám frissül.
-    const { data } = await db.from('photo_links').select('*').eq('container', container).is('revoked_at', null)
-      .gt('expires_at', new Date(Date.now() + 30 * 60e3).toISOString()).order('created_at', { ascending: false }).limit(1);
+    let q = db.from('photo_links').select('*').eq('container', container).eq('multi', multi).is('revoked_at', null)
+      .gt('expires_at', new Date(Date.now() + 30 * 60e3).toISOString());
+    // A váltható belépő tagonként külön van (más tag belépőjét nem veszi át).
+    if (multi) q = who.uid ? q.eq('created_by', who.uid) : q.is('created_by', null);
+    const { data } = await q.order('created_at', { ascending: false }).limit(1);
     if (data && data[0]) {
       if (plate && plate !== data[0].plate_hint) await db.from('photo_links').update({ plate_hint: plate }).eq('id', data[0].id);
       return linkOut(data[0] as Link);
@@ -127,10 +139,15 @@ async function getOrCreate(req: Request, body: Record<string, unknown>, fresh: b
   // Régi, lejárt linkek takarítása (a fotók link_id-je ilyenkor kiürül).
   db.from('photo_links').delete().lt('expires_at', new Date(Date.now() - 7 * 86400e3).toISOString()).then(() => {}, () => {});
   const { data, error } = await db.from('photo_links').insert({
-    container, plate_hint: plate, created_by: me.uid, created_by_email: me.email, expires_at: expiry()
+    container, plate_hint: plate, created_by: who.uid, created_by_email: who.email, expires_at: expiry(), multi
   }).select().single();
   if (error) throw error;
   return linkOut(data as Link);
+}
+
+async function hop(l: Link, body: Record<string, unknown>) {
+  if (!l.multi) throw new HttpError(403, 'Ezzel a QR-kóddal csak ez a konténer fotózható.');
+  return linkFor({ uid: l.created_by, email: l.created_by_email }, body, false, true);
 }
 
 // ---------- telefon ----------
@@ -220,6 +237,7 @@ Deno.serve(async req => {
       case 'info': return json(await info(await linkFromToken(body.t)));
       case 'delete': return json(await del(await linkFromToken(body.t), body.id));
       case 'plate': return json(await setPlate(await linkFromToken(body.t), body.plate));
+      case 'hop': return json(await hop(await linkFromToken(body.t), body));
       default: throw new HttpError(400, 'Ismeretlen művelet.');
     }
   } catch (e) {

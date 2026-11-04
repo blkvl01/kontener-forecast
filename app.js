@@ -2794,7 +2794,7 @@
     d.innerHTML = `
       <div class="cam-top">
         <button type="button" class="cam-x" data-action="cam-close" aria-label="Bezárás">×</button>
-        <span class="cam-id">${esc(id)}</span>
+        <label class="cam-pick"><span class="sr">Konténer</span><select id="cam-ct"></select></label>
       </div>
       <div class="cam-view">
         <video playsinline muted autoplay></video>
@@ -2859,9 +2859,20 @@
     if (d && d.open) d.close();
   }
 
-  // A kép azonnal a sávba kerül; ha a JPEG még készül (ready), a feltöltés megvárja.
+  // Váltható konténerek (ugyanaz a lista, mint a telefonos fotóoldalon).
+  const camList = () => photoList(CAM.id).map(x => S.data.containers[x.id]).filter(Boolean);
+
+  function camLabel(c) {
+    const t = iso(new Date());
+    const day = c.day === t ? 'ma' : c.day === addDays(t, 1) ? 'holnap' : c.day === addDays(t, -1) ? 'tegnap' : c.day ? short(c.day) : '';
+    const n = livePhotos(c.id).length + CAM.shots.filter(s => s.id === c.id).length;
+    return [c.id, [day, c.eta_time].filter(Boolean).join(' '), c.plate ? plate(c.plate) : '', n ? `${n} kép` : ''].filter(Boolean).join(' · ');
+  }
+
+  // A kép azonnal a sávba kerül (az épp kiválasztott konténerhez); ha a JPEG még készül (ready), a feltöltés megvárja.
   function camAdd(blob, url, ready) {
-    CAM.shots.push({ k: Math.random().toString(36).slice(2), blob, url: url || URL.createObjectURL(blob), ready: ready || Promise.resolve(blob) });
+    if (!CAM.id) return;
+    CAM.shots.push({ k: Math.random().toString(36).slice(2), id: CAM.id, blob, url: url || URL.createObjectURL(blob), ready: ready || Promise.resolve(blob) });
     renderCam();
     const s = $('#cam .cam-strip');
     if (s) s.scrollLeft = s.scrollWidth;
@@ -2909,7 +2920,11 @@
         <button type="button" class="ph-img" data-action="photo-view" data-ph="${esc(p.path)}" aria-label="Feltöltött ${i + 1}. fotó"><img data-ph="${esc(p.path)}" alt=""${phUrl(p.path) ? ` src="${phUrl(p.path)}"` : ''}></button>
         ${canDelPhoto(p) ? `<button type="button" class="ph-x" data-action="photo-del" data-ph="${esc(p.path)}" aria-label="Feltöltött ${i + 1}. fotó törlése">×</button>` : ''}
       </figure>`).join('');
-    const mine = CAM.shots.map((s, i) => `<figure class="ph-t">
+    const sel = d.querySelector('#cam-ct');
+    if (sel && document.activeElement !== sel) {
+      sel.innerHTML = camList().map(c => `<option value="${esc(c.id)}"${c.id === CAM.id ? ' selected' : ''}>${esc(camLabel(c))}</option>`).join('');
+    }
+    const mine = CAM.shots.filter(s => s.id === CAM.id).map((s, i) => `<figure class="ph-t">
         <img src="${s.url}" alt="">
         <button type="button" class="ph-x" data-action="cam-del" data-k="${s.k}" aria-label="${i + 1}. új fotó törlése">×</button>
       </figure>`).join('');
@@ -2920,11 +2935,13 @@
     loadThumbs();
   }
 
+  // Az összes konténer képei egyszerre mennek fel, konténerenként.
   async function camSend() {
-    const id = CAM.id, pending = CAM.shots.map(s => s.ready);
-    if (!id || !pending.length) return;
+    const by = {};
+    CAM.shots.forEach(s => { (by[s.id] = by[s.id] || []).push(s.ready); });
+    if (!Object.keys(by).length) return;
     camClose(true);
-    addPhotos(id, (await Promise.all(pending)).filter(Boolean), true);
+    for (const [id, pending] of Object.entries(by)) addPhotos(id, (await Promise.all(pending)).filter(Boolean), true);
   }
 
   async function delPhoto(path) {
@@ -3080,12 +3097,24 @@
 
   // Telefonon (belépve) a Fotózás gomb QR nélkül ugyanarra a fotózó oldalra visz: a link a háttérben készül.
   // Ha a szolgáltatás nem érhető el, a beépített kamera nyílik.
+  // A még meg nem érkezett konténerek tegnapelőttől holnapig, érkezési sorrendben; a megnyitott mindig benne van.
+  function photoList(id) {
+    const t = iso(new Date());
+    const out = [];
+    for (let d = addDays(t, -2); d <= addDays(t, 1); d = addDays(d, 1)) out.push(...onDay(d).filter(c => !c.arrived));
+    const cur = S.data.containers[id];
+    if (cur && !out.some(c => c.id === id)) out.unshift(cur);
+    return out.map(c => ({ id: c.id, day: c.day || '', eta: c.eta_time || '', plate: c.plate ? plate(c.plate) : '' }));
+  }
+
   async function photoPhone(el, id) {
     const c = S.data.containers[id];
     if (!c || el.classList.contains('busy')) return;
     el.classList.add('busy');
     try {
-      const r = await edgeFn('photo-link', 'link', { container: id, plate: (c.fixed && 'plate' in c.fixed ? c.fixed.plate : c.plate) || '' });
+      const r = await edgeFn('photo-link', 'link', { container: id, plate: (c.fixed && 'plate' in c.fixed ? c.fixed.plate : c.plate) || '', multi: true });
+      // A fotóoldalon ezek között lehet váltani (a még meg nem érkezett konténerek).
+      try { localStorage.setItem('kf-photo-list', JSON.stringify({ at: Date.now(), list: photoList(id) })); } catch (_) { /* privát mód: nincs váltás */ }
       // Visszalépéskor (ha a böngésző újratölti az oldalt) ugyanez az adatlap nyílik meg.
       history.replaceState(null, '', `${location.pathname}${location.search}#c=${id}`);
       location.href = `foto.html#t=${r.token}&c=${id}&from=app`;
@@ -3606,6 +3635,12 @@
       try { await usersFn('role', { email: el.dataset.email, role: el.value }); toast(`Új rang: ${ROLE_L[el.value]}`); }
       catch (err) { toast(err.message); }
       loadUsers();
+      return;
+    }
+    if (el.id === 'cam-ct') {
+      CAM.id = el.value;
+      el.blur();
+      renderCam();
       return;
     }
     if (el.id === 'cam-in-lib' || el.id === 'cam-in-native') {
