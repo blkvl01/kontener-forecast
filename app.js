@@ -2596,8 +2596,6 @@
   // ---------- konténerfotók ----------
   // A telefonnal készült képek kicsinyítve a konténerhez kerülnek; 12 óra után a szerver (photo-cleanup) törli őket.
   const PHOTO_TTL = 12 * 3600e3;
-  // A böngésző nem írhat magától fix útvonalra: a választó a Képek mappában nyílik, és abban jön létre ez az almappa.
-  const PHOTO_DIR = 'Nyitáskérelem';
   let PHOTOS = [];
   const PH_BLOB = {}, PH_URL = {}, PH_BUSY = {};
   const phLoading = new Set();
@@ -2905,50 +2903,12 @@
     d.showModal();
   }
 
-  // A mentési mappa (File System Access API) az IndexedDB-ben marad meg, így csak egyszer kell kiválasztani.
-  const idb = (mode, fn) => new Promise((res, rej) => {
-    const rq = indexedDB.open('kf', 1);
-    rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
-    rq.onerror = () => rej(rq.error);
-    rq.onsuccess = () => {
-      const tx = rq.result.transaction('kv', mode);
-      const r = fn(tx.objectStore('kv'));
-      tx.oncomplete = () => res(r.result);
-      tx.onerror = () => rej(tx.error);
-    };
-  });
-  const dirGet = () => idb('readonly', s => s.get('photoDir')).catch(() => null);
-  const dirSet = h => idb('readwrite', s => s.put(h, 'photoDir')).catch(() => {});
-  const canDir = () => 'showDirectoryPicker' in window;
-
-  async function pickDir() {
-    const base = await window.showDirectoryPicker({ id: 'kf-photos', mode: 'readwrite', startIn: 'pictures' });
-    const h = base.name.toLowerCase() === PHOTO_DIR.toLowerCase() ? base : await base.getDirectoryHandle(PHOTO_DIR, { create: true });
-    await dirSet(h);
-    return h;
-  }
-
-  // Egy konténer képei kerülnek a mappába; az előző konténer itt hagyott képeit előbb törli.
-  const OUR_FILE = /^[A-Z]{4}\d{7}_\d+\.jpg$/i;
-  async function writePhotos(dir, id) {
-    const ph = livePhotos(id);
-    const blobs = await Promise.all(ph.map(p => phBlob(p.path)));
-    const old = [];
-    for await (const [name, h] of dir.entries()) if (h.kind === 'file' && OUR_FILE.test(name)) old.push(name);
-    for (const name of old) await dir.removeEntry(name).catch(() => {});
-    for (let i = 0; i < blobs.length; i++) {
-      const f = await dir.getFileHandle(`${id}_${i + 1}.jpg`, { create: true });
-      const w = await f.createWritable();
-      await w.write(blobs[i]);
-      await w.close();
-    }
-    return blobs.length;
-  }
-
-  // Mappa nélküli böngészőben a képek egyenként a Letöltések mappába kerülnek.
+  // A konténer képei a Letöltések mappába kerülnek (KONTÉNER_1.jpg, _2.jpg …), mappaválasztás és engedélykérés nélkül.
+  // A már betöltött képek azonnal mennek, így a levél ugyanabban a kattintásban nyílhat (a böngésző nem tiltja le).
+  const photosCached = id => livePhotos(id).every(p => PH_BLOB[p.path]);
   async function downloadPhotos(id) {
     const ph = livePhotos(id);
-    const blobs = await Promise.all(ph.map(p => phBlob(p.path)));
+    const blobs = photosCached(id) ? ph.map(p => PH_BLOB[p.path]) : await Promise.all(ph.map(p => phBlob(p.path)));
     blobs.forEach((b, i) => {
       const a = document.createElement('a');
       a.href = URL.createObjectURL(b);
@@ -3149,6 +3109,12 @@
           </span>
         </div>
         ${miss.length ? `<div class="flag warn">${IC.warn}Hiányzik: ${esc(miss.join(', '))}</div>` : ''}
+        ${MAIL_DONE && MAIL_DONE.id === c.id ? `<div class="mail-att" role="status">
+          <b>${IC.check}${MAIL_DONE.n} fotó a Letöltések mappában</b>
+          <span class="mono">${esc(c.id)}_1.jpg${MAIL_DONE.n > 1 ? ` … _${MAIL_DONE.n}.jpg` : ''}</span>
+          <ol><li>Húzd be a képeket a levélbe a böngésző letöltési listájából (jobb felül), vagy</li><li>a levélben: <b>Csatolás</b> → <b>Tallózás ezen a számítógépen</b> → <b>Letöltések</b>, jelöld ki a képeket.</li></ol>
+          <small>Ha a böngésző megkérdezi, engedélyezd a több fájl letöltését (csak első alkalommal).</small>
+        </div>` : ''}
         <details class="mail-more"${MAIL_OPEN ? ' open' : ''}>
           <summary>Levél előnézete<span>${esc(m.subject)}</span></summary>
           <dl class="mail-pv">
@@ -3173,29 +3139,10 @@
     return !!w;
   }
 
-  // A fotók a kiválasztott mappába (vagy a Letöltésekbe) kerülnek, onnan egy húzással csatolhatók.
-  async function savePhotos(id) {
-    try {
-      if (!canDir()) { toast(`${await downloadPhotos(id)} fotó letöltve`); return true; }
-      let dir = await dirGet();
-      let perm = dir ? await dir.queryPermission({ mode: 'readwrite' }).catch(() => 'denied') : 'none';
-      if (dir && perm === 'prompt') perm = await dir.requestPermission({ mode: 'readwrite' }).catch(() => 'denied');
-      if (!dir || perm !== 'granted') dir = await pickDir();
-      toast(`${await writePhotos(dir, id)} fotó mentve: ${PHOTO_DIR}`);
-      return true;
-    } catch (err) {
-      // Bezárt választó: nincs mentés, de a következő kattintás újra kérdez (a döntést nem jegyezzük meg).
-      if (err && err.name === 'AbortError') { toast('A fotók nem lettek mentve'); return false; }
-      // Letiltott mappaengedély: a képek legalább a Letöltések mappába kerüljenek.
-      console.error(err);
-      try { toast(`${await downloadPhotos(id)} fotó letöltve`); return true; }
-      catch (_) { toast('A fotók mentése nem sikerült'); return false; }
-    }
-  }
-
-  // Mappaválasztás vagy engedélykérés után a böngésző már letiltaná a felugró ablakot: ilyenkor a levél külön gombbal nyílik.
+  // A webes Outlook linkből csatolmányt nem fogad: a képek a Letöltésekbe kerülnek, a levélbe onnan húzhatók be.
+  // Ha a böngésző mégis letiltja az új ablakot, a levél egy külön gombbal nyílik.
   let MAIL_LATER = null;
-  function mailLater(id) { MAIL_LATER = id; paintPhotos(id); }
+  let MAIL_DONE = null; // { id, n }: a képek letöltve, a csatolás menete a dobozban látszik
 
   async function openMail(id) {
     const c = S.data.containers[id];
@@ -3204,22 +3151,17 @@
     const n = livePhotos(id).length;
     if (isExe()) {
       if (!(await exe().open_url(url))) { toast('Frissítsd az alkalmazást'); return; }
-      if (n) await savePhotos(id);
+      if (n) { try { MAIL_DONE = { id, n: await downloadPhotos(id) }; } catch (_) { toast('A fotók letöltése nem sikerült'); } paintPhotos(id); }
       return;
     }
-    if (!n) { if (!openWin(url)) location.href = url; return; }
-    // Engedélyezett mappánál egy kattintás: levél + mentés. Ha engedély kell, előbb csak a mentés fut (a felhasználó itt marad és látja),
-    // a levél a „Levél megnyitása” gombbal nyílik (engedélykérés után a böngésző a felugró ablakot tiltaná).
-    const dir = canDir() && await dirGet();
-    const ready = !canDir() || (dir && (await dir.queryPermission({ mode: 'readwrite' }).catch(() => '')) === 'granted');
-    if (ready) {
-      if (!openWin(url)) location.href = url;
-      await savePhotos(id);
-      return;
+    if (n) {
+      try { MAIL_DONE = { id, n: await downloadPhotos(id) }; }
+      catch (_) { toast('A fotók letöltése nem sikerült'); }
     }
-    // A levél akkor is megnyitható, ha a mentés elmaradt: a nyitáskérés sosem akadhat el a mappán.
-    await savePhotos(id);
-    mailLater(id);
+    MAIL_LATER = openWin(url) ? null : id;
+    if (MAIL_LATER) toast('A böngésző letiltotta az új ablakot: nyisd meg a levelet a gombbal');
+    else if (n && MAIL_DONE) toast(`${MAIL_DONE.n} fotó a Letöltések mappában`);
+    paintPhotos(id);
   }
 
   // ---------- felhasználók ----------
