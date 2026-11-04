@@ -68,7 +68,7 @@
   const nowIso = () => { const d = new Date(); return `${iso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
 
   // ---------- állapot ----------
-  const S = { statsDays: 28, q: '', data: null, view: 'week', week: null, sel: null, month: null, calSel: null, drawer: null, pending: false, today: null, pdir: 0, px: null, chg: false, unit: 'ct' };
+  const S = { statsDays: 28, q: '', data: null, view: 'week', week: null, sel: null, month: null, calSel: null, drawer: null, pending: false, today: null, pdir: 0, px: null, chg: false, unit: 'ct', band: 'week', fleetOpen: false };
   try { if (localStorage.getItem('kf-unit') === 'pdd') S.unit = 'pdd'; } catch (_) { /* privát mód */ }
   const CFG = window.KF_CONFIG;
   const sb = window.supabase.createClient(CFG.url, CFG.key, {
@@ -414,7 +414,7 @@
     Object.keys(now).forEach(id => {
       if (prev[id] === now[id]) return;
       const late = now[id].split('|')[3] === '1' && (!prev[id] || prev[id].split('|')[3] !== '1');
-      document.querySelectorAll(`#view [data-id="${CSS.escape(id)}"]:is(.blk, .ccard, .tr, .side-item, .dock, .pill, .pl)`).forEach(el => {
+      document.querySelectorAll(`#view [data-id="${CSS.escape(id)}"]:is(.blk, .ccard, .tr, .side-item, .roof, .pk-main, .tile, .pl)`).forEach(el => {
         el.classList.add(late ? 'flash-late' : 'flash');
       });
     });
@@ -546,7 +546,7 @@
 
   function editing() {
     const a = document.activeElement;
-    if ($('#settings').open || $('#paste').open || $('#people').open) return true;
+    if ($('#settings').open || $('#paste').open || $('#people').open || $('#rpick').open || DRAG) return true;
     if (a && a.id === 'q') return false;
     return !!(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && a.closest('#view, #drawer'));
   }
@@ -829,9 +829,11 @@
     renderSync();
     const v = $('#view');
     const fk = focusKey();
+    const ysnap = enter ? null : yardSnap();
     v.className = enter ? enter.split(' ').map(z => `ev-${z}`).join(' ') : '';
     v.innerHTML = S.view === 'week' ? weekView() : S.view === 'month' ? monthView() : statsView();
     refocus(fk);
+    if (ysnap) yardAnim(ysnap);
     if (S.view === 'month') placeCalInd(false);
     renderDrawer();
     if (enter && !$('#app').hidden && !$('#app').classList.contains('boot-wait')) {
@@ -841,7 +843,9 @@
       enter.split(' ').forEach(z => { if (roots[z]) v.querySelectorAll(roots[z]).forEach(r => countUp(r)); });
     }
     diffFlash(!!enter);
+    if (!enter) notifyChanges();
     rememberP();
+    rememberK();
     S.pending = false;
   }
 
@@ -1370,13 +1374,26 @@
     }).join('');
 
     // A rekeszek ugyanazt a töltés-nyelvet beszélik, mint a konténer, így a jelmagyarázat mindkét módban azonos.
-    const legend = [['Tervben', 0, 'plan'], ['Megérkezett', 25, 'live'], ['Nyitás', 75, 'live'], ['Betárolva', 100, 'done'], ['Késik', 0, 'plan lg-late']]
+    const legend = [['Tervben', 0, 'plan'], ['Nyitható', 40, 'live'], ['Bontás alatt', 75, 'live'], ['Betárolva', 100, 'done'], ['Késik', 0, 'plan lg-late']]
       .map(([t, p, g], i) => `<span style="--i:${i}"><i class="lg-ct lg-${g}" style="--p:${p}%"></i>${t}</span>`).join('');
     // A mód csak ezen az osztályon múlik; a blokkok markupja mindkét módban azonos (lásd swapUnit).
     const uCls = UP() ? ' u-pdd' : '';
+    if (S.band === 'yard') {
+      const m = rampMap(), np = parkList().length, nr = Object.keys(m).length;
+      return `
+      <section class="yard is-yd${uCls}" aria-label="Udvar: rámpák és parkoló">
+        <div class="yard-top">
+          ${bandSwitch()}
+          <span class="yd-sum"><span><b>${nr}</b> / ${yardN(m)} rámpa foglalt</span><span><b>${np}</b> a parkolóban</span></span>
+        </div>
+        ${yardBand()}
+      </section>
+      ${dayPanel()}`;
+    }
     return `
       <section class="yard${uCls}" aria-label="Heti érkezések">
         <div class="yard-top">
+          ${bandSwitch()}
           ${chg.length
             ? `<button type="button" class="chg-btn" data-action="chg" aria-expanded="${!!S.chg}" aria-controls="chg-pop">Változások <span class="n">${chg.length}</span></button>${changesPop(chg)}`
             : '<span class="chg-btn none">Nincs változás</span>'}
@@ -1436,7 +1453,7 @@
     if (ps.length < 2) return '';
     const st = c.storedPdd || {};
     // Betárolás közben a még be nem tárolt fuvarlevél a nyitás szintjén áll.
-    const rest = ph.key === 'storing' ? PHASE.opened[1] : ph.p;
+    const rest = ph.p;
     return `<span class="blk-cells" aria-hidden="true" style="--n:${Math.min(ps.length, 9)}">${ps.map((p, k) => {
       const on = ph.key === 'stored' || !!st[p.no.toUpperCase()];
       return `<i class="c-${on ? 'done' : ph.grp}" style="--cp:${Math.round((on ? 1 : rest) * 100)}%;--ci:${Math.min(k, 8)}"></i>`;
@@ -1445,25 +1462,71 @@
 
   // ---------- folyamat, késés, rámpa ----------
   // Egy fázis, egy név: a chip, a jelmagyarázat, a mérföldkő és a statisztika ugyanezeket a feliratokat használja.
-  const STAGES = ['arrive', 'approved', 'opened', 'stored'];
-  const STAGE_LABEL = { arrive: 'Megérkezett', approved: 'Nyitható', opened: 'Nyitás', stored: 'Betárolva' };
+  // Mérföldkövek, mind levélből: nyitáskérelem elküldve → nyitható → „nyitjuk” → (+15 perc) bontás → elengedve vagy betárolva.
+  // A bontás nem kap levelet: a „nyitjuk” levél után 15 perccel magától lép. A betárolva az elengedésnél erősebb:
+  // ha mindkettő megjött, a konténer betárolva. A részleges (PDD-nkénti) betárolás nem külön mérföldkő.
+  const STAGES = ['request', 'approved', 'opened', 'unpack', 'released', 'stored'];
+  const STAGE_LABEL = { request: 'Nyitás megkérve', approved: 'Nyitható', opened: 'Nyitás alatt', unpack: 'Bontás alatt', released: 'Elengedve', stored: 'Betárolva' };
+  const UNPACK_MIN = 15;
   const PHASE = {
-    pre: ['Tervben', 0, 'plan'], t1: ['Rendszám + T1', 0, 'plan'], eta: ['ETA', 0, 'plan'],
-    request: ['Megérkezett', 0.25, 'live'], approved: ['Nyitható', 0.5, 'live'], opened: ['Nyitás', 0.75, 'live'],
+    plan: ['Tervben', 0, 'plan'], request: ['Nyitás megkérve', 0.2, 'live'], approved: ['Nyitható', 0.4, 'live'],
+    opened: ['Nyitás alatt', 0.55, 'live'], unpack: ['Bontás alatt', 0.75, 'live'], released: ['Elengedve', 0.9, 'live'],
     stored: ['Betárolva', 1, 'done']
   };
+  // Helyi idő ISO-szövegként, percekkel eltolva (a levelek ideje is így van tárolva).
+  const isoAdd = (ts, min) => { const d = new Date(new Date(ts).getTime() + min * 60000); return `${iso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+  const openedAt = c => (c.stages && c.stages.opened && c.stages.opened.at) || '';
+  function phaseKey(c) {
+    const st = c.stages || {};
+    if (st.stored) return 'stored';
+    if (st.released) return 'released';
+    if (st.opened || c.opened_implied) return st.opened && minutesBetween(st.opened.at, nowIso()) < UNPACK_MIN ? 'opened' : 'unpack';
+    if (st.approved) return 'approved';
+    return c.arrived ? 'request' : 'plan';
+  }
   function phase(c) {
-    if (c.stage === 'stored') return { key: 'stored', label: PHASE.stored[0], p: 1, grp: 'done' };
-    if (c.storage && c.storage.done) {
-      return { key: 'storing', label: `Betárolás ${c.storage.done}/${c.storage.total}`, p: 0.85 + 0.15 * c.storage.done / Math.max(1, c.storage.total), grp: 'live' };
-    }
-    // Az elengedés nem külön fázis: a nyitás után a betárolásig „Nyitás” marad.
-    const s = c.stage === 'released' ? 'opened' : c.stage;
-    const k = s || (c.arrived ? 'request' : c.eta_time ? 'eta' : (c.plate || c.t1) ? 't1' : 'pre');
+    const k = phaseKey(c);
     const [label, p, grp] = PHASE[k];
     return { key: k, label, p, grp };
   }
   const stageText = c => phase(c).label;
+  // A fázis kezdete: ettől számít a várakozás (parkolóban, rámpán).
+  function phaseSince(c) {
+    const st = c.stages || {}, k = phaseKey(c);
+    if (k === 'request') return (st.request && st.request.at) || c.arrived_at || '';
+    if (k === 'approved') return st.approved ? st.approved.at : '';
+    if (k === 'opened') return openedAt(c);
+    if (k === 'unpack') return openedAt(c) ? isoAdd(openedAt(c), UNPACK_MIN) : (c.opened_implied || '');
+    if (k === 'released') return st.released ? st.released.at : '';
+    if (k === 'stored') return st.stored ? st.stored.at : '';
+    return '';
+  }
+  const waitMin = c => { const t = phaseSince(c); return t ? Math.max(0, minutesBetween(t, nowIso())) : 0; };
+
+  // ---------- udvar: parkoló és rámpák ----------
+  // Fizikailag az udvaron áll (parkolóban vagy rámpán), amíg nincs elengedve vagy betárolva.
+  // A régi, lezáratlanul maradt tételek ne foglaljanak helyet: csak a tegnapelőttől holnapig tervezettek számítanak.
+  const ON_YARD = ['request', 'approved', 'opened', 'unpack'];
+  const yardList = () => {
+    const lo = addDays(S.today, -2), hi = addDays(S.today, 1);
+    return all().filter(c => c.state === 'active' && c.day >= lo && c.day <= hi && ON_YARD.includes(phaseKey(c)));
+  };
+  // Rámpa → konténer (exceptId: ez a konténer ne számítson foglaltnak).
+  function rampMap(exceptId) {
+    const m = {};
+    yardList().forEach(c => { if (c.ramp && c.id !== exceptId && !m[c.ramp]) m[c.ramp] = c; });
+    return m;
+  }
+  const onRamp = c => !!(c.ramp && c.state === 'active' && ON_YARD.includes(phaseKey(c)));
+  // Rámpát a nyitható konténer kap; ha a „nyitjuk” levél rámpa nélkül jön, akkor is (és sürgősen) kell neki.
+  const canPick = c => !!c && c.state === 'active' && ['approved', 'opened', 'unpack'].includes(phaseKey(c));
+  const needsRamp = c => canPick(c) && !c.ramp;
+  const openNoRamp = c => !!c && c.state === 'active' && !c.ramp && ['opened', 'unpack'].includes(phaseKey(c));
+  // Parkoló sorrendje: rámpa nélkül nyitott elöl, utána a nyithatók (régebbi elöl), végül a nyitásra várók.
+  function parkList() {
+    const rank = c => (openNoRamp(c) ? 0 : phaseKey(c) === 'approved' ? 1 : 2);
+    return yardList().filter(c => !c.ramp).sort((a, b) => rank(a) - rank(b) || (isPrio(b) - isPrio(a)) || (phaseSince(a) < phaseSince(b) ? -1 : 1));
+  }
   let svgUid = 0;
 
   function fmtDur(min) {
@@ -1492,55 +1555,49 @@
 
   function stepper(c) {
     const st = c.stages || {};
-    const first = (st.request && st.request.at) || c.arrived_at;
-    const atOf = k => (k === 'arrive' ? (c.arrived_at || first) : st[k] && st[k].at);
+    const cur = phaseKey(c);
+    const ci = STAGES.indexOf(cur);
+    const now = nowIso();
+    const op = openedAt(c);
+    const un = op ? isoAdd(op, UNPACK_MIN) : '';
+    const at = {
+      request: (st.request && st.request.at) || c.arrived_at || '',
+      approved: st.approved ? st.approved.at : '', opened: op, unpack: un && un <= now ? un : '',
+      released: st.released ? st.released.at : '', stored: st.stored ? st.stored.at : ''
+    };
     let prev = null, last = -1;
     const items = STAGES.map((k, i) => {
-      const at = atOf(k);
-      // Nyitásról nem jött levél, de egy későbbi lépés igazolja: kész, idő nélkül (az időtartam a következő lépésre kerül).
-      const implied = !at && k === 'opened' && !!c.opened_implied;
-      // Az időtartamok a nyitáskéréstől (érkezési levél) indulnak, mint a statisztikában.
-      const dur = at && prev && k !== 'arrive' ? fmtDur(minutesBetween(prev, at)) : '';
-      if (at) { prev = k === 'arrive' ? (first || at) : at; last = i; }
-      if (implied) last = i;
-      const lab = k === 'stored' && !st.stored && c.storage ? `Betárolás ${c.storage.done}/${c.storage.total}` : STAGE_LABEL[k];
+      // Betárolva elengedés nélkül: az elengedés kimarad (áthúzva). Nyitásról levél nélkül (később igazolva): kész, idő nélkül.
+      const skip = k === 'released' && cur === 'stored' && !at.released;
+      const done = !skip && (!!at[k] || (ci >= 0 && i <= ci && k !== 'released') || (k === 'released' && cur === 'released'));
+      const dur = at[k] && prev ? fmtDur(minutesBetween(prev, at[k])) : '';
+      if (at[k]) prev = at[k];
+      if (done) last = i;
+      // A bontás ideje előre látszik (halványan), amíg a 15 perc le nem telik.
+      const plan = !at[k] && k === 'unpack' && un ? `~${hm(un)}` : '';
       return `
-        <li class="${at || implied ? 'done' : ''}" style="--i:${i}">
+        <li class="${done ? 'done' : ''}${i === ci ? ' cur' : ''}${skip ? ' skip' : ''}" style="--i:${i}">
           <span class="sp-dot" aria-hidden="true"></span>
-          <span class="sp-lab">${esc(lab)}</span>
-          <span class="sp-at">${at ? esc(hm(at)) : '—'}</span>
+          <span class="sp-lab">${esc(STAGE_LABEL[k])}</span>
+          <span class="sp-at">${at[k] ? esc(hm(at[k])) : plan ? `<span class="sp-plan">${esc(plan)}</span>` : '—'}</span>
           <span class="sp-dur">${dur ? '+' + esc(dur) : ''}</span>
         </li>`;
     }).join('');
-    const endAt = st.stored && st.stored.at;
-    const total = first && endAt ? fmtDur(minutesBetween(first, endAt)) : '';
+    const endAt = at.stored || at.released;
+    const total = at.request && endAt ? fmtDur(minutesBetween(at.request, endAt)) : '';
+    const sto = c.storage && !st.stored ? `<span>${c.storage.done}/${c.storage.total} PDD betárolva</span>` : '';
     return `
       <section class="flow" aria-label="Mérföldkövek">
-        <div class="flow-head"><b>Mérföldkövek</b>${total ? `<span>Átfutás: ${esc(total)}</span>` : ''}</div>
-        <ol class="steps" style="--sp:${Math.max(0, last) / (STAGES.length - 1)}">${items}</ol>
+        <div class="flow-head"><b>Mérföldkövek</b>${total ? `<span>Átfutás: ${esc(total)}</span>` : sto}</div>
+        <ol class="steps" style="--n:${STAGES.length};--sp:${Math.max(0, last) / (STAGES.length - 1)}">${items}</ol>
       </section>`;
   }
 
-  function rampUse(day, exceptId) {
+  // A szerkesztőmező súgója: mely rámpák foglaltak most (az udvaron állók szerint, naptól függetlenül).
+  function rampUse(exceptId) {
     const used = {};
-    onDay(day).forEach(x => {
-      if (x.ramp && x.id !== exceptId && x.stage !== 'released' && x.stage !== 'stored') used[x.ramp] = x.id;
-    });
+    Object.entries(rampMap(exceptId)).forEach(([r, x]) => { used[r] = x.id; });
     return used;
-  }
-
-  function rampStrip(d, list) {
-    if (d !== S.today) return '';
-    const busy = list.filter(x => x.ramp && x.stage !== 'released' && x.stage !== 'stored').sort((a, b) => a.ramp - b.ramp);
-    if (!busy.length) return '';
-    const tiles = busy.map((x, i) => {
-      const ph = phase(x);
-      return `<button type="button" class="dock" data-action="open" data-id="${esc(x.id)}" style="--i:${Math.min(i, 9)}">
-        <span class="dock-n"><small>Rámpa</small>${x.ramp}</span>
-        <span class="dock-body"><span class="dock-id">${esc(x.id)}</span><span class="dock-bar" style="--p:${Math.round(ph.p * 100)}%"></span><span class="dock-st">${esc(ph.label)}</span></span>
-      </button>`;
-    }).join('');
-    return `<section class="docks" aria-label="Foglalt rámpák"><div class="dock-row">${tiles}</div></section>`;
   }
 
   // ---------- keresés ----------
@@ -1863,10 +1920,26 @@
       <rect class="hk-hl" x="42" y="41.5" width="316" height="1.6"/>
     </svg><b class="hk-lamp l"></b><b class="hk-lamp r"></b></span>`;
 
+  // Kártyák sorrendje: rámpán állók (rámpaszám szerint), parkoló (mint az udvaron), késők, a többi tervben lévő
+  // érkezési sorrendben, végül az elengedett / betárolt (a legutóbbi elöl).
+  const FLEET_N = 8;
+  function fleetOrder(list) {
+    const grp = c => (onRamp(c) ? 0 : ON_YARD.includes(phaseKey(c)) ? 1 : phaseKey(c) === 'plan' ? (lateInfo(c) ? 2 : 3) : 4);
+    const prk = c => (openNoRamp(c) ? 0 : phaseKey(c) === 'approved' ? 1 : 2);
+    return list.slice().sort((a, b) => {
+      const ga = grp(a), gb = grp(b);
+      if (ga !== gb) return ga - gb;
+      if (ga === 0) return a.ramp - b.ramp;
+      if (ga === 1) return prk(a) - prk(b) || (isPrio(b) - isPrio(a)) || (phaseSince(a) < phaseSince(b) ? -1 : 1);
+      if (ga === 4) return phaseSince(a) < phaseSince(b) ? 1 : -1;
+      return byArrival(a, b);
+    });
+  }
+
   function fleet(d, list) {
     if (!list.length) return '';
     const keys = pxKeys(pxCountC(list));
-    const cards = list.map((c, i) => {
+    const cards = fleetOrder(list).map((c, i) => {
       const ph = phase(c);
       const late = lateInfo(c);
       const cp = cPx(c);
@@ -1874,21 +1947,50 @@
       const at = c.arrived
         ? { k: 'k-in', t: 'Érkezett', v: c.arrived_at ? (c.arrived_at.slice(0, 10) === d ? hm(c.arrived_at) : stamp(c.arrived_at)) : '—' }
         : c.eta_time ? { k: 'k-eta', t: 'ETA', v: c.eta_time } : { k: 'k-none', t: 'ETA', v: 'még nincs' };
+      // Nyitható konténer rámpa nélkül: egy gombbal választható neki rámpa (a kártyán kívül, hogy ne legyen gomb a gombban).
+      const go = needsRamp(c) ? `<button type="button" class="cc-go${openNoRamp(c) ? ' warn' : ''}" data-action="pick" data-id="${esc(c.id)}">${openNoRamp(c) ? `${IC.warn}Nincs rámpa` : 'Rámpa választása'}</button>` : '';
       return `
+        <div class="cc-cell${go ? ' has-go' : ''}" data-cell="${esc(c.id)}">
         <button type="button" class="ccard${late ? ' is-late' : ''}${isPrio(c) ? ' is-prio' : ''}" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 11)}">
           <span class="ct-wrap"><i class="cc-ground"><i class="cc-shadow"></i></i><span class="ct-rig"><span class="ct-sw">${HOIST}${containerSvg(c, { px: cp ? pxHue(cp, keys) : null, prio: isPrio(c) })}</span></span></span>
           <span class="cc-top">
             <span class="cc-w"><b>${fmtDec((c.kg || 0) / 1000, 1, 1)}</b><small>t</small></span>${isPrio(c) ? `<span class="prio-tag">${IC.prio}Prioritás</span>` : ''}
             <span class="ph ph-${late ? 'late' : `${ph.grp} phk-${ph.key}`}">${esc(late ? late.label : ph.label)}</span>
           </span>
-          <span class="cc-sub">${fmtInt(c.ctns)} colli · ${c.pdd.length} PDD${c.ramp ? `<span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}</span>
+          <span class="cc-sub">${fmtInt(c.ctns)} colli · ${c.pdd.length} PDD${onRamp(c) ? `<span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}</span>
           <span class="cc-at ${at.k}"><small>${at.t}</small><b>${esc(at.v)}</b></span>
-        </button>`;
+        </button>${go}
+        </div>`;
     }).join('');
+    const n = list.length;
+    // Alapból 2 × 4 kártya (telefonon 4), a többi lenyitható.
+    const more = n > 4 ? `<div class="fleet-more-row${n <= FLEET_N ? ' few' : ''}"><button type="button" class="fleet-more" data-action="fleet-more" aria-expanded="${!!S.fleetOpen}" aria-controls="fleet-grid"><span class="fm-l">${S.fleetOpen ? 'Kevesebb' : 'Összes kártya'}</span><span class="fm-n">${n}</span>${IC.down}</button></div>` : '';
     return `
-      <section class="fleet" aria-label="Érkező konténerek" data-reveal>
-        <div class="fleet-grid">${cards}</div>
+      <section class="fleet" aria-label="Konténerek" data-reveal>
+        <div class="fleet-grid${S.fleetOpen ? ' open' : ''}" id="fleet-grid">${cards}</div>
+        ${more}
       </section>`;
+  }
+
+  // Lenyitás / becsukás újrarajzolás nélkül: a rács magassága átúszik, az előbukkanó kártyák sorban beúsznak.
+  function toggleFleet() {
+    const g = $('#view .fleet-grid');
+    S.fleetOpen = !S.fleetOpen;
+    if (!g) return;
+    const h0 = g.offsetHeight;
+    g.classList.toggle('open', S.fleetOpen);
+    const b = $('#view .fleet-more');
+    if (b) { b.setAttribute('aria-expanded', String(S.fleetOpen)); b.querySelector('.fm-l').textContent = S.fleetOpen ? 'Kevesebb' : 'Összes kártya'; }
+    if (!canFly()) return;
+    const h1 = g.offsetHeight;
+    g.animate([{ height: `${h0}px`, overflow: 'hidden' }, { height: `${h1}px`, overflow: 'hidden' }], { duration: 460, easing: 'cubic-bezier(.22,1,.36,1)' });
+    if (S.fleetOpen) {
+      const narrow = window.matchMedia('(max-width: 760px)').matches;
+      [...g.children].slice(narrow ? 4 : FLEET_N).forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(12px)' }, { opacity: 1, transform: 'none' }], { duration: 420, delay: Math.min(i, 12) * 30, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' }));
+    } else {
+      const top = g.getBoundingClientRect().top;
+      if (top < 0) g.scrollIntoView({ block: 'start', behavior: RM.matches ? 'auto' : 'smooth' });
+    }
   }
 
   // Haladás-gyűrű százalék nélkül; a felirat (ha van) a középre kerül.
@@ -1904,18 +2006,33 @@
   // ETA-lefedettség: van ETA, vagy már megérkezett (akkor az ETA már nem kérdés). Minden nézet ezt használja.
   const etaDone = c => !!(c.eta_time || c.arrived);
 
+  // Mérföldkő-számláló: a nap konténerei fázisonként, négy csoportban (úton, parkoló, rámpán, kész).
+  const MS_GROUPS = [['Úton', ['plan']], ['Parkoló', ['request', 'approved']], ['Rámpán', ['opened', 'unpack']], ['Kész', ['released', 'stored']]];
+  function msCounter(d, list) {
+    const U = UP();
+    const W = l => (U ? sumPdd(l) : l.length);
+    const of = k => list.filter(c => phaseKey(c) === k);
+    let n = 0;
+    return `<div class="ms" style="--i:3"><dt class="sr">Fázisok</dt><dd>${MS_GROUPS.map(([g, ks]) => {
+      const tot = W(list.filter(c => ks.includes(phaseKey(c))));
+      return `<div class="ms-g"><div class="ms-gh"><span>${g}</span><b>${num(tot, 'int', 260 + n * 40)}${g === 'Rámpán' && d === S.today ? `<small> / ${RAMPS}</small>` : ''}</b></div>
+        <div class="ms-st">${ks.map(k => {
+          const v = W(of(k));
+          n++;
+          return `<div class="ms-s phk-${k}${k === 'approved' && v ? ' hot' : ''}${v ? '' : ' zero'}"><b>${num(v, 'int', 260 + n * 40)}</b><i class="mk" aria-hidden="true"></i><span>${PHASE[k][0]}</span></div>`;
+        }).join('')}</div></div>`;
+    }).join('')}</dd></div>`;
+  }
+
   function dayPanel() {
     const d = S.sel;
     const list = onDay(d);
-    const withEtaL = list.filter(etaDone), arrivedL = list.filter(c => c.arrived);
     // Fuvarlevél-módban minden mutató fuvarlevélben: a fuvarlevél a konténerével érkezik, kap ETA-t és késik.
     const U = UP();
     const W = l => (U ? sumPdd(l) : l.length);
     const tot = W(list);
-    const stored = U ? sumPddSt(list) : list.filter(c => phase(c).key === 'stored').length;
     const late = W(list.filter(c => lateInfo(c)));
-    const of = n => `<span class="of"> / ${n}</span>`;
-    // Üres nap: nincs 0 / 0-s gyűrűsor és üres idővonal, csak a dátum és az ok.
+    // Üres nap: nincs nullás számlálósor és üres idősáv, csak a dátum és az ok.
     if (!list.length) {
       return `
       <main class="main">
@@ -1931,63 +2048,409 @@
             <div style="--i:0"><dt>${U ? 'Fuvarlevél' : 'Konténer'}</dt><dd>${num(tot, 'int', 140)}</dd></div>
             <div style="--i:1"><dt>Bruttó súly</dt><dd>${num(sumKg(list), 't', 190)}</dd></div>
             <div style="--i:2"><dt>Colli</dt><dd>${num(sumCt(list), 'int', 240)}</dd></div>
-            <div class="st-ring" style="--i:3">${ring(W(withEtaL), tot, 'eta')}<span><dt>ETA</dt><dd>${num(W(withEtaL), 'int', 290)}${of(tot)}</dd></span></div>
-            <div class="st-ring" style="--i:4">${ring(W(arrivedL), tot, 'live')}<span><dt>Megérkezett</dt><dd>${num(W(arrivedL), 'int', 340)}${of(tot)}</dd></span></div>
-            <div class="st-ring${late ? '' : ' st-full'}" style="--i:5">${ring(stored, tot, 'done')}<span><dt>Betárolva</dt><dd>${num(stored, 'int', 390)}${of(tot)}</dd></span></div>
-            ${late ? `<div class="st-late st-ring" style="--i:6">${ring(late, tot, 'late')}<span><dt>Késik</dt><dd>${num(late, 'int', 440)}</dd></span></div>` : ''}
+            ${msCounter(d, list)}
+            ${late ? `<div class="st-late st-ring" style="--i:6">${ring(late, tot, 'late')}<span><dt>Késik</dt><dd>${num(late, 'int', 600)}</dd></span></div>` : ''}
           </dl>
         </div>
-        ${rampStrip(d, list)}
         ${fleet(d, list)}
-        ${timeline(d, list)}
+        ${laneView(d, list)}
         ${table(d, list)}
       </main>`;
   }
 
-  function timeline(d, list) {
-    const timed = list.filter(c => c.eta_time).sort((a, b) => (a.eta_time < b.eta_time ? -1 : 1));
-    const hs = timed.map(c => toH(c.eta_time));
-    const n = new Date();
-    const nh = d === S.today ? n.getHours() + n.getMinutes() / 60 : null;
-    // A „most” jelölő este és hajnalban is a skálán marad.
-    if (nh !== null) hs.push(nh);
-    const lo = Math.max(0, Math.min(6, Math.floor(Math.min(...hs, 24))));
-    const hi = Math.min(24, Math.max(20, Math.ceil(Math.max(...hs, 0) + (nh !== null && Math.max(...hs) === nh ? 0.25 : 1))));
-    const pos = h => (h - lo) / (hi - lo) * 100;
-    // A címke (időpont + konténerszám) kb. 150 px: keskeny képernyőn ennyi százalékot foglal a sávból.
-    const narrow = matchMedia('(max-width: 760px)').matches;
-    const tw = narrow ? Math.max(220, document.documentElement.clientWidth - 62) : 0;
-    const pw = narrow ? 152 / tw * 100 : 15;
-    const span = narrow ? pw + 2 : 15;
-    const maxLeft = narrow ? Math.max(0, 100 - pw) : 84;
-    const lanes = [];
-    const pills = timed.map((c, i) => {
-      // A sávot a ténylegesen kirajzolt (a jobb szélen visszahúzott) helyhez osztjuk, így a címkék nem fedik egymást.
-      const left = Math.min(pos(toH(c.eta_time)), maxLeft);
-      let lane = lanes.findIndex(end => end <= left);
-      if (lane < 0) { lane = lanes.length; lanes.push(0); }
-      lanes[lane] = left + span;
-      return `<button type="button" class="pill pill-${c.status === 'arrived' ? 'arrived' : 'eta'}${isPrio(c) ? ' prio' : ''}" style="left:${left}%;top:${6 + lane * 44}px;--i:${Math.min(i, 12)}" data-action="open" data-id="${esc(c.id)}"><b>${esc(c.eta_time)}</b><span>${esc(c.id)}</span>${prioIc(c)}</button>`;
-    }).join('');
-    const h = Math.max(1, lanes.length) * 44 + 34;
-    let ticks = '';
-    for (let x = lo; x <= hi; x++) {
-      const major = x % 2 === 0;
-      ticks += `<div class="tl-tick ${major ? 'major' : ''}" style="left:${pos(x)}%;--i:${x - lo}"></div>`;
-      if (major) ticks += `<span class="tl-lab" style="left:${pos(x)}%;--i:${x - lo}">${pad(x)}</span>`;
+  // ---------- idősáv: ki mettől meddig állt a rámpán, ki vár a parkolóban, ki érkezik még ----------
+  // A rámpán töltött idő a rámpa beírásától (ha a nyitás korábbi, attól) az elengedésig / betárolásig tart,
+  // amíg tart, a mostani pillanatig. Csak az utolsó rámpa ismert: áthelyezés előtti rámpa nem látszik.
+  function laneView(d, list) {
+    const isToday = d === S.today;
+    const now = nowIso();
+    const t0 = new Date(`${d}T00:00:00`).getTime();
+    const mOf = ts => (new Date(ts).getTime() - t0) / 60000;
+    const nowM = mOf(now);
+    const ramps = [], parks = [];
+    for (const c of list) {
+      const st = c.stages || {};
+      const k = phaseKey(c);
+      if (k === 'plan' || k === 'request' && !c.ramp) {
+        if (k === 'request' && isToday && ON_YARD.includes(k)) parks.push(c);
+        continue;
+      }
+      if (c.ramp && k !== 'request') {
+        const op = openedAt(c);
+        const cands = [c.ramp_set, op, st.approved && st.approved.at].filter(Boolean).sort();
+        let start = c.ramp_set && op && c.ramp_set > op ? op : (c.ramp_set || cands[0]);
+        if (!start) continue;
+        // A rámpa az elengedésnél vagy a betárolásnál szabadul fel, amelyik előbb jött.
+        const endTs = [st.stored && st.stored.at, st.released && st.released.at].filter(Boolean).sort()[0] || '';
+        const live = !endTs && ON_YARD.includes(k);
+        const end = endTs || (live ? now : start);
+        if (end < start) start = end;
+        const segs = [];
+        const add = (key, a, b, wait) => { if (a && b && b > a) segs.push({ key, a, b, wait }); };
+        const un = op ? isoAdd(op, UNPACK_MIN) : '';
+        if (op) {
+          add('approved', start, op < end ? op : end, true);
+          add('opened', op > start ? op : start, un < end ? un : end);
+          add('unpack', un > start ? un : start, end);
+        } else if (c.opened_implied) add('unpack', start, end);
+        else add('approved', start, end, true);
+        if (!segs.length) continue;
+        const tail = endTs ? (st.stored && st.stored.at === endTs ? `betárolva ${hm(endTs)}` : `elengedve ${hm(endTs)}`) : '';
+        ramps.push({ c, r: c.ramp, segs, live, tail });
+      } else if (isToday && ON_YARD.includes(k)) parks.push(c);
     }
-    let now = '';
-    if (nh !== null && nh >= lo && nh <= hi) now = `<div class="tl-now" style="left:${pos(nh)}%"></div><span class="tl-now-lab${pos(nh) > 90 ? ' edge-r' : pos(nh) < 10 ? ' edge-l' : ''}" style="left:${pos(nh)}%">${pad(n.getHours())}:${pad(n.getMinutes())}</span>`;
-    const noEta = list.filter(c => !c.eta_time && c.status !== 'arrived');
+    const etas = list.filter(c => phaseKey(c) === 'plan' && c.eta_time);
+    const noEta = list.filter(c => !c.eta_time && !c.arrived);
+    // Időtengely: 6–20 óra, ha az adat kilóg, kitágul (egész órára).
+    const ms = [];
+    ramps.forEach(x => x.segs.forEach(g => ms.push(mOf(g.a), mOf(g.b))));
+    parks.forEach(c => { const a = (c.stages.request && c.stages.request.at) || c.arrived_at; if (a) ms.push(mOf(a)); });
+    etas.forEach(c => ms.push(toH(c.eta_time) * 60));
+    if (isToday) ms.push(nowM);
+    const lo = Math.max(0, Math.min(6 * 60, Math.floor(Math.min(...ms, 1440) / 60) * 60));
+    const hi = Math.min(24 * 60, Math.max(20 * 60, Math.ceil(Math.max(...ms, 0) / 60) * 60));
+    const X = m => (Math.min(hi, Math.max(lo, m)) - lo) / (hi - lo) * 100;
+    const bar = (id, segs, cls, txt) => {
+      const a = X(mOf(segs[0].a)), b = X(mOf(segs[segs.length - 1].b));
+      const inner = segs.map(g => `<i class="lk-${g.key}${g.wait ? ' wait' : ''}" style="flex:${Math.max(0.0001, mOf(g.b) - mOf(g.a))} 0 0"></i>`).join('');
+      const label = `${id} · ${segs.map(g => `${g.wait ? 'vár' : PHASE[g.key][0].toLowerCase()} ${hm(g.a)}–${hm(g.b)}`).join(', ')}`;
+      return `<button type="button" class="ln-bar ${cls}" data-action="open" data-id="${esc(id)}" style="left:${a.toFixed(3)}%;width:${Math.max(0.4, b - a).toFixed(3)}%" aria-label="${esc(label)}" data-tip="${esc(label)}">${inner}</button>${txt ? `<span class="ln-txt" style="left:${b.toFixed(3)}%">${esc(txt)}</span>` : ''}`;
+    };
+    let rows = '';
+    const byRamp = {};
+    ramps.forEach(x => { (byRamp[x.r] = byRamp[x.r] || []).push(x); });
+    const used = Object.keys(byRamp).map(Number).sort((a, b) => a - b);
+    if (used.length) {
+      rows += '<div class="ln-grp">Rámpák</div>';
+      used.forEach(r => {
+        rows += `<div class="ln-row"><span class="ln-lb">R${r}</span><div class="ln-trk">${byRamp[r].map(x => bar(x.c.id, x.segs, x.live ? 'live' : '', `${x.c.id}${x.tail ? ' ' + x.tail : ''}`)).join('')}</div></div>`;
+      });
+      if (isToday && RAMPS > used.length) rows += `<div class="ln-row ln-rest"><span class="ln-lb"><small>+${RAMPS - used.length} rámpa</small></span><div class="ln-trk"><span class="ln-note">ma nem volt használva</span></div></div>`;
+    }
+    if (parks.length) {
+      rows += '<div class="ln-grp">Parkoló</div>';
+      parkList().filter(c => parks.includes(c)).forEach(c => {
+        const st = c.stages || {};
+        const req = (st.request && st.request.at) || c.arrived_at;
+        const segs = [];
+        if (req) segs.push({ key: 'request', a: req, b: (st.approved && st.approved.at) || openedAt(c) || now, wait: true });
+        if (st.approved) segs.push({ key: 'approved', a: st.approved.at, b: openedAt(c) || now, wait: true });
+        if (openedAt(c)) segs.push({ key: phaseKey(c), a: openedAt(c), b: now });
+        const ok = segs.filter(g => g.b > g.a);
+        rows += `<div class="ln-row"><span class="ln-lb">${esc(c.id)}</span><div class="ln-trk">${ok.length ? bar(c.id, ok, `live${openNoRamp(c) ? ' flag' : ''}`, openNoRamp(c) ? 'nincs rámpa' : '') : ''}</div></div>`;
+      });
+    }
+    if (etas.length) {
+      rows += `<div class="ln-grp">Érkezik</div><div class="ln-row"><span class="ln-lb">ETA</span><div class="ln-trk">${etas.map(c => {
+        const m = toH(c.eta_time) * 60, late = lateInfo(c);
+        return `${late && isToday ? `<span class="ln-miss" style="left:${X(m).toFixed(3)}%;width:${Math.max(0, X(nowM) - X(m)).toFixed(3)}%"></span>` : ''}<button type="button" class="ln-eta${late ? ' late' : ''}" data-action="open" data-id="${esc(c.id)}" style="left:${X(m).toFixed(3)}%" data-tip="${esc(`${c.id} · ETA ${c.eta_time}${late ? ` · ${late.label}` : ''}`)}">${esc(c.eta_time)}</button>`;
+      }).join('')}</div></div>`;
+    }
+    let ticks = '';
+    for (let h = lo / 60; h <= hi / 60; h++) {
+      if (h % 2) continue;
+      if (isToday && Math.abs(h * 60 - nowM) < 35) continue;
+      ticks += `<span style="left:${X(h * 60).toFixed(3)}%">${pad(h)}</span>`;
+    }
+    const nowLine = isToday && nowM >= lo && nowM <= hi ? `<div class="ln-now" style="--x:${(X(nowM) / 100).toFixed(4)}"><span>${hm(now)}</span></div>` : '';
+    const empty = !rows ? `<div class="ln-empty">${isToday ? 'Még nincs rámpán, parkolóban vagy ETA-val érkező konténer.' : 'Erre a napra nincs rámpás vagy ETA-val érkező konténer.'}</div>` : '';
+    const legend = `<span class="ln-lg"><span><i class="lk-opened"></i>Nyitás alatt</span><span><i class="lk-unpack"></i>Bontás alatt</span><span><i class="lk-approved wait"></i>Vár</span><span><i class="lg-eta"></i>ETA</span></span>`;
     return `
-      <section class="panel timeline" aria-label="Idővonal" data-reveal>
-        <div class="tl-track"><div class="tl-area" style="height:${h}px">${ticks}${now}${pills}${timed.length ? '' : '<div class="tl-empty">Nincs rögzített ETA</div>'}</div></div>
-        ${noEta.length ? `<div class="tray">
+      <section class="panel lanes" aria-label="Idősáv" data-reveal>
+        <div class="ln-head"><b>Idősáv</b>${rows ? legend : ''}</div>
+        ${rows ? `<div class="ln-scroll"><div class="ln"><div class="ln-axis"><span class="ln-lb"></span><div class="ln-trk">${ticks}</div></div>${rows}${nowLine}</div></div>` : empty}
+        ${noEta.length ? `<div class="tray ln-tray">
           <div class="tray-head"><span>ETA nélkül</span><span class="mono">${noEta.length}</span></div>
           <div class="tray-list">${noEta.map((c, i) => `<button type="button" class="tray-item" data-action="open" data-id="${esc(c.id)}" style="--i:${Math.min(i, 8)}"><span>${esc(c.id)}${prioIc(c)}</span><span>${fmtT(c.kg)}</span></button>`).join('')}</div>
         </div>` : ''}
       </section>`;
   }
+
+  // ---------- udvar (a heti sáv helyén, Hét / Udvar váltóval) ----------
+  // Egy sorban az összes rámpa: a szabad keskeny, a foglalt kiszélesedik. Mellette a parkoló és a következő érkezők.
+  const yardN = m => Math.max(RAMPS, ...Object.keys(m).map(Number));
+  const yardCols = (m, n) => Array.from({ length: n }, (_, i) => (m[i + 1] ? 'minmax(0,3.4fr)' : 'minmax(0,1fr)')).join(' ');
+  const yardCount = () => { const m = rampMap(); return Object.keys(m).length + parkList().length; };
+
+  function bandSwitch() {
+    const n = yardCount();
+    return `<div class="band-sw" role="group" aria-label="Felső sáv nézete">
+        <button type="button" class="bs-opt" data-action="band" data-v="week" aria-pressed="${S.band === 'week'}">Hét</button>
+        <button type="button" class="bs-opt" data-action="band" data-v="yard" aria-pressed="${S.band === 'yard'}">Udvar${n ? `<b class="bs-n">${n}</b>` : ''}</button>
+      </div>`;
+  }
+
+  function roofHtml(c) {
+    const k = phaseKey(c);
+    return `<button type="button" class="roof phk-${k}${isPrio(c) ? ' prio' : ''}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${c.id}, ${c.ramp}. rámpa, ${PHASE[k][0]}`)}">
+        <span class="rf-id">${esc(c.id)}</span>
+        <span class="rf-plate"><b>${esc(PHASE[k][0])}</b><span>${esc(fmtDur(waitMin(c)))}</span></span>
+      </button>`;
+  }
+  function slotHtml(c, drag) {
+    const k = phaseKey(c), w = waitMin(c), flag = openNoRamp(c);
+    const lab = flag ? `${PHASE[k][0]}, nincs rámpa` : PHASE[k][0];
+    const tip = needsRamp(c) ? '' : ' title="Rámpát a nyitható levél után lehet választani"';
+    return `<div class="slot" data-slot="${esc(c.id)}">
+        <div class="pk phk-${k}${w > 60 ? ' long' : ''}${flag ? ' flag' : ''}"${drag && needsRamp(c) ? ` draggable="true" data-drag="${esc(c.id)}"` : ''}${tip}>
+          <button type="button" class="pk-main" data-action="open" data-id="${esc(c.id)}"><span class="pk-rf">${esc(c.id)}</span><span class="pk-lab">${esc(lab)}</span><span class="pk-w">${esc(fmtDur(w))}</span></button>
+          ${needsRamp(c) ? `<button type="button" class="pk-go" data-action="pick" data-id="${esc(c.id)}">Rámpa</button>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function yardBand() {
+    const m = rampMap();
+    const n = yardN(m);
+    const park = parkList();
+    const cols = yardCols(m, n);
+    let doors = '', bays = '', tiles = '';
+    for (let r = 1; r <= n; r++) {
+      const c = m[r];
+      doors += `<i class="door${c ? ' on' : ''}"></i>`;
+      bays += `<div class="bay${c ? '' : ' free'}" data-r="${r}"><span class="bay-n">${r}</span>${c ? roofHtml(c) : ''}</div>`;
+      tiles += c ? `<button type="button" class="tile busy phk-${phaseKey(c)}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${r}. rámpa: ${c.id}, ${PHASE[phaseKey(c)][0]}`)}"><span class="tile-n">${r}</span><small>${esc(c.id.slice(0, 4))}</small></button>`
+        : `<span class="tile"><span class="tile-n">${r}</span></span>`;
+    }
+    const today = onDay(S.today).filter(c => phaseKey(c) === 'plan' && c.eta_time).sort((a, b) => (a.eta_time < b.eta_time ? -1 : 1));
+    const gate = today.slice(0, 3).map(c => {
+      const d = minutesBetween(nowIso(), `${S.today}T${c.eta_time}:00`);
+      const late = lateInfo(c);
+      return `<button type="button" class="gate-r${late ? ' late' : ''}" data-action="open" data-id="${esc(c.id)}"><span class="gt-t">${esc(c.eta_time)}</span><span class="gt-id">${esc(c.id)}</span><span class="gt-r">${d < 0 ? `+${esc(fmtDur(-d))}` : esc(fmtDur(d))}</span></button>`;
+    }).join('');
+    const rest = today.length > 3 ? `<span class="gate-more">+${today.length - 3} ETA-val</span>` : '';
+    const parkHtml = drag => (park.length ? park.map(c => slotHtml(c, drag)).join('') : '<p class="park-empty">A parkoló üres.</p>');
+    return `
+      <div class="band-body yd">
+        <div class="yd-wide">
+          <div class="ramps">
+            <div class="doors" style="grid-template-columns:${cols}" data-cols="${cols}">${doors}</div>
+            <div class="bays" style="grid-template-columns:${cols}" data-cols="${cols}">${bays}</div>
+          </div>
+          <div class="park">
+            <h4><span>Parkoló</span><b>${park.length}</b></h4>
+            <div class="slots">${parkHtml(true)}</div>
+            <div class="gate"><h5>Érkezik</h5>${gate || '<span class="gate-none">Ma már nincs ETA-val érkező.</span>'}${rest}</div>
+          </div>
+        </div>
+        <div class="yd-narrow">
+          <div class="tiles">${tiles}</div>
+          <div class="slots">${parkHtml(false)}</div>
+        </div>
+      </div>`;
+  }
+
+  // A felső sáv váltása: csak a sáv cserélődik, a magasság átúszik, a tartalom beúszik.
+  function switchBand(v) {
+    if (S.band === v) return;
+    S.band = v;
+    const old = S.view === 'week' && $('#view .yard');
+    if (!old) { render(); return; }
+    const h0 = old.offsetHeight;
+    const tpl = document.createElement('template');
+    tpl.innerHTML = weekView();
+    const nu = tpl.content.querySelector('.yard');
+    nu.classList.add('k-swap');
+    const fk = focusKey();
+    old.replaceWith(nu);
+    refocus(fk);
+    if (!canFly()) return;
+    const h1 = nu.offsetHeight;
+    nu.animate([{ height: `${h0}px`, overflow: 'hidden' }, { height: `${h1}px`, overflow: 'hidden' }], { duration: 440, easing: 'cubic-bezier(.22,1,.36,1)' });
+    const body = nu.querySelector('.band-body, .yard-scroll');
+    if (body) body.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 380, delay: 60, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' });
+    if (v === 'yard') nu.querySelectorAll('.yd-wide .roof').forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(-14px)' }, { opacity: 1, transform: 'none' }], { duration: 460, delay: 120 + i * 60, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' }));
+  }
+
+  // Élő változásnál (rámpakiosztás, levél) az udvar mozog: a parkolóból a konténer átcsúszik a rámpára,
+  // a felszabaduló rámpáról kiúszik, a rámpasor oszlopai átrendeződnek, az új érkező beúszik a parkolóba.
+  // A teljes nézet újraépül, ezért előtte pillanatkép készül a helyekről.
+  function yardSnap() {
+    const y = $('#view .yd-wide');
+    if (!y || !y.offsetParent) return null;
+    const snap = { cols: y.querySelector('.bays').style.gridTemplateColumns, roofs: {}, park: {} };
+    y.querySelectorAll('.roof[data-id]').forEach(el => { snap.roofs[el.dataset.id] = { r: el.getBoundingClientRect(), html: el.outerHTML, bay: el.closest('.bay').dataset.r }; });
+    // A parkolóból induló másolat felirat nélküli tető (vízszintesből függőlegesbe nyúlik, a szöveg torzulna).
+    y.querySelectorAll('.slot[data-slot]').forEach(el => {
+      const rf = el.querySelector('.pk-rf'), k = (el.querySelector('.pk').className.match(/phk-\w+/) || ['phk-approved'])[0];
+      snap.park[el.dataset.slot] = { r: rf.getBoundingClientRect(), html: `<span class="roof-ghost ${k}"></span>` };
+    });
+    return snap;
+  }
+  function ghost(html, r, cls) {
+    const g = document.createElement('div');
+    g.className = `yd-ghost ${cls}`;
+    g.innerHTML = html;
+    Object.assign(g.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    document.body.appendChild(g);
+    return g;
+  }
+  function yardAnim(snap) {
+    const y = $('#view .yd-wide');
+    if (!snap || !y || !y.offsetParent || !canFly()) return;
+    const bays = y.querySelector('.bays'), doors = y.querySelector('.doors');
+    const target = bays.dataset.cols;
+    const moved = [];
+    y.querySelectorAll('.roof[data-id]').forEach(el => {
+      const id = el.dataset.id, was = snap.roofs[id];
+      if (was && was.bay === el.closest('.bay').dataset.r) return;
+      moved.push({ el, from: was ? was.r : snap.park[id] && snap.park[id].r, html: was ? was.html : snap.park[id] && snap.park[id].html, roof: !!was });
+    });
+    const leaving = Object.entries(snap.roofs).filter(([id]) => !y.querySelector(`.roof[data-id="${CSS.escape(id)}"]`));
+    const fresh = [...y.querySelectorAll('.slot[data-slot]')].filter(el => !snap.park[el.dataset.slot] && !snap.roofs[el.dataset.slot]);
+    if (!moved.length && !leaving.length && !fresh.length && snap.cols === target) return;
+    // A célhelyek a végső oszlopszélességgel mérve; utána az oszlopok a régi szélességről úsznak át.
+    const ends = moved.map(x => x.el.getBoundingClientRect());
+    if (snap.cols && snap.cols !== target) {
+      bays.style.gridTemplateColumns = snap.cols;
+      doors.style.gridTemplateColumns = snap.cols;
+      void bays.offsetWidth;
+      bays.classList.add('anim'); doors.classList.add('anim');
+      requestAnimationFrame(() => { bays.style.gridTemplateColumns = target; doors.style.gridTemplateColumns = target; });
+    }
+    moved.forEach((x, i) => {
+      const to = ends[i];
+      if (!x.from) { x.el.animate([{ opacity: 0, transform: 'translateY(-16px)' }, { opacity: 1, transform: 'none' }], { duration: 480, delay: 120, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' }); return; }
+      // A parkolóból (vagy másik rámpáról) induló másolat a rámpa helyére repül, közben a valódi tető előtűnik.
+      const g = ghost(x.html, x.from, x.roof ? 'g-roof' : 'g-rf');
+      const sx = to.width / x.from.width, sy = to.height / x.from.height;
+      g.animate([
+        { transform: 'none', opacity: 1 },
+        { transform: `translate(${(to.left - x.from.left) * 0.5}px, ${Math.min(to.top, x.from.top) - x.from.top - 26}px) scale(${(1 + sx) / 2}, ${(1 + sy) / 2})`, opacity: 1, offset: 0.45 },
+        { transform: `translate(${to.left - x.from.left}px, ${to.top - x.from.top}px) scale(${sx}, ${sy})`, opacity: 0.2 }
+      ], { duration: 640, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished.finally(() => g.remove());
+      x.el.animate([{ opacity: 0 }, { opacity: 0, offset: 0.6 }, { opacity: 1 }], { duration: 700, easing: 'ease-out' });
+    });
+    leaving.forEach(([, w]) => {
+      const g = ghost(w.html, w.r, 'g-roof');
+      g.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateY(-26px)', opacity: 0 }], { duration: 420, easing: 'cubic-bezier(.55,0,.75,.2)', fill: 'forwards' }).finished.finally(() => g.remove());
+    });
+    fresh.forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateX(28px)' }, { opacity: 1, transform: 'none' }], { duration: 460, delay: i * 60, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' }));
+    setTimeout(() => { bays.classList.remove('anim'); doors.classList.remove('anim'); }, 700);
+  }
+
+  // ---------- rámpaválasztó ----------
+  let PICK = null;
+  function openPicker(id) {
+    const c = S.data.containers[id];
+    if (!canPick(c)) { toast('Rámpát a nyitható levél után lehet választani'); return; }
+    const m = rampMap(c.id);
+    const n = yardN(m);
+    const free = Array.from({ length: n }, (_, i) => i + 1).filter(r => !m[r] && r !== c.ramp);
+    PICK = { id: c.id, r: free[0] || null };
+    const k = phaseKey(c);
+    $('#rpick-title').textContent = `${c.id} rámpára`;
+    $('#rpick-sub').textContent = c.ramp ? `Most a ${c.ramp}. rámpán áll. ${PHASE[k][0]}.` : openNoRamp(c) ? `${PHASE[k][0]}, de nincs rámpája.` : `${PHASE[k][0]}, ${fmtDur(waitMin(c))} óta a parkolóban.`;
+    $('#rpick-grid').innerHTML = Array.from({ length: n }, (_, i) => {
+      const r = i + 1, o = m[r];
+      if (r === c.ramp) return `<span class="rp-b cur" aria-disabled="true"><b>${r}</b><small>jelenlegi</small></span>`;
+      if (o) return `<span class="rp-b busy" aria-disabled="true" title="${esc(o.id)}"><b>${r}</b><small>${esc(o.id.slice(0, 4))}</small></span>`;
+      return `<button type="button" class="rp-b" data-r="${r}" aria-pressed="${r === PICK.r}"><b>${r}</b><small>${r === free[0] ? 'javasolt' : 'szabad'}</small></button>`;
+    }).join('');
+    $('#rpick-clear').hidden = !(c.ramp && k === 'approved');
+    paintPickGo();
+    const dlg = $('#rpick');
+    if (!dlg.open) dlg.showModal();
+    const sel = $('#rpick-grid [aria-pressed="true"]');
+    if (sel) sel.focus();
+  }
+  function paintPickGo() {
+    const b = $('#rpick-save');
+    b.disabled = !PICK || !PICK.r;
+    b.textContent = PICK && PICK.r ? `${PICK.r}. rámpa kiosztása` : 'Nincs szabad rámpa';
+  }
+  function closePicker() {
+    const dlg = $('#rpick');
+    if (!dlg.open) return;
+    if (!canFly()) { dlg.close(); PICK = null; return; }
+    dlg.classList.add('closing');
+    setTimeout(() => { dlg.classList.remove('closing'); dlg.close(); PICK = null; }, 160);
+  }
+  $('#rpick').addEventListener('click', e => {
+    if (e.target === $('#rpick')) { closePicker(); return; }
+    const b = e.target.closest('button.rp-b');
+    if (!b || !PICK) return;
+    PICK.r = Number(b.dataset.r);
+    $('#rpick-grid').querySelectorAll('button.rp-b').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    paintPickGo();
+  });
+  $('#rpick').addEventListener('dblclick', e => { if (e.target.closest('button.rp-b')) $('#rpick-save').click(); });
+  $('#rpick').addEventListener('cancel', e => { e.preventDefault(); closePicker(); });
+
+  // Rámpa mentése visszavonhatóan. A foglaltságot mentés előtt újra megnézzük (közben más is kioszthatta).
+  async function setRamp(id, r) {
+    const c = S.data.containers[id];
+    if (!c) return false;
+    if (r) {
+      const o = rampMap(id)[r];
+      if (o) { toast(`A ${r}. rámpa foglalt: ${o.id}`); return false; }
+    }
+    const man = MAN[id] || {};
+    const prev = { ramp: man.ramp || null, ramp_set: man.ramp_set ? new Date(man.ramp_set).toISOString() : null };
+    const from = c.ramp;
+    const ok = await upsertManual({ container: id, ramp: r || null, ramp_set: r ? new Date().toISOString() : null });
+    if (!ok) return false;
+    toast(r ? (from ? `${id}: áthelyezve a ${r}. rámpára` : `${id}: ${r}. rámpa`) : `${id}: vissza a parkolóba`, {
+      sub: r ? (['opened', 'unpack'].includes(phaseKey(c)) ? 'A nyitás már folyamatban van.' : 'A „nyitjuk” levélig itt vár.') : `A ${from}. rámpa felszabadult.`,
+      undo: () => upsertManual({ container: id, ...prev })
+    });
+    return true;
+  }
+
+  // ---------- áthúzás a parkolóból a rámpára (asztali gépen) ----------
+  let DRAG = null;
+  document.addEventListener('dragstart', e => {
+    const el = e.target.closest && e.target.closest('[data-drag]');
+    if (!el) return;
+    DRAG = el.dataset.drag;
+    e.dataTransfer.setData('text/plain', DRAG);
+    e.dataTransfer.effectAllowed = 'move';
+    const y = el.closest('.yd');
+    if (y) y.classList.add('dragging');
+  });
+  document.addEventListener('dragend', () => {
+    DRAG = null;
+    document.querySelectorAll('.yd.dragging').forEach(y => y.classList.remove('dragging'));
+    document.querySelectorAll('.bay.over').forEach(b => b.classList.remove('over'));
+  });
+  document.addEventListener('dragover', e => {
+    if (!DRAG) return;
+    const b = e.target.closest && e.target.closest('.yd-wide .bay.free');
+    document.querySelectorAll('.bay.over').forEach(x => { if (x !== b) x.classList.remove('over'); });
+    if (!b) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    b.classList.add('over');
+  });
+  document.addEventListener('drop', e => {
+    if (!DRAG) return;
+    const b = e.target.closest && e.target.closest('.yd-wide .bay.free');
+    if (!b) return;
+    e.preventDefault();
+    const id = DRAG;
+    DRAG = null;
+    setRamp(id, Number(b.dataset.r));
+  });
+
+  // ---------- értesítés élő változásnál ----------
+  // Csak az élő frissítésből jövő váltásokra (nem a betöltésre): nyitható lett, „nyitjuk” jött rámpa nélkül, rámpa felszabadult.
+  const PHK = {};
+  function notifyChanges() {
+    if (!Object.keys(PHK).length) return;
+    const out = [];
+    all().forEach(c => {
+      const was = PHK[c.id], k = phaseKey(c);
+      if (!was || was === k || c.state !== 'active') return;
+      const lo = addDays(S.today, -2), hi = addDays(S.today, 1);
+      if (c.day < lo || c.day > hi) return;
+      if (k === 'approved' && !c.ramp) out.push([c.id, 'Nyitható', 'A parkolóban áll, választható neki rámpa.', { act: { label: 'Rámpa választása', action: 'pick', id: c.id } }]);
+      else if ((k === 'opened' || k === 'unpack') && was !== 'opened' && !c.ramp) out.push([c.id, '„Nyitjuk” levél, de nincs rámpája', 'Válassz neki rámpát.', { warn: true, act: { label: 'Rámpa választása', action: 'pick', id: c.id } }]);
+      else if ((k === 'released' || k === 'stored') && c.ramp && ON_YARD.includes(was)) out.push([c.id, PHASE[k][0], `A ${c.ramp}. rámpa felszabadult.`, {}]);
+    });
+    if (out.length > 3) toast(`${out.length} konténer állapota változott`, { sub: out.slice(0, 3).map(x => `${x[0]}: ${x[1]}`).join(', ') });
+    else out.forEach(([id, t, sub, o]) => toast(`${t}: ${id}`, { sub, ...o, ms: o.act ? 12000 : 6000 }));
+  }
+  function rememberK() { all().forEach(c => { PHK[c.id] = phaseKey(c); }); }
 
   function table(d, list) {
     const rows = list.map((c, i) => {
@@ -2166,6 +2629,9 @@
           <h2 class="sr">${esc(c.id)}</h2>
           <div class="sheet-ct">${containerSvg(c, { cls: 'ct-lg', prio: isPrio(c) })}</div>
           <div class="badges">${badge}${isPrio(c) ? `<span class="ph ph-prio ph-lg">${IC.prio}Prioritás</span>` : ''}${where ? `<span class="badge b-out">${esc(where)}</span>` : ''}</div>
+          ${canPick(c) ? `<div class="sh-ramp">${c.ramp
+            ? `<span class="sh-r"><small>Rámpa</small><b>${c.ramp}</b></span><button type="button" class="sh-rbtn ghost" data-action="pick" data-id="${esc(c.id)}">Rámpa váltása</button>`
+            : `<span class="sh-r none${openNoRamp(c) ? ' warn' : ''}"><small>Rámpa</small><b>${openNoRamp(c) ? 'nincs, de már nyitják' : 'nincs'}</b></span><button type="button" class="sh-rbtn" data-action="pick" data-id="${esc(c.id)}">Rámpa választása</button>`}</div>` : ''}
         </div>
         <div class="sheet-body">
           ${factsBox(c)}
@@ -2356,20 +2822,45 @@
   }
 
   // ---------- műveletek ----------
-  // Egyszerre egy értesítés látszik; az új kiszorítja a régit, alul fogyó csík jelzi az időt.
-  let toastEl = null, toastTimer = null;
-  function toast(msg) {
-    if (toastEl) { const old = toastEl; old.classList.add('out'); setTimeout(() => old.remove(), 200); }
-    clearTimeout(toastTimer);
-    const t = toastEl = document.createElement('div');
-    t.className = 'toast';
-    t.setAttribute('role', 'status');
-    t.textContent = msg;
-    document.body.appendChild(t);
-    toastTimer = setTimeout(() => {
-      t.classList.add('out');
-      setTimeout(() => { t.remove(); if (toastEl === t) toastEl = null; }, 220);
-    }, 2400);
+  // Értesítések: az egyszerű visszajelzés (Mentve, Rámpa 4) kiszorítja az előzőt; a teendős (Nyitható: … gombbal)
+  // megmarad, amíg le nem jár. Gépen legfeljebb három látszik egymás fölött, telefonon csak a legújabb, tömören.
+  // Alul fogyó csík jelzi az időt; az egér fölötte megállítja.
+  function toastBox() {
+    let b = $('#toasts');
+    if (!b) { b = document.createElement('div'); b.id = 'toasts'; b.className = 'toasts'; b.setAttribute('aria-live', 'polite'); document.body.appendChild(b); }
+    return b;
+  }
+  function dropToast(t) {
+    if (!t || t.classList.contains('out')) return;
+    clearTimeout(t._tm);
+    t.classList.add('out');
+    setTimeout(() => t.remove(), 230);
+  }
+  function toast(msg, o = {}) {
+    const box = toastBox();
+    const rich = !!(o.act || o.undo);
+    if (!rich) box.querySelectorAll('.toast.plain').forEach(dropToast);
+    const t = document.createElement('div');
+    const ms = o.ms || (o.undo ? 7000 : rich ? 12000 : 2400);
+    t.className = `toast${rich ? ' rich' : ' plain'}${o.sub ? ' has-sub' : ''}${o.warn ? ' warn' : ''}`;
+    t.setAttribute('role', o.warn ? 'alert' : 'status');
+    t.style.setProperty('--ms', `${ms}ms`);
+    t.innerHTML = `<div class="t-txt"><b>${esc(msg)}</b>${o.sub ? `<span>${esc(o.sub)}</span>` : ''}</div>`
+      + (o.act ? `<button type="button" class="t-act" data-action="${esc(o.act.action)}" data-id="${esc(o.act.id || '')}">${esc(o.act.label)}</button>` : '')
+      + (o.undo ? '<button type="button" class="t-act t-undo">Visszavonás</button>' : '')
+      + (rich ? `<button type="button" class="t-x" aria-label="Bezárás"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` : '');
+    box.appendChild(t);
+    const live = [...box.querySelectorAll('.toast:not(.out)')];
+    live.slice(0, Math.max(0, live.length - 3)).forEach(dropToast);
+    const arm = () => { clearTimeout(t._tm); t._tm = setTimeout(() => dropToast(t), ms); };
+    t.addEventListener('mouseenter', () => { clearTimeout(t._tm); t.classList.add('hold'); });
+    t.addEventListener('mouseleave', () => { t.classList.remove('hold'); arm(); });
+    const x = t.querySelector('.t-x');
+    if (x) x.addEventListener('click', () => dropToast(t));
+    const u = t.querySelector('.t-undo');
+    if (u) u.addEventListener('click', async () => { dropToast(t); if (await o.undo()) toast('Visszavonva'); });
+    arm();
+    return t;
   }
 
   // A nagy nézetváltások nem használnak View Transitiont (az egész oldal stílusát újraszámoltatná),
@@ -2495,7 +2986,7 @@
       return `<span class="fx-eta"><input type="date" class="${cls}" data-fx="eta-d" value="${esc(c.eta_date || c.day || c.date)}" aria-label="ETA dátum"><input type="time" class="${cls}" data-fx="eta-t" value="${esc(c.eta_time)}" aria-label="ETA időpont"></span><small class="fx-hint">Időpont nélkül a pontos ETA törlődik</small>`;
     }
     if (k === 'ramp') {
-      const used = rampUse(c.day, c.id);
+      const used = rampUse(c.id);
       const busy = Object.keys(used).sort((a, b) => a - b).map(n => `${n} (${used[n]})`).join(', ');
       return `<input type="number" class="${cls} fx-num" data-fx="ramp" min="1" max="99" step="1" inputmode="numeric" value="${c.ramp || ''}" aria-label="Rámpa" placeholder="—">${busy ? `<small class="fx-hint">Foglalt: ${esc(busy)}</small>` : ''}`;
     }
@@ -3485,6 +3976,29 @@
         break;
       }
       case 'open': openDrawer(el.dataset.id, el); break;
+      case 'band': switchBand(el.dataset.v === 'yard' ? 'yard' : 'week'); break;
+      case 'fleet-more': toggleFleet(); break;
+      case 'pick': {
+        const t = el.closest('.toast');
+        if (t) dropToast(t);
+        openPicker(el.dataset.id);
+        break;
+      }
+      case 'rpick-close': closePicker(); break;
+      case 'rpick-save': {
+        if (!PICK || !PICK.r) break;
+        const { id, r } = PICK;
+        closePicker();
+        await setRamp(id, r);
+        break;
+      }
+      case 'rpick-clear': {
+        if (!PICK) break;
+        const id = PICK.id;
+        closePicker();
+        await setRamp(id, null);
+        break;
+      }
       case 'close': closeDrawer(); break;
       case 'dstep': {
         const c = S.data.containers[S.drawer];
@@ -3801,7 +4315,7 @@
     if (editing() || S.drawer) return;
     const t = iso(new Date());
     if (t !== S.today) { rebuild(); render(); return; }
-    if (S.view === 'week' && S.sel === S.today) render();
+    if (S.view === 'week' && (S.sel === S.today || S.band === 'yard')) render();
     else renderSync();
   }, 60000);
 
