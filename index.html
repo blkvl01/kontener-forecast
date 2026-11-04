@@ -12,9 +12,9 @@
 <link rel="preload" href="fonts/barlow-latin-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/barlow-condensed-latin-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/red-hat-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=20261104152536">
-<link rel="stylesheet" href="tour.css?v=20261104152536">
-<script src="boot-role.js?v=20261104152536"></script>
+<link rel="stylesheet" href="styles.css?v=20261104215500">
+<link rel="stylesheet" href="tour.css?v=20261104215500">
+<script src="boot-role.js?v=20261104215500"></script>
 </head>
 <body>
 <svg class="kf-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
@@ -202,10 +202,25 @@
   </div>
 </dialog>
 
-<script src="vendor/supabase.min.js?v=20261104152536"></script>
-<script src="config.js?v=20261104152536"></script>
-<script src="derive.js?v=20261104152536"></script>
-<script src="tour.js?v=20261104152536"></script>
-<script src="app.js?v=20261104152536"></script>
+<dialog id="rpick" class="settings rpick" aria-labelledby="rpick-title">
+  <div class="settings-inner">
+    <div class="settings-head">
+      <div><h2 id="rpick-title">Rámpa</h2><p class="rp-sub" id="rpick-sub"></p></div>
+      <button type="button" class="x-btn" data-action="rpick-close" aria-label="Bezárás"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="rp-grid" id="rpick-grid" role="group" aria-label="Rámpák"></div>
+    <div class="settings-actions rp-acts">
+      <button type="button" class="btn-ghost sm rp-clear" data-action="rpick-clear" id="rpick-clear" hidden>Vissza a parkolóba</button>
+      <button type="button" class="btn-ghost sm" data-action="rpick-close">Mégse</button>
+      <button type="button" class="btn-primary sm" data-action="rpick-save" id="rpick-save">Kiosztás</button>
+    </div>
+  </div>
+</dialog>
+
+<script src="vendor/supabase.min.js?v=20261104215500"></script>
+<script src="config.js?v=20261104215500"></script>
+<script src="derive.js?v=20261104215500"></script>
+<script src="tour.js?v=20261104215500"></script>
+<script src="app.js?v=20261104215500"></script>
 </body>
 </html>

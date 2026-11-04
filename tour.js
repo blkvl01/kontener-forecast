@@ -15,7 +15,7 @@
   // Amelyik lépés célja nem létezik vagy nem látszik (pl. telefonon), azt kihagyja.
   // sheet: a lépéshez a konténer adatlapja nyitva van (a túra nyitja meg, és a végén be is zárja).
   const INTRO = 'Rövid áttekintés: mi hol található az oldalon.';
-  const YARD = { sel: ['.yard'], title: 'Heti sáv', text: 'Egy oszlop egy nap, egy blokk egy konténer. A töltöttség a haladást mutatja, a piros a késést.\nNapra kattintva alatta a konténerei jelennek meg.' };
+  const YARD = { sel: ['.yard'], title: 'Heti sáv', text: 'Egy oszlop egy nap, egy blokk egy konténer. A töltöttség a haladást mutatja, a piros a késést.\nNapra kattintva alatta a konténerei jelennek meg.\nA bal felső Hét / Udvar váltóval ugyanitt az udvar látszik: a rámpák és a parkoló. A nyitható konténert a Rámpa gombbal vagy áthúzással lehet rámpára állítani.' };
   const SHEET = { sheet: true, place: 'left' };
   const SHEET_W = { ...SHEET, sel: ['.sheet .facts'], title: 'Adatlap', text: 'Konténerre kattintva nyílik az adatlapja (most az első).\nMinden adat egy helyen: rendszám, T1/MRN, sofőr telefonja, ETA, rámpa, súly, colli és fuvarlevelek. A ceruzával a rámpa és a megjegyzés szerkeszthető; Enter vagy kikattintás ment.' };
   const SHEET_E = { ...SHEET, sel: ['.sheet .facts'], title: 'Adatlap', text: 'Konténerre kattintva nyílik az adatlapja (most az első).\nMinden adat egy helyen: rendszám, T1/MRN, sofőr telefonja, ETA, rámpa, súly, colli és fuvarlevelek. A ceruzával bármelyik szerkeszthető; Enter vagy kikattintás ment, Esc elvet.' };
