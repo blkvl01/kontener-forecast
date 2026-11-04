@@ -11,14 +11,8 @@
   // A gépi QR és a telefonos Fotózás gomb a konténerszámot is átadja: a nyitó jelenet rögtön azt mutatja.
   const HINT = (location.hash.match(/[#&]c=([A-Z]{4}\d{7})/) || [])[1] || '';
   const FROM_APP = /[#&]from=app\b/.test(location.hash);
-  // A váltható konténerek listáját az alkalmazás írja ki (a még meg nem érkezettek); 12 óránál régebbi nem számít.
-  const LIST = (() => {
-    if (!FROM_APP) return [];
-    try {
-      const v = JSON.parse(localStorage.getItem('kf-photo-list') || 'null');
-      return v && Date.now() - v.at < 12 * 3600e3 && Array.isArray(v.list) ? v.list : [];
-    } catch (_) { return []; }
-  })();
+  // A váltható konténerek (a még meg nem érkezettek) a belépőhöz tartoznak: a gép adja meg a QR-kód vagy a Fotózás gomb készítésekor.
+  const sibs = () => (INFO && Array.isArray(INFO.siblings) ? INFO.siblings : []);
   const $ = s => document.querySelector(s);
   const main = $('#main');
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -179,7 +173,7 @@
       <header class="band">
         ${FROM_APP ? `<button type="button" class="back" data-a="back">${IC.back}Vissza a konténerhez</button>` : ''}
         <span class="lbl">Konténer</span>
-        <span class="cno-row"><span class="cno">${fmtC(INFO.container)}</span>${LIST.length > 1 ? `<button type="button" class="swap" data-a="pick">${IC.swap}Váltás</button>` : ''}</span>
+        <span class="cno-row"><span class="cno">${fmtC(INFO.container)}</span>${sibs().length > 1 ? `<button type="button" class="swap" data-a="pick">${IC.swap}Váltás</button>` : ''}</span>
         <div class="chips">${chips}</div>
       </header>
       <div class="body">
@@ -448,7 +442,7 @@
     d.innerHTML = `
       <div class="cam-top">
         <button type="button" class="cam-x" data-a="cam-close" aria-label="Bezárás">×</button>
-        ${LIST.length > 1 ? `<button type="button" class="swap cam-swap" data-a="pick">${IC.swap}Váltás</button>` : ''}
+        ${sibs().length > 1 ? `<button type="button" class="swap cam-swap" data-a="pick">${IC.swap}Váltás</button>` : ''}
         <span class="cam-id"></span>
       </div>
       <div class="cam-view">
@@ -648,7 +642,7 @@
       <form method="dialog">
         <span class="grab" aria-hidden="true"></span>
         <h2 id="pick-h">Konténer váltása</h2>
-        <div class="pick-list">${LIST.map(x => {
+        <div class="pick-list">${sibs().map(x => {
           const left = Q.filter(q => q.c === x.id && !HIDE.has(q.k) && q.state !== 'bad').length;
           return `<button type="button" class="pick-it${x.id === cur ? ' on' : ''}" data-a="pick-go" data-id="${esc(x.id)}"${x.id === cur ? ' aria-current="true"' : ''}>
             <span class="cno">${fmtC(x.id)}</span>
@@ -672,11 +666,11 @@
     await Promise.all([...PENDING.keys()].map(k => commitDel(k)));
     const old = TOKEN;
     try {
-      const x = LIST.find(i => i.id === id);
+      const x = sibs().find(i => i.id === id);
       const out = await call('hop', { container: id, plate: (x && x.plate) || '' });
       TOKEN = out.token;
       apply(await call('info'));
-      history.replaceState(null, '', `${location.pathname}${location.search}#t=${TOKEN}&c=${id}&from=app`);
+      history.replaceState(null, '', `${location.pathname}${location.search}#t=${TOKEN}&c=${id}${FROM_APP ? '&from=app' : ''}`);
       const d = $('#pick');
       if (d && d.open) d.close();
       if (navigator.vibrate) navigator.vibrate(14);

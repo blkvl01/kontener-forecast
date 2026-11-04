@@ -3071,7 +3071,7 @@
     const box = d.querySelector('.qr-code'), cv = box.querySelector('canvas'), wait = box.querySelector('.qr-wait');
     d.querySelectorAll('.qr-btns button').forEach(b => { b.disabled = true; });
     try {
-      const r = await edgeFn('photo-link', fresh ? 'relink' : 'link', { container: id, plate: (c.fixed && 'plate' in c.fixed ? c.fixed.plate : c.plate) || '' });
+      const r = await edgeFn('photo-link', fresh ? 'relink' : 'link', { container: id, plate: (c.fixed && 'plate' in c.fixed ? c.fixed.plate : c.plate) || '', list: photoList(id) });
       if (QR.id !== id) return;
       QR.url = `${photoSite()}foto.html#t=${r.token}&c=${id}`;
       await qrDraw(cv, QR.url);
@@ -3112,9 +3112,8 @@
     if (!c || el.classList.contains('busy')) return;
     el.classList.add('busy');
     try {
-      const r = await edgeFn('photo-link', 'link', { container: id, plate: (c.fixed && 'plate' in c.fixed ? c.fixed.plate : c.plate) || '', multi: true });
-      // A fotóoldalon ezek között lehet váltani (a még meg nem érkezett konténerek).
-      try { localStorage.setItem('kf-photo-list', JSON.stringify({ at: Date.now(), list: photoList(id) })); } catch (_) { /* privát mód: nincs váltás */ }
+      // A fotóoldalon a lista konténerei között lehet váltani (a még meg nem érkezettek).
+      const r = await edgeFn('photo-link', 'link', { container: id, plate: (c.fixed && 'plate' in c.fixed ? c.fixed.plate : c.plate) || '', multi: true, list: photoList(id) });
       // Visszalépéskor (ha a böngésző újratölti az oldalt) ugyanez az adatlap nyílik meg.
       history.replaceState(null, '', `${location.pathname}${location.search}#c=${id}`);
       location.href = `foto.html#t=${r.token}&c=${id}&from=app`;
