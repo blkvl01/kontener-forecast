@@ -25,7 +25,7 @@
   const VIEWS_E = { ...VIEWS_W, text: 'Hét: heti áttekintés, Naptár: havi nézet, Statisztika: darabszám és átfutás 7, 28 vagy 90 napra.\nA keresés konténerszámra, MRN-re, rendszámra és PDD-re is működik.' };
   const PASTE = { sel: ['.period [data-action="paste"]'], title: 'ETA beillesztése', text: 'A levélben kapott „KONTÉNER// … ETA 11:30” blokkok ide illeszthetők be, egyszerre több is.' };
   const SYNC = { sel: ['#sync'], title: 'Outlook-szinkron', text: 'Az Outlook utolsó beolvasásának ideje. A sárga vagy piros pont elakadást jelez, a nyíl kézi frissítést indít.' };
-  const SETTINGS = { sel: ['#sync [data-action="settings"]'], title: 'Beállítások', text: 'Felhasználók kezelése (meghívó link, rangok: dolgozó, szerkesztő, admin) és a rámpák száma.' };
+  const SETTINGS = { sel: ['#sync [data-action="settings"]'], title: 'Beállítások', text: 'Felhasználók kezelése (meghívó link, rangok: dolgozó, szerkesztő, admin) és a rámpák.' };
   const HELP = { sel: ['[data-action="tour"]'], title: 'Súgó', text: 'Ezzel a gombbal az útmutató bármikor újra előhívható.' };
 
   const TITLE = 'Üdv a Konténer Forecastban';
