@@ -1673,10 +1673,18 @@
     searchState(false);
   }
 
+  // A lista zárás közben (kifutó áttűnés) még megtartja a tartalmát; csak utána ürül.
+  let qClear = 0;
   function renderSearch() {
     const box = $('#qres');
     const q = $('#q').value.trim();
-    if (q.length < 3) { box.hidden = true; box.innerHTML = ''; qIdx = -1; searchState(false); $('#qcount').textContent = ''; return; }
+    clearTimeout(qClear);
+    if (q.length < 3) {
+      box.hidden = true;
+      qClear = setTimeout(() => { if (box.hidden) box.innerHTML = ''; }, 220);
+      qIdx = -1; searchState(false); $('#qcount').textContent = '';
+      return;
+    }
     const hits = searchHits(q);
     const opening = box.hidden;
     box.hidden = false;
@@ -3239,10 +3247,12 @@
     const v = $('#view');
     const old = v.querySelector(sel);
     if (!old) return null;
-    v.className = `ev-${zone} ev-solo`;
     const tpl = document.createElement('template');
     tpl.innerHTML = html.trim();
     const el = tpl.content.firstElementChild;
+    // A belépő osztályok csak az új panelre kerülnek: a nézet osztályainak átírása a még futó belépőket
+    // (pl. a most érkezett hét blokkjait) egy pillanat alatt a végállapotukba ugratná.
+    el.classList.add(`ev-${zone}`, 'ev-solo');
     const fk = focusKey();
     old.replaceWith(el);
     refocus(fk);
@@ -4556,11 +4566,21 @@
     const y = e.clientY - h - 12 < 8 ? e.clientY + 18 : e.clientY - h - 12;
     tip.style.transform = `translate(${Math.max(8, x)}px, ${y}px)`;
   });
+  // A menü zárása rövid kicsúszással; a details az animáció végén csukódik be (addig a tartalma látszik).
+  function closeMenu(d) {
+    if (!d.open || d.classList.contains('closing')) return;
+    if (RM.matches) { d.open = false; return; }
+    d.classList.add('closing');
+    setTimeout(() => { d.open = false; d.classList.remove('closing'); }, 140);
+  }
   document.addEventListener('click', e => {
     // Felhasználói műveletmenü: egyszerre egy nyitva, kattintásra (vagy választás után) bezárul.
     const own = e.target.closest('.p-menu');
+    // Az éppen nyitott menü fejlécére kattintva sem tűnik el egyszerre: előbb kicsúszik.
+    const sum = e.target.closest('.p-more');
+    if (sum && own && own.open) { e.preventDefault(); closeMenu(own); return; }
     document.querySelectorAll('.p-menu[open]').forEach(d => {
-      if (d !== own || (e.target.closest('.p-pop button') && !e.target.closest('[data-action="user-remove"]'))) d.open = false;
+      if (d !== own || (e.target.closest('.p-pop button') && !e.target.closest('[data-action="user-remove"]'))) closeMenu(d);
     });
     if (!e.target.closest('.search')) { const b = $('#qres'); if (b && !b.hidden) closeSearch(); }
   });
@@ -4578,9 +4598,11 @@
       searchState(true);
       return;
     }
-    if (e.key === 'Escape' && S.drawer && !$('#settings').open && !$('#paste').open && !$('#people').open) closeDrawer();
+    // Nyitott párbeszédablak (beállítások, nagy kép, QR, kamera …) fölött az Esc csak azt zárja, az adatlapot nem.
+    const dlgOpen = !!document.querySelector('dialog[open]');
+    if (e.key === 'Escape' && S.drawer && !dlgOpen) closeDrawer();
     if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey
-        && S.view === 'week' && S.data && !S.drawer && !$('#settings').open && !$('#paste').open && !$('#people').open) {
+        && S.view === 'week' && S.data && !S.drawer && !dlgOpen) {
       const t = e.target;
       if (t && t.closest && t.closest('input, textarea, select, [contenteditable]')) return;
       e.preventDefault();

@@ -1160,9 +1160,9 @@ g .hit{fill:transparent}
 /* ---- napi panel: a heti sáv után indul (--dm); napváltáskor azonnal ---- */
 .slot{display:inline-block}
 .main{--dm:calc(var(--d0) + 380ms)}
-.ev-solo .main{--dm:0ms}
+.ev-solo .main,.main.ev-solo{--dm:0ms}
 .side{--ds:calc(var(--d0) + 200ms)}
-.ev-solo .side{--ds:0ms}
+.ev-solo .side,.side.ev-solo{--ds:0ms}
 .ev-solo [data-reveal]{--d1:200ms}
 .ev-solo [data-reveal].rv{--d1:60ms}
 .ev-main .dayhead h1 .slot{animation:k-num .55s var(--ease-expo) backwards;animation-delay:var(--dm)}
@@ -1256,9 +1256,9 @@ g .hit{fill:transparent}
 .sync-dot.ping:after{content:"";position:absolute;inset:-1px;border-radius:50%;border:2px solid var(--ok);animation:k-ping 1.3s var(--ease-quart) forwards}
 .sync-text.fresh{animation:k-up-s .45s var(--ease-expo)}
 .ibtn.spin-once svg{animation:spin .8s var(--ease-expo)}
-.qres{transform-origin:top left}
-.qres:not([hidden]){animation:k-qres .26s var(--ease-expo)}
-@keyframes k-qres{from{opacity:0;transform:translateY(-8px) scale(.98)}}
+.qres{transform-origin:top left;transition:opacity .22s var(--ease-expo),transform .26s var(--ease-expo),display .26s allow-discrete}
+.qres[hidden]{pointer-events:none;opacity:0;transform:translateY(-8px) scale(.98);transition-duration:.14s;transition-timing-function:var(--ease-in)}
+@starting-style{.qres:not([hidden]){opacity:0;transform:translateY(-8px) scale(.98)}}
 .qres.opening .qhit{animation:k-up-s .3s var(--ease-expo) backwards;animation-delay:calc(60ms + var(--i) * 22ms)}
 .toast{animation:k-toast .42s var(--ease-expo)}
 .toast:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--orange);transform-origin:left;animation:k-toast-time 2.4s linear forwards}
@@ -1306,7 +1306,6 @@ g .hit{fill:transparent}
   @keyframes k-sheet-out{to{opacity:0}}
   @keyframes k-toast{from{opacity:0;transform:translateX(-50%)}}
   @keyframes k-toast-out{to{opacity:0;transform:translateX(-50%)}}
-  @keyframes k-qres{from{opacity:0}}
   @keyframes k-gx{from{opacity:0}}
   @keyframes k-gy{from{opacity:0}}
   :root .boot-hoist,:root .boot-box,:root .boot-stage,:root .boot-name span,:root .boot-load i.on,:root .boot-conv{animation:none}
@@ -1510,14 +1509,28 @@ g .hit{fill:transparent}
 .ph-x{position:absolute;top:4px;right:4px;width:28px;height:28px;border-radius:14px;border:0;background:oklch(0.2 0.01 255 / .62);color:#fff;font-size:17px;line-height:1;cursor:pointer;transition:background .15s}
 .ph-x.arm{background:oklch(0.58 0.19 27)}
 #ph-view{padding:0;border:0;background:none;max-width:96vw;max-height:94vh;cursor:zoom-out}
-#ph-view::backdrop{background:oklch(0.15 0.01 255 / .82)}
+#ph-view::backdrop{background-color:oklch(0.15 0.01 255 / .82)}
 #ph-view img{display:block;max-width:96vw;max-height:94vh;border-radius:8px}
+/* nagy kép: áttűnik és enyhén odanagyít; záráskor visszahúzódik */
+#ph-view{transition:opacity .22s var(--ease-quart),display .26s allow-discrete,overlay .26s allow-discrete}
+#ph-view img{transition:transform .38s var(--ease-expo)}
+#ph-view:not([open]){opacity:0;transition-duration:.16s}
+#ph-view:not([open]) img{transform:scale(.96);transition-duration:.16s}
+#ph-view::backdrop{transition:background-color .26s var(--ease-quart),display .26s allow-discrete,overlay .26s allow-discrete}
+#ph-view:not([open])::backdrop{background-color:oklch(0.15 0.01 255 / 0);transition-duration:.16s}
+@starting-style{#ph-view[open]{opacity:0}#ph-view[open] img{transform:scale(.94)}#ph-view[open]::backdrop{background-color:oklch(0.15 0.01 255 / 0)}}
 @media (prefers-reduced-motion:reduce){.ph-t.busy{animation:none}}
 
 /* beépített kamera */
 #cam{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:#000;color:#fff;flex-direction:column;overscroll-behavior:contain}
 #cam[open]{display:flex}
-#cam::backdrop{background:#000}
+#cam::backdrop{background-color:#000}
+/* a kamera lentről érkezik, záráskor áttűnik (a háttér is, hogy ne villanjon fekete) */
+#cam{transition:opacity .26s var(--ease-quart),transform .4s var(--ease-expo),display .4s allow-discrete,overlay .4s allow-discrete}
+#cam:not([open]){opacity:0;transform:translateY(16px);transition-duration:.18s;transition-timing-function:var(--ease-in)}
+#cam::backdrop{transition:background-color .26s var(--ease-quart),display .26s allow-discrete,overlay .26s allow-discrete}
+#cam:not([open])::backdrop{background-color:#0000;transition-duration:.18s}
+@starting-style{#cam[open]{opacity:0;transform:translateY(24px)}#cam[open]::backdrop{background-color:#0000}}
 .cam-top{display:flex;align-items:center;gap:12px;padding:calc(env(safe-area-inset-top) + 8px) 12px 8px}
 .cam-x{min-width:44px;height:44px;padding:0 12px;border:0;border-radius:22px;background:oklch(1 0 0 / .14);color:#fff;font-size:22px;line-height:1;cursor:pointer}
 .cam-x.arm{background:oklch(0.58 0.19 27);font-size:14px;font-weight:600}
@@ -1591,6 +1604,8 @@ g .hit{fill:transparent}
 .p-more::-webkit-details-marker{display:none}
 .p-more:hover,.p-menu[open] .p-more{background:oklch(0.94 0.006 255);color:var(--ink)}
 .p-pop{position:absolute;right:0;top:calc(100% + 4px);z-index:5;min-width:180px;padding:5px;border-radius:12px;background:var(--surface);border:1px solid var(--line);box-shadow:0 14px 34px -14px oklch(0.15 0.03 255 / .45);display:flex;flex-direction:column;animation:k-up-s .22s var(--ease-expo)}
+.p-menu.closing .p-pop{animation:k-pop-out .14s var(--ease-in) forwards}
+@keyframes k-pop-out{to{opacity:0;transform:translateY(-6px)}}
 .p-pop button{height:34px;padding:0 10px;border:0;border-radius:8px;background:transparent;text-align:left;font-size:13px;color:var(--ink)}
 .p-pop button:hover{background:oklch(0.955 0.005 255)}
 .p-pop button.danger{color:oklch(0.48 0.17 27)}
@@ -1809,7 +1824,10 @@ g .hit{fill:transparent}
 .cp-row:focus-visible{outline:2px solid var(--orange);outline-offset:-2px}
 .cp-row .cid{font-size:15px}
 .cp-row time{font-family:var(--mono);font-size:11.5px;color:var(--faint);white-space:nowrap}
-.chg-pop:not([hidden]){animation:k-up-s .25s var(--ease-expo)}
+/* Nyitás és zárás átmenettel (a [hidden] display:none-ja is késleltetve lép életbe), így a lista nem „ugrik be” és nem tűnik el egyszerre. */
+.chg-pop{transform-origin:top left;transition:opacity .25s var(--ease-expo),transform .25s var(--ease-expo),display .25s allow-discrete}
+.chg-pop[hidden]{pointer-events:none;opacity:0;transform:translateY(-6px) scale(.985);transition-duration:.14s;transition-timing-function:var(--ease-in)}
+@starting-style{.chg-pop:not([hidden]){opacity:0;transform:translateY(8px)}}
 .ev-yard .day-chg span{animation:k-pop .4s var(--ease-expo) backwards;animation-delay:calc(var(--d0) + 650ms + var(--i) * 50ms)}
 @media (max-width: 760px){
   .yard-top .legend{margin-left:0;flex:1 1 100%}
@@ -1817,7 +1835,7 @@ g .hit{fill:transparent}
   .cp-row{grid-template-columns:110px 1fr}
   .cp-row time{grid-column:2}
 }
-@media (prefers-reduced-motion: reduce){.chg-pop:not([hidden]){animation:none}}
+@media (prefers-reduced-motion: reduce){.chg-pop,.qres,#ph-view,#ph-view::backdrop,#cam,#cam::backdrop{transition:none !important}.p-menu.closing .p-pop{animation:none}}
 
 /* ---- prioritás: sötét jelvény sárga zászlóval (egyik állapotszínnel sem keverhető); a heti blokkon sárga bal szél + sarokjel ---- */
 :root{--prio:oklch(0.88 0.17 95);--prio-bg:oklch(0.22 0.02 255)}
@@ -1899,6 +1917,11 @@ g .hit{fill:transparent}
 .mail-more[open] summary::before{transform:rotate(45deg)}
 .mail-more summary span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-weight:400;font-size:12px;font-family:var(--mono)}
 .mail-more[open] summary span{display:none}
+/* a levélrész kinyitáskor kicsúszik (nincs ugrás a lap tartalmában); a nem támogató böngésző azonnal nyit */
+.mail-more{interpolate-size:allow-keywords}
+.mail-more::details-content{block-size:0;overflow:clip;transition:block-size .32s var(--ease-expo),content-visibility .32s allow-discrete}
+.mail-more[open]::details-content{block-size:auto}
+@media (prefers-reduced-motion:reduce){.mail-more::details-content{transition:none}}
 .mail-more .mail-pv{border-top:0;margin-top:6px}
 
 /* Konténer / fuvarlevél kapcsoló */

@@ -95,13 +95,21 @@ main{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
 .toast button{border:0;background:none;color:var(--orange);font-weight:700;padding:8px 10px}
 .toast.cam{bottom:calc(env(safe-area-inset-bottom) + 190px)}
 @keyframes tin{from{opacity:0;transform:translateY(8px)}}
+.toast.out{animation:tout .2s var(--ease) forwards;pointer-events:none}
+@keyframes tout{to{opacity:0;transform:translateY(8px)}}
 
 /* rendszám-lap */
 .sheet{position:fixed;inset:0;z-index:40;flex-direction:column;justify-content:flex-end;max-width:none;max-height:none;width:100%;height:100%;margin:0;padding:0;border:0;background:transparent}
 .sheet[open]{display:flex}
-.sheet::backdrop{background:oklch(0.08 0.01 255 / .55)}
-.sheet form{background:var(--surface);border-radius:20px 20px 0 0;padding:10px max(16px,env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 16px) max(16px,env(safe-area-inset-left));display:flex;flex-direction:column;gap:14px;animation:sup .28s var(--ease)}
-@keyframes sup{from{transform:translateY(40px);opacity:.4}}
+.sheet::backdrop{background-color:oklch(0.08 0.01 255 / .55)}
+.sheet form{background:var(--surface);border-radius:20px 20px 0 0;padding:10px max(16px,env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 16px) max(16px,env(safe-area-inset-left));display:flex;flex-direction:column;gap:14px}
+/* a lap alulról érkezik és vissza is csúszik; a háttér vele együtt áttűnik (a display késleltetve áll át, így a kifutás látszik) */
+.sheet{transition:display .3s allow-discrete,overlay .3s allow-discrete}
+.sheet form{transition:transform .3s var(--ease),opacity .3s var(--ease)}
+.sheet:not([open]) form{transform:translateY(60px);opacity:0;transition-duration:.2s}
+.sheet::backdrop{transition:background-color .3s var(--ease),display .3s allow-discrete,overlay .3s allow-discrete}
+.sheet:not([open])::backdrop{background-color:oklch(0.08 0.01 255 / 0);transition-duration:.2s}
+@starting-style{.sheet[open] form{transform:translateY(40px);opacity:.4}.sheet[open]::backdrop{background-color:oklch(0.08 0.01 255 / 0)}}
 .grab{width:38px;height:4px;border-radius:2px;background:var(--line);align-self:center}
 .sheet h2{margin:0;font-size:18px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -129,7 +137,12 @@ main{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
 /* kamera */
 #cam{position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:#000;color:#fff;flex-direction:column;overscroll-behavior:contain}
 #cam[open]{display:flex}
-#cam::backdrop{background:#000}
+#cam::backdrop{background-color:#000}
+#cam{transition:opacity .26s var(--ease),transform .4s var(--ease),display .4s allow-discrete,overlay .4s allow-discrete}
+#cam:not([open]){opacity:0;transform:translateY(16px);transition-duration:.18s}
+#cam::backdrop{transition:background-color .26s var(--ease),display .26s allow-discrete,overlay .26s allow-discrete}
+#cam:not([open])::backdrop{background-color:#0000;transition-duration:.18s}
+@starting-style{#cam[open]{opacity:0;transform:translateY(24px)}#cam[open]::backdrop{background-color:#0000}}
 .cam-top{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(env(safe-area-inset-top) + 8px) max(12px,env(safe-area-inset-right)) 8px max(12px,env(safe-area-inset-left))}
 .cam-id{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:0}
 .cam-id .cno{font-size:17px}
@@ -158,9 +171,16 @@ main{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
 #view{border:0;padding:0;margin:0;width:100%;height:100%;max-width:none;max-height:none;background:#000;display:none;place-items:center}
 #view[open]{display:grid}
 #view img{max-width:100%;max-height:100%;object-fit:contain}
-#view::backdrop{background:#000}
+#view::backdrop{background-color:#000}
+#view{transition:opacity .22s var(--ease),display .26s allow-discrete,overlay .26s allow-discrete}
+#view img{transition:transform .36s var(--ease)}
+#view:not([open]){opacity:0;transition-duration:.16s}
+#view:not([open]) img{transform:scale(.96)}
+#view::backdrop{transition:background-color .22s var(--ease),display .26s allow-discrete,overlay .26s allow-discrete}
+#view:not([open])::backdrop{background-color:#0000;transition-duration:.16s}
+@starting-style{#view[open]{opacity:0}#view[open] img{transform:scale(.94)}#view[open]::backdrop{background-color:#0000}}
 
-@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition:none !important}}
+@media (prefers-reduced-motion:reduce){*,::backdrop{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition:none !important}}
 
 /* ---------- nyitó animáció: daru → fókusz → írisz → fotólap (≈1,2 mp) ----------
    A főalkalmazás nyitó jelenetének világa: sötét konténerudvar, daru, narancs konténer, redőnykapu.

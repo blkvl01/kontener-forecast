@@ -374,16 +374,18 @@
 
   // ---------- értesítés ----------
   let toastEl = null, toastTimer = 0;
+  // Az értesítés kifelé is animál (kicsúszik), nem tűnik el egyszerre.
+  const dropToast = t => { if (!t.isConnected || t.classList.contains('out')) return; t.classList.add('out'); setTimeout(() => t.remove(), 210); };
   function toast(msg, act, fn) {
-    if (toastEl) toastEl.remove();
+    if (toastEl) dropToast(toastEl);
     clearTimeout(toastTimer);
     const t = toastEl = document.createElement('div');
     t.className = `toast${CAM.open ? ' cam' : ''}`;
     t.setAttribute('role', 'status');
     t.innerHTML = `<span>${esc(msg)}</span>${act ? `<button type="button">${esc(act)}</button>` : ''}`;
-    if (act) t.querySelector('button').addEventListener('click', () => { fn(); t.remove(); });
+    if (act) t.querySelector('button').addEventListener('click', () => { fn(); dropToast(t); });
     (CAM.open ? $('#cam') : document.body).appendChild(t);
-    toastTimer = setTimeout(() => { t.remove(); if (toastEl === t) toastEl = null; }, act ? 5000 : 2600);
+    toastTimer = setTimeout(() => { dropToast(t); if (toastEl === t) toastEl = null; }, act ? 5000 : 2600);
   }
 
   // ---------- kép kicsinyítése (galéria) ----------
