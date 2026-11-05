@@ -2096,8 +2096,23 @@ g .hit{fill:transparent}
   transition:background-color .45s var(--ease),box-shadow .2s var(--ease)}
 .roof:hover{box-shadow:0 0 0 2px oklch(0.98 0 0 / .45)}
 .roof:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
-.roof.prio:before{content:"";position:absolute;left:0;top:0;border-style:solid;border-width:14px 14px 0 0;border-color:var(--orange) transparent transparent transparent}
-.rf-id{writing-mode:vertical-rl;transform:rotate(180deg);align-self:center;margin-top:8px;font-family:var(--cond);font-size:15px;font-weight:700;letter-spacing:.04em;color:oklch(0.98 0 0);white-space:nowrap}
+/* a konténerszám vízszintes, két sorban (betűk / számjegyek), sötét lapon, hogy a csíkos tetőn is jól olvasható legyen */
+.rf-id{align-self:center;margin-top:10px;max-width:calc(100% - 12px);display:grid;justify-items:center;padding:4px 8px 5px;border-radius:5px;background:oklch(0.15 0.012 255 / .84);font-family:var(--cond);font-weight:700;letter-spacing:.05em;line-height:1.05;color:oklch(0.98 0 0);white-space:nowrap}
+.rf-l{font-size:12.5px;color:oklch(0.86 0.01 255)}
+.rf-d{font-size:17px}
+/* prioritás: sárga keret a számon és zászló a tető sarkában (mint a heti blokkon és a kártyán) */
+.roof.prio .rf-id{box-shadow:0 0 0 1.5px var(--prio)}
+.rf-fl{position:absolute;left:4px;top:4px;z-index:1;display:grid;place-items:center;width:20px;height:20px;border-radius:5px;background:var(--prio-bg);color:var(--prio);pointer-events:none}
+.rf-fl svg{width:12px;height:12px}
+.pk.prio .pk-rf{position:relative;box-shadow:0 0 0 1.5px var(--prio)}
+.pk.prio .pk-rf:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:4px 0 0 4px;background:var(--prio)}
+.pk.prio .pk-rf{padding-left:12px}
+.pk.prio.flag .pk-rf{box-shadow:0 0 0 1.5px var(--prio),0 0 0 3.5px oklch(0.72 0.17 27)}
+.pk .prio-ic{margin-left:6px}
+.tile.busy.prio{box-shadow:0 0 0 1.5px var(--prio)}
+.tile.busy.prio:after{content:"";position:absolute;right:0;top:0;border-style:solid;border-width:0 13px 13px 0;border-color:transparent var(--prio) transparent transparent}
+.tile.busy{position:relative}
+.yard.yd-swap{overflow:clip}
 .rf-plate{background:oklch(0.15 0.012 255);padding:5px 7px 6px;display:grid;gap:1px}
 .rf-plate b{font-size:12px;line-height:1.15;color:var(--pt);font-weight:600}
 .rf-plate span{font-family:var(--mono);font-size:11px;font-weight:600;color:oklch(0.85 0.008 255)}
@@ -2121,6 +2136,7 @@ g .hit{fill:transparent}
 .pk.flag .pk-lab{color:oklch(0.8 0.14 27)}
 .pk.flag .pk-rf{box-shadow:0 0 0 2px oklch(0.72 0.17 27)}
 .pk-main:hover .pk-rf{box-shadow:0 0 0 2px oklch(0.98 0 0 / .4)}
+.pk.prio .pk-main:hover .pk-rf{box-shadow:0 0 0 1.5px var(--prio),0 0 0 3.5px oklch(0.98 0 0 / .35)}
 .pk-go{all:unset;cursor:pointer;flex:none;padding:5px 11px;border-radius:7px;background:var(--orange);color:var(--orange-ink);font-size:12.5px;font-weight:700;transition:background-color .15s var(--ease),transform .1s var(--ease)}
 .pk-go:hover{background:oklch(0.77 0.15 56)}
 .pk-go:active{transform:translateY(1px)}

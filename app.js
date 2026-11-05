@@ -2308,8 +2308,11 @@
   function roofHtml(c) {
     const k = phaseKey(c);
     const where = siteOf(c) === 'MG3' ? 'MG3 kirakodó' : `${c.ramp}. rámpa`;
-    return `<button type="button" class="roof phk-${k}${isPrio(c) ? ' prio' : ''}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${c.id}, ${where}, ${PHASE[k][0]}`)}">
-        <span class="rf-id">${esc(c.id)}</span>
+    // A szám vízszintes, két sorban (négy betű / hét számjegy): a 90 fokban fordított felirat nehezen olvasható.
+    const pr = isPrio(c);
+    return `<button type="button" class="roof phk-${k}${pr ? ' prio' : ''}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${c.id}, ${where}, ${PHASE[k][0]}${pr ? ', prioritás' : ''}`)}">
+        ${pr ? `<span class="rf-fl" title="Prioritás">${IC.prio}</span>` : ''}
+        <span class="rf-id"><span class="rf-l">${esc(c.id.slice(0, 4))}</span><span class="rf-d">${esc(c.id.slice(4))}</span></span>
         <span class="rf-plate"><b>${esc(PHASE[k][0])}</b><span>${esc(fmtDur(waitMin(c)))}</span></span>
       </button>`;
   }
@@ -2319,9 +2322,10 @@
     const other = site === 'MG1' ? 'MG3' : 'MG1';
     const lab = flag ? `${PHASE[k][0]}, nincs rámpa` : PHASE[k][0];
     const tip = site === 'MG1' && !needsRamp(c) ? ' title="Rámpát a nyitható levél után lehet választani"' : '';
+    const pr = isPrio(c);
     return `<div class="slot" data-slot="${esc(c.id)}">
-        <div class="pk phk-${k}${w > 60 ? ' long' : ''}${flag ? ' flag' : ''}"${drag ? ` draggable="true" data-drag="${esc(c.id)}"` : ''}${tip}>
-          <button type="button" class="pk-main" data-action="open" data-id="${esc(c.id)}"><span class="pk-rf">${esc(c.id)}</span><span class="pk-lab">${esc(lab)}</span><span class="pk-w">${esc(fmtDur(w))}</span></button>
+        <div class="pk phk-${k}${w > 60 ? ' long' : ''}${flag ? ' flag' : ''}${pr ? ' prio' : ''}"${drag ? ` draggable="true" data-drag="${esc(c.id)}"` : ''}${tip}>
+          <button type="button" class="pk-main" data-action="open" data-id="${esc(c.id)}"><span class="pk-rf">${esc(c.id)}</span><span class="pk-lab">${esc(lab)}${prioIc(c)}</span><span class="pk-w">${esc(fmtDur(w))}</span></button>
           ${needsRamp(c) ? `<button type="button" class="pk-go" data-action="pick" data-id="${esc(c.id)}">Rámpa</button>` : ''}
           <button type="button" class="pk-mv" data-action="site-set" data-id="${esc(c.id)}" data-v="${other}" aria-label="${esc(`${c.id} áthelyezése: ${other}`)}" title="Áthelyezés: ${other}">${other}</button>
         </div>
@@ -2356,7 +2360,7 @@
       doors += `<i class="door${c ? ' on' : off ? ' off' : ''}">${off ? '' : '<b class="shut"></b>'}</i>`;
       bays += off ? `<div class="bay off" data-r="${r}" title="${esc(offT)}"><span class="bay-n">${r}</span>${RAMP_OFF[r] === 'Joloda' ? '<span class="bay-j">J</span>' : ''}</div>`
         : `<div class="bay${c ? '' : ' free'}" data-r="${r}"><span class="bay-n">${r}</span>${c ? roofHtml(c) : ''}</div>`;
-      tiles += c ? `<button type="button" class="tile busy phk-${phaseKey(c)}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${r}. rámpa: ${c.id}, ${PHASE[phaseKey(c)][0]}`)}"><span class="tile-n">${r}</span><small>${esc(c.id.slice(0, 4))}</small></button>`
+      tiles += c ? `<button type="button" class="tile busy phk-${phaseKey(c)}${isPrio(c) ? ' prio' : ''}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${r}. rámpa: ${c.id}, ${PHASE[phaseKey(c)][0]}`)}"><span class="tile-n">${r}</span><small>${esc(c.id.slice(0, 4))}</small></button>`
         : off ? `<span class="tile off" title="${esc(offT)}"><span class="tile-n">${r}</span>${RAMP_OFF[r] === 'Joloda' ? '<small>J</small>' : ''}</span>`
         : `<span class="tile"><span class="tile-n">${r}</span></span>`;
     }
@@ -2395,7 +2399,7 @@
       const c = dock[i];
       doors += `<i class="door${c ? ' on' : ''}"><b class="shut"></b></i>`;
       bays += `<div class="bay${c ? '' : ' free mg3-free'}" data-r="${i + 1}"><span class="bay-n" aria-hidden="true">${c ? '' : '·'}</span>${c ? roofHtml(c) : ''}</div>`;
-      if (c) tiles += `<button type="button" class="tile busy phk-${phaseKey(c)}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`MG3 kirakodó: ${c.id}, ${PHASE[phaseKey(c)][0]}`)}"><span class="tile-n">${esc(c.id.slice(0, 4))}</span><small>${esc(PHASE[phaseKey(c)][0])}</small></button>`;
+      if (c) tiles += `<button type="button" class="tile busy phk-${phaseKey(c)}${isPrio(c) ? ' prio' : ''}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`MG3 kirakodó: ${c.id}, ${PHASE[phaseKey(c)][0]}`)}"><span class="tile-n">${esc(c.id.slice(0, 4))}</span><small>${esc(PHASE[phaseKey(c)][0])}</small></button>`;
     }
     const parkHtml = drag => (park.length ? park.map(c => slotHtml(c, drag)).join('') : '<p class="park-empty">Az MG3 parkolója üres.</p>');
     return `
@@ -2509,14 +2513,17 @@
     oldBody.classList.add('yd-leaving');
     Object.assign(oldBody.style, { position: 'absolute', left: `${r0.left - y0.left}px`, top: `${r0.top - y0.top}px`, width: `${r0.width}px`, pointerEvents: 'none' });
     yard.style.position = 'relative';
+    // A sáv alja vág: a magasabb régi udvar (és a szélre csúszó új) nem lóghat ki a sötét sávból a fehér rész fölé.
+    yard.classList.add('yd-swap');
     oldBody.before(nu);
     if (sum) sum.animate([{ opacity: 0, transform: `translateX(${dir * 10}px)` }, { opacity: 1, transform: 'none' }], { duration: 340, easing: 'cubic-bezier(.22,1,.36,1)' });
     const h1 = nu.offsetHeight;
-    oldBody.animate([{ opacity: 1, transform: 'none', filter: 'blur(0)' }, { opacity: 0, transform: `translateX(${-dir * 70}px)`, filter: 'blur(2px)' }], { duration: 300, easing: 'cubic-bezier(.55,0,.75,.2)', fill: 'forwards' });
+    oldBody.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateX(${-dir * 70}px)` }], { duration: 300, easing: 'cubic-bezier(.55,0,.75,.2)', fill: 'forwards' });
     nu.animate([{ opacity: 0, transform: `translateX(${dir * 70}px)` }, { opacity: 1, transform: 'none' }], { duration: 520, delay: 140, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' });
     if (h0 !== h1) nu.animate([{ height: `${h0}px`, overflow: 'hidden' }, { height: `${h1}px`, overflow: 'hidden' }], { duration: 460, easing: 'cubic-bezier(.22,1,.36,1)' });
     yardEnter(nu, 260);
-    siteBusy = setTimeout(() => { oldBody.remove(); yard.style.position = ''; }, 320);
+    // A régi udvar a magasságváltás végéig marad (láthatatlanul), a vágás is addig tart.
+    siteBusy = setTimeout(() => { oldBody.remove(); yard.style.position = ''; yard.classList.remove('yd-swap'); }, h0 !== h1 ? 500 : 320);
   }
 
   // Élő változásnál (rámpakiosztás, raktárváltás, levél) az udvar mozog: a parkolóból a konténer átcsúszik a rámpára,
