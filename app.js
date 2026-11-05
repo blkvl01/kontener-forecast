@@ -68,7 +68,7 @@
   const nowIso = () => { const d = new Date(); return `${iso(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
 
   // ---------- állapot ----------
-  const S = { statsDays: 28, q: '', data: null, view: 'week', week: null, sel: null, month: null, calSel: null, drawer: null, pending: false, today: null, pdir: 0, px: null, chg: false, unit: 'ct', band: 'week', fleetOpen: false, laneMode: 'ct', statDay: null, statClosed: false };
+  const S = { statsDays: 28, q: '', data: null, view: 'week', week: null, sel: null, month: null, calSel: null, drawer: null, pending: false, today: null, pdir: 0, px: null, chg: false, unit: 'ct', band: 'week', site: 'MG1', fleetOpen: false, laneMode: 'ct', statDay: null, statClosed: false };
   try { if (localStorage.getItem('kf-unit') === 'pdd') S.unit = 'pdd'; } catch (_) { /* privát mód */ }
   const CFG = window.KF_CONFIG;
   const sb = window.supabase.createClient(CFG.url, CFG.key, {
@@ -118,7 +118,8 @@
     ramp: r.ramp || null, ramp_set: toLocal(r.ramp_set),
     note: r.note || '', updated_by: r.updated_by || '', updated_at: toLocal(r.updated_at),
     plate: r.plate || '', t1: r.t1 || '', driver: r.driver || '', phone: r.phone || '',
-    auto_dismissed: !!r.auto_dismissed
+    auto_dismissed: !!r.auto_dismissed,
+    site: r.site || ''
   });
   const normArr = r => ({ ...r, received: toLocal(r.received) });
 
@@ -1394,12 +1395,12 @@
     // A mód csak ezen az osztályon múlik; a blokkok markupja mindkét módban azonos (lásd swapUnit).
     const uCls = UP() ? ' u-pdd' : '';
     if (S.band === 'yard') {
-      const m = rampMap(), np = parkList().length, nr = Object.keys(m).length;
       return `
       <section class="yard is-yd${uCls}" aria-label="Udvar: rámpák és parkoló">
         <div class="yard-top">
           ${bandSwitch()}
-          <span class="yd-sum"><span><b>${nr}</b> / ${RAMPS} rámpa foglalt</span><span><b>${np}</b> a parkolóban</span></span>
+          ${siteSwitch()}
+          <span class="yd-sum">${siteSum()}</span>
         </div>
         ${yardBand()}
       </section>
@@ -1522,26 +1523,37 @@
   // Fizikailag az udvaron áll (parkolóban vagy rámpán), amíg nincs elengedve vagy betárolva.
   // A régi, lezáratlanul maradt tételek ne foglaljanak helyet: csak a tegnapelőttől holnapig tervezettek számítanak.
   const ON_YARD = ['request', 'approved', 'opened', 'unpack'];
-  const yardList = () => {
+  // Két raktár: MG1 (alap, a 23 rámpás sor) és MG3 (rámpaszám nélkül). A raktárt érkezéskor lehet kiválasztani.
+  const SITES = ['MG1', 'MG3'];
+  const siteOf = c => (c && c.site === 'MG3' ? 'MG3' : 'MG1');
+  const MG3_DOCK = ['approved', 'opened', 'unpack'];
+  const yardList = site => {
     const lo = addDays(S.today, -2), hi = addDays(S.today, 1);
-    return all().filter(c => c.state === 'active' && c.day >= lo && c.day <= hi && ON_YARD.includes(phaseKey(c)));
+    return all().filter(c => c.state === 'active' && c.day >= lo && c.day <= hi && ON_YARD.includes(phaseKey(c)) && (!site || siteOf(c) === site));
   };
-  // Rámpa → konténer (exceptId: ez a konténer ne számítson foglaltnak).
+  // Rámpa → konténer (exceptId: ez a konténer ne számítson foglaltnak). Rámpája csak az MG1-nek van.
   function rampMap(exceptId) {
     const m = {};
-    yardList().forEach(c => { if (c.ramp && c.id !== exceptId && !m[c.ramp]) m[c.ramp] = c; });
+    yardList('MG1').forEach(c => { if (c.ramp && c.id !== exceptId && !m[c.ramp]) m[c.ramp] = c; });
     return m;
   }
-  const onRamp = c => !!(c.ramp && c.state === 'active' && ON_YARD.includes(phaseKey(c)));
-  // Rámpát a nyitható konténer kap; ha a „nyitjuk” levél rámpa nélkül jön, akkor is (és sürgősen) kell neki.
-  const canPick = c => !!c && c.state === 'active' && ['approved', 'opened', 'unpack'].includes(phaseKey(c));
+  const onRamp = c => !!(c.ramp && c.state === 'active' && siteOf(c) === 'MG1' && ON_YARD.includes(phaseKey(c)));
+  // Rámpát az MG1-be menő nyitható konténer kap; ha a „nyitjuk” levél rámpa nélkül jön, akkor is (és sürgősen) kell neki.
+  const canPick = c => !!c && c.state === 'active' && siteOf(c) === 'MG1' && ['approved', 'opened', 'unpack'].includes(phaseKey(c));
   const needsRamp = c => canPick(c) && !c.ramp;
-  const openNoRamp = c => !!c && c.state === 'active' && !c.ramp && ['opened', 'unpack'].includes(phaseKey(c));
+  const openNoRamp = c => !!c && c.state === 'active' && siteOf(c) === 'MG1' && !c.ramp && ['opened', 'unpack'].includes(phaseKey(c));
+  // Raktár választható, amíg a konténer az udvaron van (megérkezett, de még nincs elengedve vagy betárolva).
+  const canSite = c => !!c && c.state === 'active' && ON_YARD.includes(phaseKey(c));
+  // MG3: a parkolóban a még nem nyithatók, a kirakodóban a nyithatók és a nyitás / bontás alattiak.
+  const inMg3Dock = c => siteOf(c) === 'MG3' && MG3_DOCK.includes(phaseKey(c));
   // Parkoló sorrendje: rámpa nélkül nyitott elöl, utána a nyithatók (régebbi elöl), végül a nyitásra várók.
-  function parkList() {
+  function parkList(site = 'MG1') {
+    if (site === 'MG3') return yardList('MG3').filter(c => !inMg3Dock(c)).sort((a, b) => (isPrio(b) - isPrio(a)) || (phaseSince(a) < phaseSince(b) ? -1 : 1));
     const rank = c => (openNoRamp(c) ? 0 : phaseKey(c) === 'approved' ? 1 : 2);
-    return yardList().filter(c => !c.ramp).sort((a, b) => rank(a) - rank(b) || (isPrio(b) - isPrio(a)) || (phaseSince(a) < phaseSince(b) ? -1 : 1));
+    return yardList('MG1').filter(c => !c.ramp).sort((a, b) => rank(a) - rank(b) || (isPrio(b) - isPrio(a)) || (phaseSince(a) < phaseSince(b) ? -1 : 1));
   }
+  // MG3 kirakodó sora: a nyithatóvá válás sorrendjében.
+  const mg3Dock = () => yardList('MG3').filter(inMg3Dock).sort((a, b) => ((a.stages.approved || {}).at || '') < ((b.stages.approved || {}).at || '') ? -1 : 1);
   let svgUid = 0;
 
   function fmtDur(min) {
@@ -1972,12 +1984,12 @@
   // érkezési sorrendben, végül az elengedett / betárolt (a legutóbbi elöl).
   const FLEET_N = 8;
   function fleetOrder(list) {
-    const grp = c => (onRamp(c) ? 0 : ON_YARD.includes(phaseKey(c)) ? 1 : phaseKey(c) === 'plan' ? (lateInfo(c) ? 2 : 3) : 4);
+    const grp = c => (onRamp(c) || inMg3Dock(c) ? 0 : ON_YARD.includes(phaseKey(c)) ? 1 : phaseKey(c) === 'plan' ? (lateInfo(c) ? 2 : 3) : 4);
     const prk = c => (openNoRamp(c) ? 0 : phaseKey(c) === 'approved' ? 1 : 2);
     return list.slice().sort((a, b) => {
       const ga = grp(a), gb = grp(b);
       if (ga !== gb) return ga - gb;
-      if (ga === 0) return a.ramp - b.ramp;
+      if (ga === 0) return (onRamp(a) ? a.ramp : 1000) - (onRamp(b) ? b.ramp : 1000);
       if (ga === 1) return prk(a) - prk(b) || (isPrio(b) - isPrio(a)) || (phaseSince(a) < phaseSince(b) ? -1 : 1);
       if (ga === 4) return phaseSince(a) < phaseSince(b) ? 1 : -1;
       return byArrival(a, b);
@@ -2005,7 +2017,7 @@
             <span class="cc-w"><b>${fmtDec((c.kg || 0) / 1000, 1, 1)}</b><small>t</small></span>${isPrio(c) ? `<span class="prio-tag">${IC.prio}Prioritás</span>` : ''}
             <span class="ph ph-${late ? 'late' : `${ph.grp} phk-${ph.key}`}">${esc(late ? late.label : ph.label)}</span>
           </span>
-          <span class="cc-sub">${fmtInt(c.ctns)} colli · ${c.pdd.length} PDD${onRamp(c) ? `<span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}${carryTag(c, d) ? `<span class="carry-tag" title="${esc(`Tervezve: ${DOW[dowIdx(c.day)]}, ${short(c.day)}${c.eta_time ? ` ${c.eta_time}` : ''}`)}">${esc(carryTag(c, d))}</span>` : ''}</span>
+          <span class="cc-sub">${fmtInt(c.ctns)} colli · ${c.pdd.length} PDD${onRamp(c) ? `<span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}${canSite(c) && siteOf(c) === 'MG3' ? '<span class="site-chip">MG3</span>' : ''}${carryTag(c, d) ? `<span class="carry-tag" title="${esc(`Tervezve: ${DOW[dowIdx(c.day)]}, ${short(c.day)}${c.eta_time ? ` ${c.eta_time}` : ''}`)}">${esc(carryTag(c, d))}</span>` : ''}</span>
           <span class="cc-at ${at.k}"><small>${at.t}</small><b>${esc(at.v)}</b></span>
         </button>${go}
         </div>`;
@@ -2171,7 +2183,7 @@
       else if (c.opened_implied && (appr || req) < end) add('unpack', appr || req, end);
       const tail = endTs ? (st.stored && st.stored.at === endTs ? `betárolva ${hm(endTs)}` : `elengedve ${hm(endTs)}`)
         : openNoRamp(c) ? 'nincs rámpa' : live ? PHASE[k][0].toLowerCase() : '';
-      const rmp = c.ramp && (onRamp(c) || endTs) ? `R${c.ramp}` : '';
+      const rmp = siteOf(c) === 'MG3' ? 'MG3' : c.ramp && (onRamp(c) || endTs) ? `R${c.ramp}` : '';
       return { c, k, segs, live, tail: [rmp, tail].filter(Boolean).join(' · ') };
     });
     const etas = list.filter(c => phaseKey(c) === 'plan' && c.eta_time);
@@ -2218,7 +2230,7 @@
     }
     if (!perCt && parks.length) {
       rows += '<div class="ln-grp">Parkoló</div>';
-      parkList().filter(c => parks.includes(c)).forEach(c => {
+      [...parkList('MG1'), ...parkList('MG3'), ...mg3Dock()].filter(c => parks.includes(c)).forEach(c => {
         const st = c.stages || {};
         const req = (st.request && st.request.at) || c.arrived_at;
         const segs = [];
@@ -2226,7 +2238,7 @@
         if (st.approved) segs.push({ key: 'approved', a: st.approved.at, b: openedAt(c) || now, wait: true });
         if (openedAt(c)) segs.push({ key: phaseKey(c), a: openedAt(c), b: now });
         const ok = segs.filter(g => g.b > g.a);
-        rows += `<div class="ln-row"><span class="ln-lb">${esc(c.id)}</span><div class="ln-trk">${ok.length ? bar(c.id, ok, `live${openNoRamp(c) ? ' flag' : ''}`, openNoRamp(c) ? 'nincs rámpa' : '') : ''}</div></div>`;
+        rows += `<div class="ln-row"><span class="ln-lb">${esc(c.id)}</span><div class="ln-trk">${ok.length ? bar(c.id, ok, `live${openNoRamp(c) ? ' flag' : ''}`, openNoRamp(c) ? 'nincs rámpa' : siteOf(c) === 'MG3' ? 'MG3' : '') : ''}</div></div>`;
       });
     }
     if (!perCt && etas.length) {
@@ -2260,7 +2272,8 @@
   const yardN = m => Math.max(RAMP_SLOTS, ...Object.keys(m).map(Number));
   // Foglalt: széles; szabad: keskeny; nem használható (szürke a táblán): még keskenyebb fal.
   const yardCols = (m, n) => Array.from({ length: n }, (_, i) => (m[i + 1] ? 'minmax(0,3.4fr)' : rampOk(i + 1) ? 'minmax(0,1fr)' : 'minmax(0,.62fr)')).join(' ');
-  const yardCount = () => { const m = rampMap(); return Object.keys(m).length + parkList().length; };
+  const yardCount = () => yardList().length;
+  const siteCount = site => yardList(site).length;
 
   function bandSwitch() {
     const n = yardCount();
@@ -2269,43 +2282,45 @@
         <button type="button" class="bs-opt" data-action="band" data-v="yard" aria-pressed="${S.band === 'yard'}">Udvar${n ? `<b class="bs-n">${n}</b>` : ''}</button>
       </div>`;
   }
+  // Raktárváltó az udvar fölött; a kijelölés csúszik, a gombokon az ott álló konténerek száma.
+  function siteSwitch() {
+    return `<div class="site-sw" role="group" aria-label="Raktár" data-v="${S.site}">
+        <i class="site-ind" aria-hidden="true"></i>
+        ${SITES.map(v => { const n = siteCount(v); return `<button type="button" class="site-opt" data-action="site" data-v="${v}" aria-pressed="${S.site === v}">${v}<b class="site-n${n ? '' : ' zero'}">${n}</b></button>`; }).join('')}
+      </div>`;
+  }
+  function siteSum() {
+    if (S.site === 'MG3') {
+      const d = mg3Dock().length, p = parkList('MG3').length;
+      return `<span><b>${d}</b> a kirakodóban</span><span><b>${p}</b> a parkolóban</span>`;
+    }
+    return `<span><b>${Object.keys(rampMap()).length}</b> / ${RAMPS} rámpa foglalt</span><span><b>${parkList('MG1').length}</b> a parkolóban</span>`;
+  }
 
   function roofHtml(c) {
     const k = phaseKey(c);
-    return `<button type="button" class="roof phk-${k}${isPrio(c) ? ' prio' : ''}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${c.id}, ${c.ramp}. rámpa, ${PHASE[k][0]}`)}">
+    const where = siteOf(c) === 'MG3' ? 'MG3 kirakodó' : `${c.ramp}. rámpa`;
+    return `<button type="button" class="roof phk-${k}${isPrio(c) ? ' prio' : ''}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${c.id}, ${where}, ${PHASE[k][0]}`)}">
         <span class="rf-id">${esc(c.id)}</span>
         <span class="rf-plate"><b>${esc(PHASE[k][0])}</b><span>${esc(fmtDur(waitMin(c)))}</span></span>
       </button>`;
   }
+  // Parkolóhely: a konténer, a fázisa, a várakozás; az MG1-ben rámpagomb (ha nyitható), és áthelyezés a másik raktárba.
   function slotHtml(c, drag) {
-    const k = phaseKey(c), w = waitMin(c), flag = openNoRamp(c);
+    const k = phaseKey(c), w = waitMin(c), flag = openNoRamp(c), site = siteOf(c);
+    const other = site === 'MG1' ? 'MG3' : 'MG1';
     const lab = flag ? `${PHASE[k][0]}, nincs rámpa` : PHASE[k][0];
-    const tip = needsRamp(c) ? '' : ' title="Rámpát a nyitható levél után lehet választani"';
+    const tip = site === 'MG1' && !needsRamp(c) ? ' title="Rámpát a nyitható levél után lehet választani"' : '';
     return `<div class="slot" data-slot="${esc(c.id)}">
-        <div class="pk phk-${k}${w > 60 ? ' long' : ''}${flag ? ' flag' : ''}"${drag && needsRamp(c) ? ` draggable="true" data-drag="${esc(c.id)}"` : ''}${tip}>
+        <div class="pk phk-${k}${w > 60 ? ' long' : ''}${flag ? ' flag' : ''}"${drag ? ` draggable="true" data-drag="${esc(c.id)}"` : ''}${tip}>
           <button type="button" class="pk-main" data-action="open" data-id="${esc(c.id)}"><span class="pk-rf">${esc(c.id)}</span><span class="pk-lab">${esc(lab)}</span><span class="pk-w">${esc(fmtDur(w))}</span></button>
           ${needsRamp(c) ? `<button type="button" class="pk-go" data-action="pick" data-id="${esc(c.id)}">Rámpa</button>` : ''}
+          <button type="button" class="pk-mv" data-action="site-set" data-id="${esc(c.id)}" data-v="${other}" aria-label="${esc(`${c.id} áthelyezése: ${other}`)}" title="Áthelyezés: ${other}">${other}</button>
         </div>
       </div>`;
   }
 
-  function yardBand() {
-    const m = rampMap();
-    const n = yardN(m);
-    const park = parkList();
-    const cols = yardCols(m, n);
-    let doors = '', bays = '', tiles = '';
-    for (let r = 1; r <= n; r++) {
-      const c = m[r];
-      const off = !c && !rampOk(r);
-      const offT = off ? `${r}. hely: ${RAMP_OFF[r] || 'nincs ilyen rámpa'}, ide nem tud kamion állni` : '';
-      doors += `<i class="door${c ? ' on' : off ? ' off' : ''}"></i>`;
-      bays += off ? `<div class="bay off" data-r="${r}" title="${esc(offT)}"><span class="bay-n">${r}</span>${RAMP_OFF[r] === 'Joloda' ? '<span class="bay-j">J</span>' : ''}</div>`
-        : `<div class="bay${c ? '' : ' free'}" data-r="${r}"><span class="bay-n">${r}</span>${c ? roofHtml(c) : ''}</div>`;
-      tiles += c ? `<button type="button" class="tile busy phk-${phaseKey(c)}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${r}. rámpa: ${c.id}, ${PHASE[phaseKey(c)][0]}`)}"><span class="tile-n">${r}</span><small>${esc(c.id.slice(0, 4))}</small></button>`
-        : off ? `<span class="tile off" title="${esc(offT)}"><span class="tile-n">${r}</span>${RAMP_OFF[r] === 'Joloda' ? '<small>J</small>' : ''}</span>`
-        : `<span class="tile"><span class="tile-n">${r}</span></span>`;
-    }
+  function gateHtml() {
     const today = onDay(S.today).filter(c => phaseKey(c) === 'plan' && c.eta_time).sort((a, b) => (a.eta_time < b.eta_time ? -1 : 1));
     const gate = today.slice(0, 3).map(c => {
       const d = minutesBetween(nowIso(), `${S.today}T${c.eta_time}:00`);
@@ -2313,9 +2328,34 @@
       return `<button type="button" class="gate-r${late ? ' late' : ''}" data-action="open" data-id="${esc(c.id)}"><span class="gt-t">${esc(c.eta_time)}</span><span class="gt-id">${esc(c.id)}</span><span class="gt-r">${d < 0 ? `+${esc(fmtDur(-d))}` : esc(fmtDur(d))}</span></button>`;
     }).join('');
     const rest = today.length > 3 ? `<span class="gate-more">+${today.length - 3} ETA-val</span>` : '';
+    return `<div class="gate"><h5>Érkezik</h5>${gate || '<span class="gate-none">Ma már nincs ETA-val érkező.</span>'}${rest}</div>`;
+  }
+
+  function yardBand() {
+    return S.site === 'MG3' ? mg3Band() : mg1Band();
+  }
+
+  function mg1Band() {
+    const m = rampMap();
+    const n = yardN(m);
+    const park = parkList('MG1');
+    const cols = yardCols(m, n);
+    let doors = '', bays = '', tiles = '';
+    for (let r = 1; r <= n; r++) {
+      const c = m[r];
+      const off = !c && !rampOk(r);
+      const offT = off ? `${r}. hely: ${RAMP_OFF[r] || 'nincs ilyen rámpa'}, ide nem tud kamion állni` : '';
+      doors += `<i class="door${c ? ' on' : off ? ' off' : ''}">${off ? '' : '<b class="shut"></b>'}</i>`;
+      bays += off ? `<div class="bay off" data-r="${r}" title="${esc(offT)}"><span class="bay-n">${r}</span>${RAMP_OFF[r] === 'Joloda' ? '<span class="bay-j">J</span>' : ''}</div>`
+        : `<div class="bay${c ? '' : ' free'}" data-r="${r}"><span class="bay-n">${r}</span>${c ? roofHtml(c) : ''}</div>`;
+      tiles += c ? `<button type="button" class="tile busy phk-${phaseKey(c)}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${r}. rámpa: ${c.id}, ${PHASE[phaseKey(c)][0]}`)}"><span class="tile-n">${r}</span><small>${esc(c.id.slice(0, 4))}</small></button>`
+        : off ? `<span class="tile off" title="${esc(offT)}"><span class="tile-n">${r}</span>${RAMP_OFF[r] === 'Joloda' ? '<small>J</small>' : ''}</span>`
+        : `<span class="tile"><span class="tile-n">${r}</span></span>`;
+    }
     const parkHtml = drag => (park.length ? park.map(c => slotHtml(c, drag)).join('') : '<p class="park-empty">A parkoló üres.</p>');
     return `
-      <div class="band-body yd">
+      <div class="band-body yd" data-site="MG1">
+        <div class="yd-wall"><b>MG1</b><span>${RAMP_SLOTS} rámpa, ebből ${RAMPS} használható</span></div>
         <div class="yd-wide">
           <div class="ramps">
             <div class="doors" style="grid-template-columns:${cols}" data-cols="${cols}">${doors}</div>
@@ -2324,7 +2364,7 @@
           <div class="park">
             <h4><span>Parkoló</span><b>${park.length}</b></h4>
             <div class="slots">${parkHtml(true)}</div>
-            <div class="gate"><h5>Érkezik</h5>${gate || '<span class="gate-none">Ma már nincs ETA-val érkező.</span>'}${rest}</div>
+            ${gateHtml()}
           </div>
         </div>
         <div class="yd-narrow">
@@ -2332,6 +2372,79 @@
           <div class="slots">${parkHtml(false)}</div>
         </div>
       </div>`;
+  }
+
+  // MG3: a rámpák száma még nem ismert, ezért számozatlan kirakodó sor: annyi kapu, ahány konténer áll ott,
+  // legalább hat (a szabad kapuk keskenyek). Mellette a saját parkolója a még nem nyithatóknak.
+  const MG3_MIN = 8;
+  function mg3Band() {
+    const dock = mg3Dock();
+    const park = parkList('MG3');
+    const n = Math.max(MG3_MIN, dock.length + 1);
+    const cols = Array.from({ length: n }, (_, i) => (dock[i] ? 'minmax(0,2.4fr)' : 'minmax(0,1fr)')).join(' ');
+    let doors = '', bays = '', tiles = '';
+    for (let i = 0; i < n; i++) {
+      const c = dock[i];
+      doors += `<i class="door${c ? ' on' : ''}"><b class="shut"></b></i>`;
+      bays += `<div class="bay${c ? '' : ' free mg3-free'}" data-r="${i + 1}"><span class="bay-n" aria-hidden="true">${c ? '' : '·'}</span>${c ? roofHtml(c) : ''}</div>`;
+      if (c) tiles += `<button type="button" class="tile busy phk-${phaseKey(c)}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`MG3 kirakodó: ${c.id}, ${PHASE[phaseKey(c)][0]}`)}"><span class="tile-n">${esc(c.id.slice(0, 4))}</span><small>${esc(PHASE[phaseKey(c)][0])}</small></button>`;
+    }
+    const parkHtml = drag => (park.length ? park.map(c => slotHtml(c, drag)).join('') : '<p class="park-empty">Az MG3 parkolója üres.</p>');
+    return `
+      <div class="band-body yd yd-mg3" data-site="MG3">
+        <div class="yd-wall"><b>MG3</b><span>kirakodó, rámpaszám nélkül</span></div>
+        <div class="yd-wide">
+          <div class="ramps">
+            <div class="doors" style="grid-template-columns:${cols}" data-cols="${cols}">${doors}</div>
+            <div class="bays" style="grid-template-columns:${cols}" data-cols="${cols}">${bays}</div>
+            ${dock.length ? '' : '<p class="mg3-empty">Nincs nyitható vagy nyitás alatt álló konténer az MG3-ban.</p>'}
+          </div>
+          <div class="park">
+            <h4><span>Parkoló</span><b>${park.length}</b></h4>
+            <div class="slots">${parkHtml(true)}</div>
+            ${gateHtml()}
+          </div>
+        </div>
+        <div class="yd-narrow">
+          <div class="tiles mg3-tiles">${tiles || '<p class="mg3-empty">Nincs konténer a kirakodóban.</p>'}</div>
+          <div class="slots">${parkHtml(false)}</div>
+        </div>
+      </div>`;
+  }
+
+  // Késleltetett nyitás: a kapuk sorban felhúzódnak, a foglalt kapunál a redőny után a konténer is beáll,
+  // a parkolóhelyek jobbról sorban beúsznak, végül az érkezők listája. Belépéskor és raktárváltáskor fut.
+  function yardEnter(body, d0 = 0) {
+    if (!body || !canFly()) return;
+    const ease = 'cubic-bezier(.22,1,.36,1)';
+    const wide = body.querySelector('.yd-wide');
+    const wall = body.querySelector('.yd-wall');
+    if (wall) wall.animate([{ opacity: 0, transform: 'translateY(-6px)' }, { opacity: 1, transform: 'none' }], { duration: 360, delay: d0, easing: ease, fill: 'backwards' });
+    if (wide && wide.offsetParent) {
+      const doors = [...wide.querySelectorAll('.door')];
+      const bays = [...wide.querySelectorAll('.bay')];
+      doors.forEach((dr, i) => {
+        const sh = dr.querySelector('.shut');
+        if (!sh) return;
+        const t = d0 + 90 + i * 32;
+        if (dr.classList.contains('on')) {
+          // foglalt kapu: zárva indul, felhúzódik, utána áll be a konténer
+          sh.animate([{ transform: 'scaleY(1)' }, { transform: 'scaleY(1)', offset: 0.15 }, { transform: 'scaleY(0)' }], { duration: 560, delay: t, easing: 'cubic-bezier(.6,0,.2,1)', fill: 'backwards' });
+          const roof = bays[i] && bays[i].querySelector('.roof');
+          if (roof) roof.animate([{ opacity: 0, transform: 'translateY(-26px) scaleY(.92)' }, { opacity: 1, transform: 'none' }], { duration: 560, delay: t + 380, easing: ease, fill: 'backwards' });
+        } else {
+          // szabad kapu: a redőny leereszkedik
+          sh.animate([{ transform: 'scaleY(0)' }, { transform: 'scaleY(1)' }], { duration: 340, delay: t, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'backwards' });
+        }
+        bays[i] && bays[i].querySelector('.bay-n')?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 300, delay: t, fill: 'backwards' });
+      });
+      wide.querySelectorAll('.park h4, .slot, .park-empty').forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateX(26px)' }, { opacity: 1, transform: 'none' }], { duration: 460, delay: d0 + 160 + i * 70, easing: ease, fill: 'backwards' }));
+      wide.querySelectorAll('.gate h5, .gate-r, .gate-none, .gate-more').forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 360, delay: d0 + 420 + i * 60, easing: ease, fill: 'backwards' }));
+      wide.querySelectorAll('.mg3-empty').forEach(el => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 400, delay: d0 + 300, fill: 'backwards' }));
+    } else {
+      body.querySelectorAll('.yd-narrow .tile, .yd-narrow .mg3-empty').forEach((el, i) => el.animate([{ opacity: 0, transform: 'scale(.86)' }, { opacity: 1, transform: 'none' }], { duration: 360, delay: d0 + 60 + i * 22, easing: ease, fill: 'backwards' }));
+      body.querySelectorAll('.yd-narrow .slot, .yd-narrow .park-empty').forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateX(22px)' }, { opacity: 1, transform: 'none' }], { duration: 420, delay: d0 + 200 + i * 70, easing: ease, fill: 'backwards' }));
+    }
   }
 
   // A felső sáv váltása: csak a sáv cserélődik, a magasság átúszik, a tartalom beúszik.
@@ -2353,16 +2466,58 @@
     nu.animate([{ height: `${h0}px`, overflow: 'hidden' }, { height: `${h1}px`, overflow: 'hidden' }], { duration: 440, easing: 'cubic-bezier(.22,1,.36,1)' });
     const body = nu.querySelector('.band-body, .yard-scroll');
     if (body) body.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 380, delay: 60, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' });
-    if (v === 'yard') nu.querySelectorAll('.yd-wide .roof').forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateY(-14px)' }, { opacity: 1, transform: 'none' }], { duration: 460, delay: 120 + i * 60, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' }));
+    if (v === 'yard') yardEnter(nu.querySelector('.band-body'), 120);
+    const ss = nu.querySelector('.site-sw');
+    if (ss) ss.animate([{ opacity: 0, transform: 'translateX(-8px)' }, { opacity: 1, transform: 'none' }], { duration: 380, delay: 140, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' });
   }
 
-  // Élő változásnál (rámpakiosztás, levél) az udvar mozog: a parkolóból a konténer átcsúszik a rámpára,
-  // a felszabaduló rámpáról kiúszik, a rámpasor oszlopai átrendeződnek, az új érkező beúszik a parkolóba.
-  // A teljes nézet újraépül, ezért előtte pillanatkép készül a helyekről.
+  // Raktárváltás: a régi udvar a váltás irányába kicsúszik, az új a másik oldalról beúszik, a sáv magassága átúszik,
+  // utána a kapuk sorban kinyílnak (késleltetett nyitás). A kijelölés a váltón csúszik, a számláló frissül.
+  let siteBusy = 0;
+  function switchSite(v) {
+    if (!SITES.includes(v) || S.site === v) return;
+    const dir = SITES.indexOf(v) > SITES.indexOf(S.site) ? 1 : -1;
+    S.site = v;
+    const yard = S.view === 'week' && $('#view .yard.is-yd');
+    const oldBody = yard && yard.querySelector('.band-body');
+    if (!oldBody) { render(); return; }
+    const tpl = document.createElement('template');
+    tpl.innerHTML = yardBand().trim();
+    const nu = tpl.content.firstElementChild;
+    // a váltó és az összesítő helyben frissül: a kijelölés CSS-átmenettel csúszik
+    const sw = yard.querySelector('.site-sw');
+    if (sw) {
+      sw.dataset.v = v;
+      sw.querySelectorAll('.site-opt').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+    }
+    const sum = yard.querySelector('.yd-sum');
+    if (sum) sum.innerHTML = siteSum();
+    if (!canFly()) { oldBody.replaceWith(nu); return; }
+    clearTimeout(siteBusy);
+    yard.querySelectorAll('.yd-leaving').forEach(x => x.remove());
+    const r0 = oldBody.getBoundingClientRect(), y0 = yard.getBoundingClientRect();
+    const h0 = oldBody.offsetHeight;
+    // a régi udvar a helyén marad, amíg kicsúszik (abszolút, hogy az új már a végső helyén mérhető legyen)
+    oldBody.classList.add('yd-leaving');
+    Object.assign(oldBody.style, { position: 'absolute', left: `${r0.left - y0.left}px`, top: `${r0.top - y0.top}px`, width: `${r0.width}px`, pointerEvents: 'none' });
+    yard.style.position = 'relative';
+    oldBody.before(nu);
+    if (sum) sum.animate([{ opacity: 0, transform: `translateX(${dir * 10}px)` }, { opacity: 1, transform: 'none' }], { duration: 340, easing: 'cubic-bezier(.22,1,.36,1)' });
+    const h1 = nu.offsetHeight;
+    oldBody.animate([{ opacity: 1, transform: 'none', filter: 'blur(0)' }, { opacity: 0, transform: `translateX(${-dir * 70}px)`, filter: 'blur(2px)' }], { duration: 300, easing: 'cubic-bezier(.55,0,.75,.2)', fill: 'forwards' });
+    nu.animate([{ opacity: 0, transform: `translateX(${dir * 70}px)` }, { opacity: 1, transform: 'none' }], { duration: 520, delay: 140, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' });
+    if (h0 !== h1) nu.animate([{ height: `${h0}px`, overflow: 'hidden' }, { height: `${h1}px`, overflow: 'hidden' }], { duration: 460, easing: 'cubic-bezier(.22,1,.36,1)' });
+    yardEnter(nu, 260);
+    siteBusy = setTimeout(() => { oldBody.remove(); yard.style.position = ''; }, 320);
+  }
+
+  // Élő változásnál (rámpakiosztás, raktárváltás, levél) az udvar mozog: a parkolóból a konténer átcsúszik a rámpára,
+  // a felszabaduló rámpáról kiúszik, a másik raktárba küldött konténer a raktárváltó gombjába repül, a rámpasor
+  // oszlopai átrendeződnek, az új érkező beúszik a parkolóba. A teljes nézet újraépül, ezért előtte pillanatkép készül.
   function yardSnap() {
     const y = $('#view .yd-wide');
     if (!y || !y.offsetParent) return null;
-    const snap = { cols: y.querySelector('.bays').style.gridTemplateColumns, roofs: {}, park: {} };
+    const snap = { site: S.site, cols: y.querySelector('.bays').style.gridTemplateColumns, roofs: {}, park: {} };
     y.querySelectorAll('.roof[data-id]').forEach(el => { snap.roofs[el.dataset.id] = { r: el.getBoundingClientRect(), html: el.outerHTML, bay: el.closest('.bay').dataset.r }; });
     // A parkolóból induló másolat felirat nélküli tető (vízszintesből függőlegesbe nyúlik, a szöveg torzulna).
     y.querySelectorAll('.slot[data-slot]').forEach(el => {
@@ -2381,7 +2536,7 @@
   }
   function yardAnim(snap) {
     const y = $('#view .yd-wide');
-    if (!snap || !y || !y.offsetParent || !canFly()) return;
+    if (!snap || snap.site !== S.site || !y || !y.offsetParent || !canFly()) return;
     const bays = y.querySelector('.bays'), doors = y.querySelector('.doors');
     const target = bays.dataset.cols;
     const moved = [];
@@ -2390,9 +2545,12 @@
       if (was && was.bay === el.closest('.bay').dataset.r) return;
       moved.push({ el, from: was ? was.r : snap.park[id] && snap.park[id].r, html: was ? was.html : snap.park[id] && snap.park[id].html, roof: !!was });
     });
+    const here = id => y.querySelector(`.roof[data-id="${CSS.escape(id)}"], .slot[data-slot="${CSS.escape(id)}"]`);
+    const away = id => { const c = S.data.containers[id]; return c && canSite(c) && siteOf(c) !== S.site ? siteOf(c) : ''; };
     const leaving = Object.entries(snap.roofs).filter(([id]) => !y.querySelector(`.roof[data-id="${CSS.escape(id)}"]`));
+    const sent = Object.entries(snap.park).filter(([id]) => !here(id) && away(id));
     const fresh = [...y.querySelectorAll('.slot[data-slot]')].filter(el => !snap.park[el.dataset.slot] && !snap.roofs[el.dataset.slot]);
-    if (!moved.length && !leaving.length && !fresh.length && snap.cols === target) return;
+    if (!moved.length && !leaving.length && !fresh.length && !sent.length && snap.cols === target) return;
     // A célhelyek a végső oszlopszélességgel mérve; utána az oszlopok a régi szélességről úsznak át.
     const ends = moved.map(x => x.el.getBoundingClientRect());
     if (snap.cols && snap.cols !== target) {
@@ -2402,9 +2560,13 @@
       bays.classList.add('anim'); doors.classList.add('anim');
       requestAnimationFrame(() => { bays.style.gridTemplateColumns = target; doors.style.gridTemplateColumns = target; });
     }
+    const allBays = [...bays.children], allDoors = [...doors.children];
     moved.forEach((x, i) => {
       const to = ends[i];
-      if (!x.from) { x.el.animate([{ opacity: 0, transform: 'translateY(-16px)' }, { opacity: 1, transform: 'none' }], { duration: 480, delay: 120, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' }); return; }
+      // a konténer előtt a kapu redőnye felhúzódik
+      const sh = allDoors[allBays.indexOf(x.el.closest('.bay'))]?.querySelector('.shut');
+      if (sh) sh.animate([{ transform: 'scaleY(1)' }, { transform: 'scaleY(0)' }], { duration: 420, easing: 'cubic-bezier(.6,0,.2,1)', fill: 'backwards' });
+      if (!x.from) { x.el.animate([{ opacity: 0, transform: 'translateY(-16px)' }, { opacity: 1, transform: 'none' }], { duration: 480, delay: 260, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' }); return; }
       // A parkolóból (vagy másik rámpáról) induló másolat a rámpa helyére repül, közben a valódi tető előtűnik.
       const g = ghost(x.html, x.from, x.roof ? 'g-roof' : 'g-rf');
       const sx = to.width / x.from.width, sy = to.height / x.from.height;
@@ -2415,12 +2577,63 @@
       ], { duration: 640, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished.finally(() => g.remove());
       x.el.animate([{ opacity: 0 }, { opacity: 0, offset: 0.6 }, { opacity: 1 }], { duration: 700, easing: 'ease-out' });
     });
-    leaving.forEach(([, w]) => {
+    // A rámpáról vagy a parkolóból a másik raktárba küldött konténer a raktárváltó gombjába repül, ott a szám megpattan.
+    const flyToSite = (w, site) => {
+      const btn = $(`#view .site-opt[data-v="${site}"]`);
+      const t = btn && btn.getBoundingClientRect();
+      if (!t || !t.width) return false;
+      const g = ghost(w.html, w.r, 'g-roof');
+      g.animate([
+        { transform: 'none', opacity: 1 },
+        { transform: `translate(${(t.left + t.width / 2 - w.r.left - w.r.width / 2) * 0.4}px, -40px) scale(.8)`, opacity: 1, offset: 0.4 },
+        { transform: `translate(${t.left + t.width / 2 - w.r.left - w.r.width / 2}px, ${t.top + t.height / 2 - w.r.top - w.r.height / 2}px) scale(.12)`, opacity: 0.1 }
+      ], { duration: 720, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).finished.finally(() => g.remove());
+      const n = btn.querySelector('.site-n');
+      if (n) setTimeout(() => n.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.5)' }, { transform: 'scale(1)' }], { duration: 420, easing: 'cubic-bezier(.3,1.6,.5,1)' }), 640);
+      return true;
+    };
+    leaving.forEach(([id, w]) => {
+      const site = away(id);
+      if (site && flyToSite(w, site)) return;
       const g = ghost(w.html, w.r, 'g-roof');
       g.animate([{ transform: 'none', opacity: 1 }, { transform: 'translateY(-26px)', opacity: 0 }], { duration: 420, easing: 'cubic-bezier(.55,0,.75,.2)', fill: 'forwards' }).finished.finally(() => g.remove());
     });
+    sent.forEach(([id, w]) => flyToSite(w, away(id)));
     fresh.forEach((el, i) => el.animate([{ opacity: 0, transform: 'translateX(28px)' }, { opacity: 1, transform: 'none' }], { duration: 460, delay: i * 60, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'backwards' }));
     setTimeout(() => { bays.classList.remove('anim'); doors.classList.remove('anim'); }, 700);
+  }
+
+  // Raktár mentése visszavonhatóan (MG1 = üres). Az MG3-ba küldött konténer elveszti az MG1-es rámpáját.
+  // Ha az adatbázisban még nincs „site” oszlop, erről szól (a migráció a supabase/migrations mappában van).
+  async function setSite(id, v) {
+    const c = S.data.containers[id];
+    if (!c || !SITES.includes(v) || siteOf(c) === v) return false;
+    const man = MAN[id] || {};
+    const prev = { site: man.site || null, ramp: man.ramp || null, ramp_set: man.ramp_set ? new Date(man.ramp_set).toISOString() : null };
+    const row = { container: id, site: v === 'MG3' ? 'MG3' : null };
+    if (v === 'MG3' && c.ramp) Object.assign(row, { ramp: null, ramp_set: null });
+    const { data, error } = await sb.from('manual').upsert(row, { onConflict: 'container' }).select().single();
+    if (error || !data) {
+      console.error(error);
+      if (error && /site/i.test(`${error.message || ''} ${error.details || ''}`)) toast('A raktár mentéséhez frissíteni kell az adatbázist', { sub: 'Supabase SQL Editorban: supabase/migrations/20261105120000_manual_site.sql', warn: true, ms: 14000 });
+      else toast('A mentés nem sikerült');
+      return false;
+    }
+    MAN[data.container] = normMan(data);
+    rebuild();
+    render();
+    toast(`${id}: ${v}`, {
+      sub: v === 'MG3' ? (MG3_DOCK.includes(phaseKey(c)) ? 'Az MG3 kirakodójába került.' : 'Az MG3 parkolójába került.') + (row.ramp === null ? ` A ${c.ramp}. rámpa felszabadult.` : '') : 'Az MG1 parkolójába került.',
+      undo: async () => {
+        const { data: d2, error: e2 } = await sb.from('manual').upsert({ container: id, ...prev }, { onConflict: 'container' }).select().single();
+        if (e2 || !d2) { toast('A visszavonás nem sikerült'); return false; }
+        MAN[d2.container] = normMan(d2);
+        rebuild();
+        render();
+        return true;
+      }
+    });
+    return true;
   }
 
   // ---------- rámpaválasztó ----------
@@ -2502,30 +2715,42 @@
     e.dataTransfer.setData('text/plain', DRAG);
     e.dataTransfer.effectAllowed = 'move';
     const y = el.closest('.yd');
-    if (y) y.classList.add('dragging');
+    if (y) y.classList.add('dragging', needsRamp(S.data.containers[DRAG]) ? 'can-ramp' : 'no-ramp');
+    document.querySelectorAll('#view .site-sw').forEach(x => x.classList.add('dragging'));
   });
   document.addEventListener('dragend', () => {
     DRAG = null;
-    document.querySelectorAll('.yd.dragging').forEach(y => y.classList.remove('dragging'));
-    document.querySelectorAll('.bay.over').forEach(b => b.classList.remove('over'));
+    document.querySelectorAll('.yd.dragging, #view .site-sw.dragging').forEach(y => y.classList.remove('dragging', 'can-ramp', 'no-ramp'));
+    document.querySelectorAll('.bay.over, .site-opt.over').forEach(b => b.classList.remove('over'));
   });
+  // Hová ejthető: MG1-es nyitható konténer szabad rámpára, bármelyik konténer a másik raktár gombjára.
+  const dropTarget = e => {
+    const c = DRAG && S.data.containers[DRAG];
+    if (!c || !e.target.closest) return null;
+    const so = e.target.closest('#view .site-opt');
+    if (so && so.dataset.v !== siteOf(c)) return so;
+    const b = e.target.closest('.yd[data-site="MG1"] .yd-wide .bay.free');
+    return b && needsRamp(c) ? b : null;
+  };
   document.addEventListener('dragover', e => {
     if (!DRAG) return;
-    const b = e.target.closest && e.target.closest('.yd-wide .bay.free');
-    document.querySelectorAll('.bay.over').forEach(x => { if (x !== b) x.classList.remove('over'); });
-    if (!b) return;
+    const t = dropTarget(e);
+    document.querySelectorAll('.bay.over, .site-opt.over').forEach(x => { if (x !== t) x.classList.remove('over'); });
+    if (!t) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    b.classList.add('over');
+    t.classList.add('over');
   });
   document.addEventListener('drop', e => {
     if (!DRAG) return;
-    const b = e.target.closest && e.target.closest('.yd-wide .bay.free');
-    if (!b) return;
+    const t = dropTarget(e);
+    if (!t) return;
     e.preventDefault();
     const id = DRAG;
     DRAG = null;
-    setRamp(id, Number(b.dataset.r));
+    t.classList.remove('over');
+    if (t.classList.contains('site-opt')) setSite(id, t.dataset.v);
+    else setRamp(id, Number(t.dataset.r));
   });
 
   // ---------- értesítés élő változásnál ----------
@@ -2539,12 +2764,14 @@
       if (!was || was === k || c.state !== 'active') return;
       const lo = addDays(S.today, -2), hi = addDays(S.today, 1);
       if (c.day < lo || c.day > hi) return;
-      if (k === 'approved' && !c.ramp) out.push([c.id, 'Nyitható', 'A parkolóban áll, választható neki rámpa.', { act: { label: 'Rámpa választása', action: 'pick', id: c.id } }]);
-      else if ((k === 'opened' || k === 'unpack') && was !== 'opened' && !c.ramp) out.push([c.id, '„Nyitjuk” levél, de nincs rámpája', 'Válassz neki rámpát.', { warn: true, act: { label: 'Rámpa választása', action: 'pick', id: c.id } }]);
+      if (k === 'request' && was === 'plan' && !c.site) out.push([c.id, 'Megérkezett', 'Melyik raktárba megy?', { acts: SITES.map(v => ({ label: v, action: 'site-set', id: c.id, v, cur: v === 'MG1' })) }]);
+      else if (k === 'approved' && siteOf(c) === 'MG3') out.push([c.id, 'Nyitható', 'MG3: a kirakodóba került.', {}]);
+      else if (k === 'approved' && !c.ramp) out.push([c.id, 'Nyitható', 'A parkolóban áll, választható neki rámpa.', { act: { label: 'Rámpa választása', action: 'pick', id: c.id } }]);
+      else if ((k === 'opened' || k === 'unpack') && was !== 'opened' && openNoRamp(c)) out.push([c.id, '„Nyitjuk” levél, de nincs rámpája', 'Válassz neki rámpát.', { warn: true, act: { label: 'Rámpa választása', action: 'pick', id: c.id } }]);
       else if ((k === 'released' || k === 'stored') && c.ramp && ON_YARD.includes(was)) out.push([c.id, PHASE[k][0], `A ${c.ramp}. rámpa felszabadult.`, {}]);
     });
     if (out.length > 3) toast(`${out.length} konténer állapota változott`, { sub: out.slice(0, 3).map(x => `${x[0]}: ${x[1]}`).join(', ') });
-    else out.forEach(([id, t, sub, o]) => toast(`${t}: ${id}`, { sub, ...o, ms: o.act ? 12000 : 6000 }));
+    else out.forEach(([id, t, sub, o]) => toast(`${t}: ${id}`, { sub, ...o, ms: o.act || o.acts ? 12000 : 6000 }));
   }
   function rememberK() { all().forEach(c => { PHK[c.id] = phaseKey(c); }); }
 
@@ -2726,6 +2953,7 @@
           <h2 class="sr">${esc(c.id)}</h2>
           <div class="sheet-ct">${containerSvg(c, { cls: 'ct-lg', prio: isPrio(c) })}</div>
           <div class="badges">${badge}${isPrio(c) ? `<span class="ph ph-prio ph-lg">${IC.prio}Prioritás</span>` : ''}${where ? `<span class="badge b-out">${esc(where)}</span>` : ''}</div>
+          ${canSite(c) ? `<div class="sh-site" role="group" aria-label="Raktár"><small>Raktár</small>${SITES.map(v => `<button type="button" class="sh-sbtn" data-action="site-set" data-id="${esc(c.id)}" data-v="${v}" aria-pressed="${siteOf(c) === v}">${v}</button>`).join('')}${siteOf(c) === 'MG3' ? `<span class="sh-snote">${MG3_DOCK.includes(phaseKey(c)) ? 'a kirakodóban' : 'a parkolóban'}</span>` : ''}</div>` : ''}
           ${canPick(c) ? `<div class="sh-ramp">${c.ramp
             ? `<span class="sh-r"><small>Rámpa</small><b>${c.ramp}</b></span><button type="button" class="sh-rbtn ghost" data-action="pick" data-id="${esc(c.id)}">Rámpa váltása</button>`
             : `<span class="sh-r none${openNoRamp(c) ? ' warn' : ''}"><small>Rámpa</small><b>${openNoRamp(c) ? 'nincs, de már nyitják' : 'nincs'}</b></span><button type="button" class="sh-rbtn" data-action="pick" data-id="${esc(c.id)}">Rámpa választása</button>`}</div>` : ''}
@@ -2935,7 +3163,8 @@
   }
   function toast(msg, o = {}) {
     const box = toastBox();
-    const rich = !!(o.act || o.undo);
+    const acts = o.acts || (o.act ? [o.act] : []);
+    const rich = !!(acts.length || o.undo);
     if (!rich) box.querySelectorAll('.toast.plain').forEach(dropToast);
     const t = document.createElement('div');
     const ms = o.ms || (o.undo ? 7000 : rich ? 12000 : 2400);
@@ -2943,7 +3172,7 @@
     t.setAttribute('role', o.warn ? 'alert' : 'status');
     t.style.setProperty('--ms', `${ms}ms`);
     t.innerHTML = `<div class="t-txt"><b>${esc(msg)}</b>${o.sub ? `<span>${esc(o.sub)}</span>` : ''}</div>`
-      + (o.act ? `<button type="button" class="t-act" data-action="${esc(o.act.action)}" data-id="${esc(o.act.id || '')}">${esc(o.act.label)}</button>` : '')
+      + acts.map(a => `<button type="button" class="t-act${a.cur ? ' cur' : ''}${acts.length > 1 ? ' t-site' : ''}" data-action="${esc(a.action)}" data-id="${esc(a.id || '')}"${a.v ? ` data-v="${esc(a.v)}"` : ''}>${esc(a.label)}</button>`).join('')
       + (o.undo ? '<button type="button" class="t-act t-undo">Visszavonás</button>' : '')
       + (rich ? `<button type="button" class="t-x" aria-label="Bezárás"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>` : '');
     box.appendChild(t);
@@ -4067,6 +4296,13 @@
       }
       case 'open': openDrawer(el.dataset.id, el); break;
       case 'band': switchBand(el.dataset.v === 'yard' ? 'yard' : 'week'); break;
+      case 'site': switchSite(el.dataset.v); break;
+      case 'site-set': {
+        const t = el.closest('.toast');
+        if (t) dropToast(t);
+        await setSite(el.dataset.id, el.dataset.v);
+        break;
+      }
       case 'fleet-more': toggleFleet(); break;
       case 'lane': {
         const v = el.dataset.v === 'ramp' ? 'ramp' : 'ct';

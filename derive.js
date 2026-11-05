@@ -226,6 +226,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       : '';
     if (x.opened_implied && (x.stage === 'approved' || x.stage === 'request' || !x.stage)) x.stage = 'opened';
     x.ramp = man.ramp || null;
+    x.site = man.site || '';
     x.ramp_set = man.ramp_set || '';
     x.note = man.note || '';
     x.updated_by = man.updated_by || '';
