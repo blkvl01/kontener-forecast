@@ -2001,6 +2001,16 @@ g .hit{fill:transparent}
   /* idővonal: több hely a címkéknek */
   .tl-track{padding:22px 14px 14px}
 }
+/* Fuvarlevél-sor: a másoló gomb mindig látszik (a hosszú szám rövidül, a gomb nem szorul ki). Szűk adatlapon a betárolás külön sorba kerül,
+   így a szám is elfér teljes hosszában (ötjegyű súlynál a négy oszlop már nem fért el). */
+.pdd-no{display:flex;align-items:center;overflow:visible}
+.pdd-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pdd-no .cpy{flex:none}
+.pdd-f>dd{container-type:inline-size}
+@container (max-width:520px){
+  .pdd-r{grid-template-columns:minmax(0,1fr) auto auto}
+  .pdd-r .r:last-child{grid-column:1 / -1;justify-content:flex-start;text-align:left;font-size:12px}
+}
 @media (max-width:560px){
   /* adatlap: a hosszú értékek (rendszám, MRN, telefon) teljes szélességben, a másoló ikon nem törik új sorba */
   .facts2 .fact{order:5;border-right:0 !important;border-bottom:1px solid oklch(0.93 0.005 255) !important;grid-column:1 / -1}

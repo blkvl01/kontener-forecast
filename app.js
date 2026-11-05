@@ -2031,14 +2031,22 @@
         </div>`;
     }).join('');
     const n = list.length;
-    // Alapból 2 × 4 kártya (telefonon 4), a többi lenyitható.
-    const more = n > 4 ? `<div class="fleet-more-row${n <= FLEET_N ? ' few' : ''}"><button type="button" class="fleet-more" data-action="fleet-more" aria-expanded="${!!S.fleetOpen}" aria-controls="fleet-grid"><span class="fm-l">${S.fleetOpen ? 'Kevesebb' : 'Összes kártya'}</span><span class="fm-n">${n}</span>${IC.down}</button></div>` : '';
+    // Alapból 2 × 4 kártya (telefonon 4), a többi lenyitható; a gomb azt írja, hány kártya van még elrejtve.
+    const more = n > 4 ? `<div class="fleet-more-row${n <= FLEET_N ? ' few' : ''}" data-n="${n}"><button type="button" class="fleet-more" data-action="fleet-more" aria-expanded="${!!S.fleetOpen}" aria-controls="fleet-grid"><span class="fm-l">${fleetLabel(n)}</span>${IC.down}</button></div>` : '';
     return `
       <section class="fleet" aria-label="Konténerek" data-reveal>
         <div class="fleet-grid${S.fleetOpen ? ' open' : ''}" id="fleet-grid">${cards}</div>
         ${more}
       </section>`;
   }
+
+  // A gomb felirata: zárva a még rejtett kártyák száma (telefonon 4, gépen 8 látszik), nyitva „Kevesebb”.
+  const FLEET_NARROW = window.matchMedia('(max-width: 760px)');
+  const fleetLabel = n => (S.fleetOpen ? 'Kevesebb' : `+${Math.max(1, n - (FLEET_NARROW.matches ? 4 : FLEET_N))} további lenyitása`);
+  FLEET_NARROW.addEventListener('change', () => {
+    const row = $('#view .fleet-more-row');
+    if (row) row.querySelector('.fm-l').textContent = fleetLabel(Number(row.dataset.n));
+  });
 
   // Lenyitás / becsukás újrarajzolás nélkül: a rács magassága átúszik, az előbukkanó kártyák sorban beúsznak.
   function toggleFleet() {
@@ -2048,7 +2056,7 @@
     const h0 = g.offsetHeight;
     g.classList.toggle('open', S.fleetOpen);
     const b = $('#view .fleet-more');
-    if (b) { b.setAttribute('aria-expanded', String(S.fleetOpen)); b.querySelector('.fm-l').textContent = S.fleetOpen ? 'Kevesebb' : 'Összes kártya'; }
+    if (b) { b.setAttribute('aria-expanded', String(S.fleetOpen)); b.querySelector('.fm-l').textContent = fleetLabel(Number(b.parentElement.dataset.n)); }
     if (!canFly()) return;
     const h1 = g.offsetHeight;
     g.animate([{ height: `${h0}px`, overflow: 'hidden' }, { height: `${h1}px`, overflow: 'hidden' }], { duration: 460, easing: 'cubic-bezier(.22,1,.36,1)' });
@@ -3354,7 +3362,7 @@
     const pdds = c.pdd.filter(p => p.no);
     const pddRows = pdds.map(p => {
       const at = stored[p.no.toUpperCase()];
-      return `<div class="pdd-r"><span class="pdd-no">${esc(p.no)}${cp(p.no)}</span><span class="r">${p.ctns == null ? '—' : fmtInt(p.ctns)}<small> colli</small></span><span class="r">${p.kg == null ? '—' : fmtKg(p.kg)}<small> kg</small></span><span class="r ${at ? 'ok' : 'dim'}">${at ? `${IC.check}${esc(stamp(at))}` : 'nincs betárolva'}</span></div>`;
+      return `<div class="pdd-r"><span class="pdd-no"><span class="pdd-t">${esc(p.no)}</span>${cp(p.no)}</span><span class="r">${p.ctns == null ? '—' : fmtInt(p.ctns)}<small> colli</small></span><span class="r">${p.kg == null ? '—' : fmtKg(p.kg)}<small> kg</small></span><span class="r ${at ? 'ok' : 'dim'}">${at ? `${IC.check}${esc(stamp(at))}` : 'nincs betárolva'}</span></div>`;
     }).join('');
     const late = lateInfo(c);
     const eta = `${esc(etaText(c))}${c.eta_time ? cp(etaText(c)) : ''}${late ? `<small class="fx-late">${esc(late.label)}</small>` : ''}${c.eta_stale ? `<small class="fx-late">a korábbi napra szólt</small>` : ''}`;
