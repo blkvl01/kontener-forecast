@@ -2289,3 +2289,47 @@ button.rp-b:active{transform:scale(.97)}
 .rp-b.off{background:repeating-linear-gradient(135deg,oklch(0.9 0.006 255) 0 2px,transparent 2px 7px),var(--surface-2);cursor:not-allowed;border-style:dashed}
 .rp-b.off b{color:var(--faint)}
 .set-note{margin:0;font-size:13.5px;line-height:1.5;color:var(--ink-2)}
+
+/* másik napra tervezett, ezen a napon érkezett konténer jelölése */
+.carry-tag{font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:6px;background:oklch(0.95 0.035 235);color:oklch(0.4 0.1 235);white-space:nowrap}
+.flag.carry{color:oklch(0.4 0.1 235)}
+.ms-carry{font-style:normal;font-size:10.5px;font-weight:600;line-height:1.1;padding:1px 5px;border-radius:5px;background:oklch(0.95 0.035 235);color:oklch(0.4 0.1 235);white-space:nowrap;margin-top:1px}
+.ln-lb.carry{gap:5px}
+.ln-lb.carry:before{content:"";width:6px;height:6px;border-radius:50%;background:oklch(0.6 0.1 235);flex:none}
+/* idősáv nézetváltó */
+.ln-head{align-items:center}
+.ln-sw{display:inline-flex;gap:2px;padding:3px;border-radius:9px;background:var(--surface-2);border:1px solid var(--line);margin-right:auto}
+.ln-sw button{all:unset;cursor:pointer;padding:3px 10px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--muted);transition:background-color .15s var(--ease),color .15s var(--ease)}
+.ln-sw button:hover{color:var(--ink)}
+.ln-sw button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px oklch(0.2 0.02 255 / .12)}
+.ln-sw button:focus-visible{outline:2px solid var(--orange);outline-offset:1px}
+
+/* statisztika: napléptető és „Csak lezártak” kapcsoló az átlagos út és a Konténerenként fölött */
+.sday{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:4px 0 12px;padding:8px 10px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.sday .ibtn{color:var(--ink-2)}
+.sday .ibtn:hover{background:var(--surface-2);color:var(--ink)}
+.sday .ibtn:disabled{opacity:.35;cursor:default;background:transparent}
+.sday-cur{display:flex;align-items:baseline;gap:8px;min-width:160px}
+.sday-cur b{font-family:var(--cond);font-size:22px;font-weight:700}
+.sday-cur span{color:var(--muted)}
+.sday-n{font-size:13px;color:var(--muted)}
+.sw-tg{all:unset;cursor:pointer;margin-left:auto;display:inline-flex;align-items:center;gap:9px;padding:6px 12px 6px 6px;border-radius:999px;border:1px solid var(--line);font-size:13.5px;font-weight:600;color:var(--ink-2);transition:border-color .15s var(--ease)}
+.sw-tg:hover{border-color:oklch(0.78 0.012 255)}
+.sw-tg:focus-visible{outline:2px solid var(--orange);outline-offset:2px}
+.sw-tg i{position:relative;width:34px;height:20px;border-radius:999px;background:oklch(0.86 0.008 255);transition:background-color .2s var(--ease)}
+.sw-tg i:after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px oklch(0.2 0.02 255 / .3);transition:transform .2s var(--ease)}
+.sw-tg[aria-checked="true"]{border-color:var(--orange);color:var(--ink)}
+.sw-tg[aria-checked="true"] i{background:var(--orange)}
+.sw-tg[aria-checked="true"] i:after{transform:translateX(14px)}
+.fb-live{background:repeating-linear-gradient(135deg,oklch(0.72 0.165 52 / .45) 0 3px,oklch(0.72 0.165 52 / .15) 3px 7px)}
+.lg .fb-live{display:inline-block}
+.g-row.open .g-tot{color:var(--muted)}
+.g-day{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width: 760px){.sw-tg{margin-left:0}.sday-cur{min-width:0}}
+@media (prefers-reduced-motion: reduce){.sw-tg i,.sw-tg i:after{transition:none}}
+.statsv .g-row{grid-template-columns:112px 104px minmax(0,1fr) 150px}
+.statsv .g-day{font-family:var(--sans);font-size:12px}
+.statsv .g-tot{white-space:nowrap}
+@media (max-width: 560px){.statsv .g-row{grid-template-columns:96px minmax(0,1fr) 112px}}
+.g-open{font-size:inherit;color:var(--muted)}
+@media (max-width: 560px){.g-open{display:none}}
