@@ -976,7 +976,7 @@
       <button type="button" class="ibtn" data-action="prev" aria-label="${S.view === 'week' ? 'Előző hét' : 'Előző hónap'}">${IC.left}</button>
       <div class="period-label">${label}</div>
       <button type="button" class="ibtn" data-action="next" aria-label="${S.view === 'week' ? 'Következő hét' : 'Következő hónap'}">${IC.right}</button>
-      <button type="button" class="tbtn" data-action="today">Ma</button>${isWorker() ? '' : `
+      <button type="button" class="tbtn" data-action="today">Ma</button>${`
       <button type="button" class="tbtn tbtn-ic" data-action="paste" aria-label="ETA beillesztése" title="ETA beillesztése"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M12 11v6M9 14h6"/></svg><span>ETA beillesztése</span></button>`}`;
   }
 
@@ -2876,7 +2876,7 @@
           <span class="cell-mono ${c.t1 ? '' : 'dim'}" style="font-size:12.5px">${esc(c.t1 || '—')}</span>
           <span class="cell-mono r">${fmtInt(c.ctns)}</span>
           <span class="cell-mono r">${fmtInt(c.kg)}</span>
-          ${isWorker() ? `<span class="cell-mono eta-ro ${c.eta_time ? '' : 'dim'}">${esc(c.eta_time || '—')}</span>` : `<input type="time" class="eta ${c.eta_time ? 'set' : ''}" value="${esc(c.eta_time)}" data-eta="${esc(c.id)}" aria-label="ETA ${esc(c.id)}" ${c.status === 'arrived' ? 'disabled' : ''}>`}
+          <input type="time" class="eta ${c.eta_time ? 'set' : ''}" value="${esc(c.eta_time)}" data-eta="${esc(c.id)}" aria-label="ETA ${esc(c.id)}" ${c.status === 'arrived' ? 'disabled' : ''}>
           <span class="cell-mono ${c.arrived && c.arrived_at ? '' : 'dim'}">${c.arrived && c.arrived_at ? esc(c.arrived_at.slice(0, 10) === d ? hm(c.arrived_at) : stamp(c.arrived_at)) : '—'}</span>
           <div><div class="ph ph-${phase(c).grp} phk-${phase(c).key}">${esc(stageText(c))}</div>${c.ramp ? ` <span class="ramp-chip">Rámpa ${c.ramp}</span>` : ''}${flags.join('')}</div>
         </div>`;
@@ -3364,7 +3364,7 @@
 
   async function saveEta(id, d, t) {
     const c = S.data.containers[id];
-    if (!c || isWorker()) return false;
+    if (!c) return false;
     const row = t
       ? { container: id, eta_date: d || c.date, eta_time: t, eta_for: c.date, eta_set: new Date().toISOString() }
       : { container: id, eta_date: null, eta_time: null, eta_for: null, eta_set: null };
@@ -3383,11 +3383,10 @@
   const fromMail = (c, k) => (c.fixed && k in c.fixed ? c.fixed[k] : c[k]) || '';
   let FX = null; // { id, k }: épp szerkesztett mező
 
-  // Ki mit szerkeszthet: a dolgozó a rámpát és a megjegyzést.
+  // Minden szerepkör szerkesztheti az adatokat; a rámpa és az ETA csak aktív konténernél.
   const canFx = (c, k) => {
     if (k === 'ramp' || k === 'eta') { if (c.state !== 'active') return false; }
-    if (k === 'ramp' || k === 'note') return true;
-    return !isWorker();
+    return true;
   };
   const etaText = c => (c.eta_time ? `${short(c.eta_date || c.date)} ${c.eta_time}` : short(c.day || c.date));
   const PEN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/></svg>';
@@ -4489,7 +4488,7 @@
         if (await upsertManual({ container: c.id, ramp: val, ramp_set: val ? new Date().toISOString() : null })) toast(val ? `Rámpa ${val}` : 'Rámpa törölve');
         break;
       }
-      case 'paste': if (isWorker()) break; $('#paste-text').value = ''; pasteSeen = new Set(); renderPaste(); $('#paste').showModal(); setTimeout(() => $('#paste-text').focus(), 30); break;
+      case 'paste': $('#paste-text').value = ''; pasteSeen = new Set(); renderPaste(); $('#paste').showModal(); setTimeout(() => $('#paste-text').focus(), 30); break;
       case 'paste-close': $('#paste').close(); break;
       case 'prio': openPrio(); break;
       case 'prio-close': $('#prio').close(); break;
@@ -4611,7 +4610,7 @@
       addPhotos(el.dataset.id, files);
       return;
     }
-    if (el.matches('input.eta[data-eta]') && !isWorker()) {
+    if (el.matches('input.eta[data-eta]')) {
       const c = S.data.containers[el.dataset.eta];
       if (c) saveEta(c.id, c.eta_date || c.date, el.value);
     }
