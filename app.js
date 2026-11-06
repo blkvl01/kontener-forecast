@@ -543,9 +543,6 @@
         if (p.eventType === 'DELETE') delete GL[key]; else GL[key] = p.new;
         if (glSig(GL[key]) !== was) scheduleRender();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'glabs_status' }, p => {
-        if (p.new) { GLST = p.new; glCheck(); }
-      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_status' }, p => {
         if (p.new) {
           if (CLOUD_BUSY && (p.new.error || (p.new.last_ok && new Date(p.new.last_ok).getTime() > CLOUD_BUSY))) CLOUD_BUSY = 0;
@@ -570,12 +567,16 @@
     refreshing = false;
   }
   setInterval(() => { if (!document.hidden && Date.now() - lastRefresh > 4.5 * 60000) refreshData(); }, 60000);
-  // A Glabs-adat frissből elavultba (és vissza) váltáskor rajzolódik újra, magától is, ha a függvény leáll.
-  function glCheck() {
+  // A Glabs lekérés állapota nincs a Realtime-on (30 mp-enként íródik, ez a keretet enné): percenként lekérjük.
+  // Frissből elavultba (és vissza) váltáskor rajzolódik újra.
+  async function glCheck() {
+    if (!S.data || document.hidden) return;
+    const { data } = await sb.from('glabs_status').select('*').eq('id', 1).maybeSingle();
+    if (data) GLST = data;
     const f = glFresh();
-    if (f !== GL_WAS) { GL_WAS = f; if (S.data) scheduleRender(); }
+    if (f !== GL_WAS) { GL_WAS = f; scheduleRender(); }
   }
-  setInterval(glCheck, 20000);
+  setInterval(() => { glCheck().catch(() => {}); }, 60000);
 
   async function upsertManual(row) {
     const { data, error } = await sb.from('manual').upsert(row, { onConflict: 'container' }).select().single();
