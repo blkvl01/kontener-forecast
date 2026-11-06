@@ -30,8 +30,8 @@
 
   const TITLE = 'Üdv a Konténer Forecastban';
   const STEPS = {
-    worker: [{ title: TITLE, text: INTRO }, YARD, SHEET_W, MAILBOX, MAILGO, VIEWS_W, HELP],
-    editor: [{ title: TITLE, text: `${INTRO}\nA Szerkesztő rangban az ETA is módosítható.` }, YARD, SHEET_E, MAILBOX, MAILGO, VIEWS_E, PASTE, HELP],
+    worker: [{ title: TITLE, text: INTRO }, YARD, SHEET_W, MAILBOX, MAILGO, VIEWS_W, PASTE, HELP],
+    editor: [{ title: TITLE, text: `${INTRO}\nA Szerkesztő rangban a Statisztika is elérhető.` }, YARD, SHEET_E, MAILBOX, MAILGO, VIEWS_E, PASTE, HELP],
     admin: [{ title: TITLE, text: `${INTRO}\nAz Admin rangban a felhasználók kezelése és a beállítások is elérhetők.` }, YARD, SHEET_E, MAILBOX, MAILGO, VIEWS_E, PASTE, SYNC, SETTINGS, HELP]
   };
 
