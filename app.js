@@ -96,6 +96,17 @@
   const ROLE_L = { admin: 'Admin', editor: 'Szerkesztő', worker: 'Dolgozó' };
   const isWorker = () => !!(ME && ME.role === 'worker');
   let SYNC = null;
+  // Glabs: melyik rámpán melyik kamion áll (glabs_ramps, a glabs-ramps függvény tölti 30 mp-enként).
+  // A kulcs a Glabs teljes rámpaneve ("Ramp 16", "A1"). 3 percnél régebbi sikeres lekérés után az adat halvány.
+  let GL = {}, GLST = null, GL_WAS = false;
+  const GL_STALE = 3 * 60000;
+  const GL_STAGE = { waiting: 'Hívva', loading: 'Rakodik' };
+  const glFresh = () => !!(GLST && GLST.last_ok && Date.now() - new Date(GLST.last_ok).getTime() < GL_STALE);
+  const glSig = t => (t ? [t.glabs_id, (t.plates || []).join('/'), t.stage].join('|') : '');
+  const glAt = r => GL[`Ramp ${r}`] || null;
+  const glBlocks = r => !!(glAt(r) && glFresh());
+  const glOther = () => Object.values(GL).filter(t => !/^Ramp \d+$/.test(t.ramp)).sort((a, b) => a.ramp.localeCompare(b.ramp));
+  const glPlates = t => (t.plates && t.plates.length ? t.plates.join(' / ') : 'rendszám nélkül');
   let LAST_OK = null;
   let LOCAL = null;
   // A felhős (Power Automate) újraolvasás indítása óta eltelt idő; a következő sync_status-frissítésig „Frissítés…”.
@@ -448,8 +459,8 @@
 
   async function loadAll(enter) {
     let done = 0;
-    const tick = p => Promise.resolve(p).then(v => { bootProgress(0.25 + 0.6 * (++done / 8)); return v; });
-    const [msgs, man, arr, sync, cfg, mem, sto, pho] = await Promise.all([
+    const tick = p => Promise.resolve(p).then(v => { bootProgress(0.25 + 0.6 * (++done / 10)); return v; });
+    const [msgs, man, arr, sync, cfg, mem, sto, pho, glr, gls] = await Promise.all([
       fetchAll('messages', 'received'),
       fetchAll('manual'),
       fetchAll('arrivals', 'received'),
@@ -457,9 +468,13 @@
       sb.from('app_settings').select('*').eq('id', 1).maybeSingle(),
       sb.from('members').select('email, name'),
       fetchAll('storage_events', 'stored_at'),
-      sb.from('photos').select('*').gt('created_at', new Date(Date.now() - PHOTO_TTL).toISOString()).order('created_at')
+      sb.from('photos').select('*').gt('created_at', new Date(Date.now() - PHOTO_TTL).toISOString()).order('created_at'),
+      sb.from('glabs_ramps').select('*'),
+      sb.from('glabs_status').select('*').eq('id', 1).maybeSingle()
     ].map(tick));
     if (pho.data) PHOTOS = pho.data;
+    if (glr.data) GL = Object.fromEntries(glr.data.map(t => [t.ramp, t]));
+    if (gls.data) { GLST = gls.data; GL_WAS = glFresh(); }
     STO = sto.map(r => ({ ...r, stored_at: toLocal(r.stored_at) }));
     if (mem.data) MEMBERS = Object.fromEntries(mem.data.map(m => [m.email, m.name || m.email]));
     if (cfg.data) PRIO = cfg.data.priority || [];
@@ -520,6 +535,17 @@
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, p => {
         if (p.new) { PRIO = p.new.priority || []; scheduleRender(); }
       })
+      // A függvény 30 mp-enként frissíti a seen_at / last_try mezőket; újrarajzolás csak valódi változásnál.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'glabs_ramps' }, p => {
+        const key = (p.new && p.new.ramp) || (p.old && p.old.ramp);
+        if (!key) return;
+        const was = glSig(GL[key]);
+        if (p.eventType === 'DELETE') delete GL[key]; else GL[key] = p.new;
+        if (glSig(GL[key]) !== was) scheduleRender();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'glabs_status' }, p => {
+        if (p.new) { GLST = p.new; glCheck(); }
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_status' }, p => {
         if (p.new) {
           if (CLOUD_BUSY && (p.new.error || (p.new.last_ok && new Date(p.new.last_ok).getTime() > CLOUD_BUSY))) CLOUD_BUSY = 0;
@@ -544,6 +570,12 @@
     refreshing = false;
   }
   setInterval(() => { if (!document.hidden && Date.now() - lastRefresh > 4.5 * 60000) refreshData(); }, 60000);
+  // A Glabs-adat frissből elavultba (és vissza) váltáskor rajzolódik újra, magától is, ha a függvény leáll.
+  function glCheck() {
+    const f = glFresh();
+    if (f !== GL_WAS) { GL_WAS = f; if (S.data) scheduleRender(); }
+  }
+  setInterval(glCheck, 20000);
 
   async function upsertManual(row) {
     const { data, error } = await sb.from('manual').upsert(row, { onConflict: 'container' }).select().single();
@@ -1624,6 +1656,7 @@
   function rampUse(exceptId) {
     const used = {};
     Object.entries(rampMap(exceptId)).forEach(([r, x]) => { used[r] = x.id; });
+    RAMP_LIST.forEach(r => { if (!used[r] && glBlocks(r)) used[r] = 'kamion'; });
     return used;
   }
 
@@ -2287,7 +2320,7 @@
   // Egy sorban az összes rámpa: a szabad keskeny, a foglalt kiszélesedik. Mellette a parkoló és a következő érkezők.
   const yardN = m => Math.max(RAMP_SLOTS, ...Object.keys(m).map(Number));
   // Foglalt: széles; szabad: keskeny; nem használható (szürke a táblán): még keskenyebb fal.
-  const yardCols = (m, n) => Array.from({ length: n }, (_, i) => (m[i + 1] ? 'minmax(0,3.4fr)' : rampOk(i + 1) ? 'minmax(0,1fr)' : 'minmax(0,.62fr)')).join(' ');
+  const yardCols = (m, n) => Array.from({ length: n }, (_, i) => (m[i + 1] || glAt(i + 1) ? 'minmax(0,3.4fr)' : rampOk(i + 1) ? 'minmax(0,1fr)' : 'minmax(0,.62fr)')).join(' ');
   const yardCount = () => yardList().length;
   const siteCount = site => yardList(site).length;
 
@@ -2310,7 +2343,25 @@
       const d = mg3Dock().length, p = parkList('MG3').length;
       return `<span><b>${d}</b> a kirakodóban</span><span><b>${p}</b> a parkolóban</span>`;
     }
-    return `<span><b>${Object.keys(rampMap()).length}</b> / ${RAMPS} rámpa foglalt</span><span><b>${parkList('MG1').length}</b> a parkolóban</span>`;
+    const m = rampMap();
+    const busy = RAMP_LIST.filter(r => m[r] || glAt(r)).length;
+    const trucks = Object.keys(GL).length;
+    const other = glOther().map(t => `<span class="gl-oth" title="${esc(`${t.glabs_id} · ${GL_STAGE[t.stage] || 'Hívva'}`)}"><b>${esc(t.ramp)}</b> ${esc(glPlates(t))}</span>`).join('');
+    const old = GLST && GLST.last_ok && !glFresh() ? `<span class="gl-old">Glabs: ${esc(hm(toLocal(GLST.last_ok)))}</span>` : '';
+    return `<span><b>${busy}</b> / ${RAMPS} rámpa foglalt</span><span><b>${parkList('MG1').length}</b> a parkolóban</span>${trucks ? `<span><b>${trucks}</b> kamion</span>` : ''}${other}${old}`;
+  }
+
+  // Glabs-kamion a rámpán: pótkocsi-tető a rendszámokkal; ha konténer is áll ott, csak egy keskeny csík.
+  function truckHtml(t, mini) {
+    const st = GL_STAGE[t.stage] || 'Hívva';
+    const fresh = glFresh();
+    const tip = `${t.ramp}: ${glPlates(t)} · ${t.glabs_id} · ${st}${fresh ? '' : ` · Glabs ${GLST && GLST.last_ok ? hm(toLocal(GLST.last_ok)) : '—'}`}`;
+    const pl = t.plates && t.plates.length ? t.plates.map(p => `<b>${esc(p)}</b>`).join('') : '<i>rendszám nélkül</i>';
+    if (mini) return `<div class="truck mini${fresh ? '' : ' stale'}" role="img" aria-label="${esc(tip)}" title="${esc(tip)}"><span class="tr-pl">${pl}</span></div>`;
+    return `<div class="truck${fresh ? '' : ' stale'}" role="img" aria-label="${esc(tip)}" title="${esc(tip)}">
+        <span class="tr-pl">${pl}</span>
+        <span class="rf-plate"><b>${esc(st)}</b><span>${esc(t.glabs_id)}</span></span>
+      </div>`;
   }
 
   function roofHtml(c) {
@@ -2362,13 +2413,14 @@
     const cols = yardCols(m, n);
     let doors = '', bays = '', tiles = '';
     for (let r = 1; r <= n; r++) {
-      const c = m[r];
-      const off = !c && !rampOk(r);
+      const c = m[r], t = glAt(r);
+      const off = !c && !t && !rampOk(r);
       const offT = off ? `${r}. hely: ${RAMP_OFF[r] || 'nincs ilyen rámpa'}, ide nem tud kamion állni` : '';
-      doors += `<i class="door${c ? ' on' : off ? ' off' : ''}">${off ? '' : '<b class="shut"></b>'}</i>`;
+      doors += `<i class="door${c || t ? ' on' : off ? ' off' : ''}">${off ? '' : '<b class="shut"></b>'}</i>`;
       bays += off ? `<div class="bay off" data-r="${r}" title="${esc(offT)}"><span class="bay-n">${r}</span>${RAMP_OFF[r] === 'Joloda' ? '<span class="bay-j">J</span>' : ''}</div>`
-        : `<div class="bay${c ? '' : ' free'}" data-r="${r}"><span class="bay-n">${r}</span>${c ? roofHtml(c) : ''}</div>`;
+        : `<div class="bay${c || t ? '' : ' free'}" data-r="${r}"><span class="bay-n">${r}</span>${c ? roofHtml(c) + (t ? truckHtml(t, true) : '') : t ? truckHtml(t) : ''}</div>`;
       tiles += c ? `<button type="button" class="tile busy phk-${phaseKey(c)}${isPrio(c) ? ' prio' : ''}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${r}. rámpa: ${c.id}, ${PHASE[phaseKey(c)][0]}`)}"><span class="tile-n">${r}</span><small>${esc(c.id.slice(0, 4))}</small></button>`
+        : t ? `<span class="tile gl${glFresh() ? '' : ' stale'}" title="${esc(`${t.ramp}: ${glPlates(t)} · ${t.glabs_id}`)}"><span class="tile-n">${r}</span><small>${esc(t.plates && t.plates[0] ? t.plates[0] : '—')}</small></span>`
         : off ? `<span class="tile off" title="${esc(offT)}"><span class="tile-n">${r}</span>${RAMP_OFF[r] === 'Joloda' ? '<small>J</small>' : ''}</span>`
         : `<span class="tile"><span class="tile-n">${r}</span></span>`;
     }
@@ -2666,7 +2718,7 @@
     if (!canPick(c)) { toast('Rámpát a nyitható levél után lehet választani'); return; }
     const m = rampMap(c.id);
     const n = yardN(m);
-    const free = Array.from({ length: n }, (_, i) => i + 1).filter(r => rampOk(r) && !m[r] && r !== c.ramp);
+    const free = Array.from({ length: n }, (_, i) => i + 1).filter(r => rampOk(r) && !m[r] && !glBlocks(r) && r !== c.ramp);
     PICK = { id: c.id, r: free[0] || null };
     const k = phaseKey(c);
     $('#rpick-title').textContent = `${c.id} rámpára`;
@@ -2675,6 +2727,7 @@
       const r = i + 1, o = m[r];
       if (r === c.ramp) return `<span class="rp-b cur" aria-disabled="true"><b>${r}</b><small>jelenlegi</small></span>`;
       if (o) return `<span class="rp-b busy" aria-disabled="true" title="${esc(o.id)}"><b>${r}</b><small>${esc(o.id.slice(0, 4))}</small></span>`;
+      if (glBlocks(r)) return `<span class="rp-b busy" aria-disabled="true" title="${esc(`Glabs: ${glPlates(glAt(r))}`)}"><b>${r}</b><small>kamion</small></span>`;
       if (!rampOk(r)) return `<span class="rp-b off" aria-disabled="true" title="${esc(`Ide nem tud kamion állni (${RAMP_OFF[r] || 'nincs ilyen rámpa'})`)}"><b>${r}</b><small>${RAMP_OFF[r] === 'Joloda' ? 'Joloda' : 'nem lehet'}</small></span>`;
       return `<button type="button" class="rp-b" data-r="${r}" aria-pressed="${r === PICK.r}"><b>${r}</b><small>${r === free[0] ? 'javasolt' : 'szabad'}</small></button>`;
     }).join('');
@@ -2716,6 +2769,7 @@
     if (r) {
       const o = rampMap(id)[r];
       if (o) { toast(`A ${r}. rámpa foglalt: ${o.id}`); return false; }
+      if (glBlocks(r)) { toast(`A ${r}. rámpán kamion áll: ${glPlates(glAt(r))}`); return false; }
     }
     const man = MAN[id] || {};
     const prev = { ramp: man.ramp || null, ramp_set: man.ramp_set ? new Date(man.ramp_set).toISOString() : null };
