@@ -2140,6 +2140,17 @@ g .hit{fill:transparent}
 .tile.gl .tile-n{color:oklch(0.98 0 0)}
 .tile.gl small{background:oklch(0.97 0 0);color:oklch(0.18 0.01 255);font-family:var(--mono);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tile.gl.stale{opacity:.45}
+/* Glabs-irány: befelé (a raktárba) hűvös, kifelé meleg színű címke a pótkocsi tetején */
+.tr-dir{align-self:center;margin-top:8px;display:inline-flex;align-items:center;gap:3px;padding:2px 8px 2px 5px;border-radius:999px;font-size:11.5px;font-weight:700;letter-spacing:.02em;line-height:1.2;color:oklch(0.17 0.01 255);background:oklch(0.86 0.01 255)}
+.tr-dir.d-in{background:oklch(0.84 0.09 200)}
+.tr-dir.d-out{background:oklch(0.86 0.12 75)}
+.tr-dir.d-inout{background:oklch(0.86 0.06 300)}
+.tr-dir + .tr-pl{margin-top:6px}
+.truck.mini .tr-dir{margin-top:5px;padding:1px 6px}
+.truck .rf-plate b{font-family:var(--mono);font-size:13px}
+.gl-ar{flex:none;vertical-align:-2px}
+.tile.gl .tile-n{display:inline-flex;align-items:center;gap:1px}
+.gl-oth .gl-ar{margin:0 2px}
 .gl-oth b{font-size:14px;margin-right:2px}
 .gl-old{color:oklch(0.8 0.14 70)}
 .park{border-left:1px solid var(--yard-line);padding:10px 16px 16px;display:grid;align-content:start;min-width:0}

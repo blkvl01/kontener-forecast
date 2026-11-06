@@ -100,9 +100,15 @@
   // A kulcs a Glabs teljes rámpaneve ("Ramp 16", "A1"). 3 percnél régebbi sikeres lekérés után az adat halvány.
   let GL = {}, GLST = null, GL_WAS = false;
   const GL_STALE = 3 * 60000;
-  const GL_STAGE = { waiting: 'Hívva', loading: 'Rakodik' };
+  // Irány a Glabs rakodási szabályából. Az ajtó felül van: befelé felfelé, kifelé lefelé mutat a nyíl.
+  const GL_DIR = { in: ['Befelé', 'M12 19V5M6 11l6-6 6 6'], out: ['Kifelé', 'M12 5v14M6 13l6 6 6-6'], inout: ['Be és ki', 'M8 19V5M4 9l4-4 4 4M16 5v14M12 15l4 4 4-4'] };
+  const glDir = t => GL_DIR[t.dir] || null;
+  const glArrow = t => { const d = glDir(t); return d ? `<svg class="gl-ar" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d[1]}"/></svg>` : ''; };
+  // Mióta hívták rámpára (a Glabs hívásának ideje), percre kerekítve.
+  const glSince = t => fmtDur((Date.now() - new Date(t.called_at).getTime()) / 60000);
+  const glDesc = t => [glDir(t) ? glDir(t)[0].toLowerCase() : '', `${glSince(t)} óta hívva`, t.stage === 'loading' ? 'rakodik' : ''].filter(Boolean).join(' · ');
   const glFresh = () => !!(GLST && GLST.last_ok && Date.now() - new Date(GLST.last_ok).getTime() < GL_STALE);
-  const glSig = t => (t ? [t.glabs_id, (t.plates || []).join('/'), t.stage].join('|') : '');
+  const glSig = t => (t ? [t.glabs_id, (t.plates || []).join('/'), t.stage, t.dir].join('|') : '');
   const glAt = r => GL[`Ramp ${r}`] || null;
   const glBlocks = r => !!(glAt(r) && glFresh());
   const glOther = () => Object.values(GL).filter(t => !/^Ramp \d+$/.test(t.ramp)).sort((a, b) => a.ramp.localeCompare(b.ramp));
@@ -2347,21 +2353,22 @@
     const m = rampMap();
     const busy = RAMP_LIST.filter(r => m[r] || glAt(r)).length;
     const trucks = Object.keys(GL).length;
-    const other = glOther().map(t => `<span class="gl-oth" title="${esc(`${t.glabs_id} · ${GL_STAGE[t.stage] || 'Hívva'}`)}"><b>${esc(t.ramp)}</b> ${esc(glPlates(t))}</span>`).join('');
+    const other = glOther().map(t => `<span class="gl-oth" title="${esc(`${t.glabs_id} · ${glDesc(t)}`)}"><b>${esc(t.ramp)}</b>${glArrow(t)} ${esc(glPlates(t))}</span>`).join('');
     const old = GLST && GLST.last_ok && !glFresh() ? `<span class="gl-old">Glabs: ${esc(hm(toLocal(GLST.last_ok)))}</span>` : '';
     return `<span><b>${busy}</b> / ${RAMPS} rámpa foglalt</span><span><b>${parkList('MG1').length}</b> a parkolóban</span>${trucks ? `<span><b>${trucks}</b> kamion</span>` : ''}${other}${old}`;
   }
 
   // Glabs-kamion a rámpán: pótkocsi-tető a rendszámokkal; ha konténer is áll ott, csak egy keskeny csík.
+  // Felül az irány (befelé / kifelé), alul az, hogy mióta hívták rámpára; a Glabs-azonosító a súgóban.
   function truckHtml(t, mini) {
-    const st = GL_STAGE[t.stage] || 'Hívva';
-    const fresh = glFresh();
-    const tip = `${t.ramp}: ${glPlates(t)} · ${t.glabs_id} · ${st}${fresh ? '' : ` · Glabs ${GLST && GLST.last_ok ? hm(toLocal(GLST.last_ok)) : '—'}`}`;
+    const fresh = glFresh(), d = glDir(t);
+    const tip = `${t.ramp}: ${glPlates(t)} · ${t.glabs_id} · ${glDesc(t)}${fresh ? '' : ` · Glabs ${GLST && GLST.last_ok ? hm(toLocal(GLST.last_ok)) : '—'}`}`;
     const pl = t.plates && t.plates.length ? t.plates.map(p => `<b>${esc(p)}</b>`).join('') : '<i>rendszám nélkül</i>';
-    if (mini) return `<div class="truck mini${fresh ? '' : ' stale'}" role="img" aria-label="${esc(tip)}" title="${esc(tip)}"><span class="tr-pl">${pl}</span></div>`;
+    const dir = d ? `<span class="tr-dir d-${esc(t.dir)}">${glArrow(t)}${mini ? '' : esc(d[0])}</span>` : '';
+    if (mini) return `<div class="truck mini${fresh ? '' : ' stale'}" role="img" aria-label="${esc(tip)}" title="${esc(tip)}"><span class="tr-pl">${pl}</span>${dir}</div>`;
     return `<div class="truck${fresh ? '' : ' stale'}" role="img" aria-label="${esc(tip)}" title="${esc(tip)}">
-        <span class="tr-pl">${pl}</span>
-        <span class="rf-plate"><b>${esc(st)}</b><span>${esc(t.glabs_id)}</span></span>
+        ${dir}<span class="tr-pl">${pl}</span>
+        <span class="rf-plate"><b>${esc(glSince(t))}</b>${t.stage === 'loading' ? '<span>rakodik</span>' : ''}</span>
       </div>`;
   }
 
@@ -2421,7 +2428,7 @@
       bays += off ? `<div class="bay off" data-r="${r}" title="${esc(offT)}"><span class="bay-n">${r}</span>${RAMP_OFF[r] === 'Joloda' ? '<span class="bay-j">J</span>' : ''}</div>`
         : `<div class="bay${c || t ? '' : ' free'}" data-r="${r}"><span class="bay-n">${r}</span>${c ? roofHtml(c) + (t ? truckHtml(t, true) : '') : t ? truckHtml(t) : ''}</div>`;
       tiles += c ? `<button type="button" class="tile busy phk-${phaseKey(c)}${isPrio(c) ? ' prio' : ''}" data-action="open" data-id="${esc(c.id)}" aria-label="${esc(`${r}. rámpa: ${c.id}, ${PHASE[phaseKey(c)][0]}`)}"><span class="tile-n">${r}</span><small>${esc(c.id.slice(0, 4))}</small></button>`
-        : t ? `<span class="tile gl${glFresh() ? '' : ' stale'}" title="${esc(`${t.ramp}: ${glPlates(t)} · ${t.glabs_id}`)}"><span class="tile-n">${r}</span><small>${esc(t.plates && t.plates[0] ? t.plates[0] : '—')}</small></span>`
+        : t ? `<span class="tile gl${glFresh() ? '' : ' stale'}" title="${esc(`${t.ramp}: ${glPlates(t)} · ${t.glabs_id} · ${glDesc(t)}`)}"><span class="tile-n">${r}${glArrow(t)}</span><small>${esc(t.plates && t.plates[0] ? t.plates[0] : '—')}</small></span>`
         : off ? `<span class="tile off" title="${esc(offT)}"><span class="tile-n">${r}</span>${RAMP_OFF[r] === 'Joloda' ? '<small>J</small>' : ''}</span>`
         : `<span class="tile"><span class="tile-n">${r}</span></span>`;
     }
