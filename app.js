@@ -3037,7 +3037,7 @@
           </div>
           <h2 class="sr">${esc(c.id)}</h2>
           <div class="sheet-ct">${containerSvg(c, { cls: 'ct-lg', prio: isPrio(c) })}</div>
-          <div class="badges">${badge}${isPrio(c) ? `<span class="ph ph-prio ph-lg">${IC.prio}Prioritás</span>` : ''}${c.late_mod ? `<span class="badge b-late" title="${esc(`Új forecast: ${short(c.late_mod.to)}`)}">Utólag módosítva</span>` : ''}${where ? `<span class="badge b-out">${esc(where)}</span>` : ''}</div>
+          <div class="badges">${badge}${isPrio(c) ? `<span class="ph ph-prio ph-lg">${IC.prio}Prioritás</span>` : ''}${c.late_mod ? `<span class="badge b-late" title="${esc(c.late_mod.to ? `Új forecast: ${short(c.late_mod.to)}` : 'Kikerült az új forecastból')}">Utólag módosítva</span>` : ''}${where ? `<span class="badge b-out">${esc(where)}</span>` : ''}</div>
           ${canSite(c) ? `<div class="sh-site" role="group" aria-label="Raktár"><small>Raktár</small>${SITES.map(v => `<button type="button" class="sh-sbtn" data-action="site-set" data-id="${esc(c.id)}" data-v="${v}" aria-pressed="${siteOf(c) === v}">${v}</button>`).join('')}${siteOf(c) === 'MG3' ? `<span class="sh-snote">${MG3_DOCK.includes(phaseKey(c)) ? 'a kirakodóban' : 'a parkolóban'}</span>` : ''}</div>` : ''}
           ${canPick(c) ? `<div class="sh-ramp">${c.ramp
             ? `<span class="sh-r"><small>Rámpa</small><b>${c.ramp}</b></span><button type="button" class="sh-rbtn ghost" data-action="pick" data-id="${esc(c.id)}">Rámpa váltása</button>`

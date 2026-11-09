@@ -133,6 +133,16 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       for (const id of before[d]) {
         if (listedAll.has(id)) continue;
         const x = C[id];
+        // Nyitáskérés után a lista szerinti kikerülés sem viszi el a konténert: marad, jelölve.
+        const mrn = String(x.t1 || '').replace(/\s/g, '').toUpperCase();
+        const req = reqById[id] || (mrn && reqByMrn[mrn]) || 0;
+        if (req && req <= Date.parse(at)) {
+          if (!x.late_mod || x.late_mod.to !== null) {
+            x.late_mod = { at, from: x.date, to: null };
+            x.history.push({ at, kind: 'late', from: x.date, to: null });
+          }
+          continue;
+        }
         x.state = 'removed';
         x.removed_from = d;
         x.removed_at = at;
