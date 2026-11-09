@@ -14,6 +14,16 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
   const sorted = used.sort((a, b) => (a.received < b.received ? -1 : a.received > b.received ? 1 : 0));
   const mailEta = {};
 
+  // Nyitáskérés (kérés / nyitható / nyitás) ideje konténerszám és MRN szerint: ettől kezdve a konténer napja zárolt.
+  const reqById = {}, reqByMrn = {};
+  for (const a of arrivals || []) {
+    if (!['request', 'approved', 'released', 'opened'].includes(a.stage || 'request')) continue;
+    const t = Date.parse(a.received);
+    if (!t) continue;
+    for (const id of a.containers || []) { const k = String(id).toUpperCase(); if (!reqById[k] || t < reqById[k]) reqById[k] = t; }
+    for (const n of a.mrns || []) { const k = String(n).toUpperCase(); if (!reqByMrn[k] || t < reqByMrn[k]) reqByMrn[k] = t; }
+  }
+
   for (const m of sorted) {
     const at = m.received;
     for (const a of m.attachments || []) {
@@ -59,6 +69,21 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
 
     for (const c of conts) {
       let x = C[c.id];
+      // Ha a nyitást már kérték, az utólag küldött forecast nem viszi át másik napra: a konténer marad, csak jelölve.
+      let keep = false;
+      if (x && x.state === 'active' && x.date !== c.date) {
+        const mrn = String(c.t1 || x.t1 || '').replace(/\s/g, '').toUpperCase();
+        const req = reqById[c.id] || (mrn && reqByMrn[mrn]) || 0;
+        if (req && req <= Date.parse(at)) {
+          keep = true;
+          if (!x.late_mod || x.late_mod.to !== c.date) {
+            x.late_mod = { at, from: x.date, to: c.date };
+            x.history.push({ at, kind: 'late', from: x.date, to: c.date });
+          }
+        }
+      } else if (x && x.late_mod && x.date === c.date) {
+        x.late_mod = null;
+      }
       if (!x) {
         x = C[c.id] = {
           id: c.id, date: c.date, state: 'active', first_seen: at, src, fwd: c.fwd || (src === 'jz' ? 'Voltoo' : ''),
@@ -68,6 +93,8 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
           moved_from: null, moved_at: null, removed_from: null, removed_at: null
         };
         ev.added.push({ id: c.id, to: c.date });
+      } else if (keep) {
+        // marad a régi napon
       } else if (x.state === 'removed' || x.date !== c.date) {
         const from = x.date;
         x.history.push({ at, kind: 'moved', from, to: c.date, back: x.state === 'removed' });
@@ -96,7 +123,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       if (x.kg && c.kg && Math.abs(x.kg - c.kg) > 1) x.history.push({ at, kind: 'weight', from: x.kg, to: c.kg });
       if (c.kg) x.kg = c.kg;
       if (c.ctns) x.ctns = c.ctns;
-      x.date = c.date;
+      if (!keep) x.date = c.date;
       x.state = 'active';
       x.removed_from = x.removed_at = null;
       x.last_seen = at;

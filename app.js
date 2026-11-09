@@ -844,7 +844,7 @@
   const onDay = d => all().filter(c => c.state === 'active' && c.day === d).sort(byArrival);
   // A napi panel (kártyák, számláló, idősáv, táblázat) az érkezés napját követi: aki más napon érkezett meg,
   // mint amire tervezték (pl. tegnapi ETA, ma érkezett), a mai panelen látszik, jelölve. A heti sávban marad a tervezett napnál.
-  const panelDay = c => (c.arrived && c.arrived_at ? c.arrived_at.slice(0, 10) : c.day);
+  const panelDay = c => (c.arrived && c.arrived_at && !c.late_mod ? c.arrived_at.slice(0, 10) : c.day);
   const panelOn = d => all().filter(c => c.state === 'active' && panelDay(c) === d).sort(byArrival);
   // Másik napra tervezett konténer ezen a panelen: rövid jelölés (Tegnapi ETA, 11.02. ETA, Holnapi ETA).
   const carryTag = (c, d) => (c.day === d ? '' : c.day === addDays(d, -1) ? 'Tegnapi ETA' : c.day === addDays(d, 1) ? 'Holnapi ETA' : `${short(c.day)} ETA`);
@@ -1381,10 +1381,10 @@
       const blocks = list.slice().sort((a, b) => phase(b).p - phase(a).p || (a.eta_time || '99').localeCompare(b.eta_time || '99')).reverse().map((c, j, arr) => {
         const ph = phase(c);
         const late = lateInfo(c);
-        const m = mk[c.id];
+        const m = mk[c.id] || (c.late_mod ? 'late' : '');
         const cp = cPx(c);
         return `
-        <div class="blk blk-${ph.grp}${late ? ' late' : ''}${isPrio(c) ? ' prio' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} ·${esc(late ? late.label : ph.label)}${isPrio(c) ? ' · prioritás' : ''}${m ? ` · ${m === 'new' ? 'új' : 'áthelyezve'}` : ''}">${isPrio(c) ? '<i class="pf" aria-hidden="true"></i>' : ''}
+        <div class="blk blk-${ph.grp}${late ? ' late' : ''}${isPrio(c) ? ' prio' : ''}${pxOff(c) ? ' px-off' : ''}" data-id="${esc(c.id)}" style="--p:${Math.round(ph.p * 100)}%;--j:${Math.min(9, arr.length - 1 - j)};height:${Math.max(minH, Math.round(c.kg * k))}px" title="${esc(c.id)}${cp ? ` · ${esc(cp)}` : ''} ·${esc(late ? late.label : ph.label)}${isPrio(c) ? ' · prioritás' : ''}${m ? ` · ${m === 'new' ? 'új' : m === 'late' ? 'utólag módosítva' : 'áthelyezve'}` : ''}">${isPrio(c) ? '<i class="pf" aria-hidden="true"></i>' : ''}
           <span class="blk-l">${m ? `<i class="mk mk-${m}" aria-hidden="true"></i>` : ''}<span class="blk-id">${esc(c.id)}</span></span>${pddCells(c, ph)}<span class="blk-r"><span class="blk-v">${esc(!c.arrived && c.eta_time ? c.eta_time : fmtT(c.kg))}</span><b class="blk-n${pddOf(c).length ? '' : ' zero'}">${IC.awb}${pddOf(c).length}</b></span>
         </div>`;
       }).join('');
@@ -3037,7 +3037,7 @@
           </div>
           <h2 class="sr">${esc(c.id)}</h2>
           <div class="sheet-ct">${containerSvg(c, { cls: 'ct-lg', prio: isPrio(c) })}</div>
-          <div class="badges">${badge}${isPrio(c) ? `<span class="ph ph-prio ph-lg">${IC.prio}Prioritás</span>` : ''}${where ? `<span class="badge b-out">${esc(where)}</span>` : ''}</div>
+          <div class="badges">${badge}${isPrio(c) ? `<span class="ph ph-prio ph-lg">${IC.prio}Prioritás</span>` : ''}${c.late_mod ? `<span class="badge b-late" title="${esc(`Új forecast: ${short(c.late_mod.to)}`)}">Utólag módosítva</span>` : ''}${where ? `<span class="badge b-out">${esc(where)}</span>` : ''}</div>
           ${canSite(c) ? `<div class="sh-site" role="group" aria-label="Raktár"><small>Raktár</small>${SITES.map(v => `<button type="button" class="sh-sbtn" data-action="site-set" data-id="${esc(c.id)}" data-v="${v}" aria-pressed="${siteOf(c) === v}">${v}</button>`).join('')}${siteOf(c) === 'MG3' ? `<span class="sh-snote">${MG3_DOCK.includes(phaseKey(c)) ? 'a kirakodóban' : 'a parkolóban'}</span>` : ''}</div>` : ''}
           ${canPick(c) ? `<div class="sh-ramp">${c.ramp
             ? `<span class="sh-r"><small>Rámpa</small><b>${c.ramp}</b></span><button type="button" class="sh-rbtn ghost" data-action="pick" data-id="${esc(c.id)}">Rámpa váltása</button>`
