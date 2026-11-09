@@ -1342,6 +1342,35 @@
     toast(`${list.length} konténer, ${pddTot} fuvarlevél exportálva`);
   }
 
+  // Élő Excel (gomb nélkül, egyelőre a konzolból: kfLiveExcel()): a mai napot Power Query húzza az excel-feed függvényből.
+  // A link a belépett taghoz kötött; a tagság megszűnésével a fájl is leáll.
+  let liveLib = null;
+  const loadLive = () => (liveLib ||= new Promise((res, rej) => {
+    if (window.KFLive) { res(window.KFLive); return; }
+    const sc = document.createElement('script');
+    sc.src = `live-xlsx.js?v=${(CFG && CFG.version) || ''}`;
+    sc.onload = () => (window.KFLive ? res(window.KFLive) : rej(new Error('live')));
+    sc.onerror = () => { liveLib = null; rej(new Error('live')); };
+    document.head.appendChild(sc);
+  }));
+  async function exportLive() {
+    try {
+      await loadXlsx();
+      const L = await loadLive();
+      const { url } = await edgeFn('excel-feed', 'link');
+      const blob = L.build({ feedUrl: url, author: ME && ME.name });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `kontener-elo-${iso(new Date())}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      toast('Élő Excel letöltve');
+    } catch (e) { toast(e && e.message && e.message !== 'live' ? e.message : 'Az élő Excel most nem érhető el'); }
+  }
+  window.kfLiveExcel = exportLive;
+
   function weekView() {
     const days = [...Array(7)].map((_, i) => addDays(S.week, i));
     const lists = days.map(onDay);

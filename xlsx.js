@@ -91,13 +91,14 @@ ${cols}<sheetData>${rows}</sheetData>
 ${sh.filter ? `<autoFilter ref="${sh.filter}"/>` : ''}
 <pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>
 <pageSetup paperSize="9" orientation="${sh.landscape ? 'landscape' : 'portrait'}" fitToWidth="1" fitToHeight="0"/>
+${sh.tables ? `<tableParts count="${sh.tables}">${Array.from({ length: sh.tables }, (_, i) => `<tablePart r:id="rId${i + 1}"/>`).join('')}</tableParts>` : ''}
 </worksheet>`;
   }
 
   // ---------- ZIP (tárolt, tömörítés nélkül) ----------
   const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
   const crc32 = b => { let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
-  function zip(files) {
+  function zipParts(files) {
     const enc = new TextEncoder();
     const parts = [], central = [];
     let off = 0;
@@ -105,7 +106,7 @@ ${sh.filter ? `<autoFilter ref="${sh.filter}"/>` : ''}
     const dosT = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
     const dosD = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
     for (const [name, text] of files) {
-      const nm = enc.encode(name), data = enc.encode(text), crc = crc32(data);
+      const nm = enc.encode(name), data = typeof text === 'string' ? enc.encode(text) : text, crc = crc32(data);
       const h = new DataView(new ArrayBuffer(30));
       h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
       h.setUint16(10, dosT, true); h.setUint16(12, dosD, true); h.setUint32(14, crc, true);
@@ -122,7 +123,15 @@ ${sh.filter ? `<autoFilter ref="${sh.filter}"/>` : ''}
     const e = new DataView(new ArrayBuffer(22));
     e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
     e.setUint32(12, csize, true); e.setUint32(16, off, true);
-    return new Blob([...parts, ...central, new Uint8Array(e.buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    return [...parts, ...central, new Uint8Array(e.buffer)];
+  }
+  const zip = files => new Blob(zipParts(files), { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  // Ugyanaz bájtokként (a Power Query csomagjához).
+  function zipBytes(files) {
+    const parts = zipParts(files), out = new Uint8Array(parts.reduce((n, b) => n + b.length, 0));
+    let o = 0;
+    for (const b of parts) { out.set(b, o); o += b.length; }
+    return out;
   }
 
   function book(sheets, meta = {}) {
@@ -134,7 +143,7 @@ ${sh.filter ? `<autoFilter ref="${sh.filter}"/>` : ''}
     const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
     const files = [
       ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`],
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>${meta.types || ''}</Types>`],
       ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`],
       ['docProps/core.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -144,7 +153,8 @@ ${sh.filter ? `<autoFilter ref="${sh.filter}"/>` : ''}
       ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${names.map((n, i) => `<sheet name="${xml(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>${defs ? `<definedNames>${defs}</definedNames>` : ''}<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`],
       ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${(meta.wbRels || []).map((r, i) => `<Relationship Id="rId${sheets.length + 2 + i}" Type="${r.type}" Target="${r.target}"/>`).join('')}</Relationships>`],
+      ...(meta.parts || []),
       ...ws.map((x, i) => [`xl/worksheets/sheet${i + 1}.xml`, x]),
       ['xl/styles.xml', styles.toXml()]
     ];
@@ -159,5 +169,5 @@ ${sh.filter ? `<autoFilter ref="${sh.filter}"/>` : ''}
     return Date.UTC(+m[1], m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)) / 864e5 + 25569;
   }
 
-  window.KFXlsx = { book, serial, colName };
+  window.KFXlsx = { book, serial, colName, zipBytes, xml };
 })();
