@@ -129,7 +129,7 @@ in
     const types = `<Override PartName="/xl/connections.xml" ContentType="${ct('connections')}"/><Override PartName="/customXml/itemProps1.xml" ContentType="application/vnd.openxmlformats-officedocument.customXmlProperties+xml"/>`
       + qs.map((_, i) => `<Override PartName="/xl/tables/table${i + 1}.xml" ContentType="${ct('table')}"/><Override PartName="/xl/queryTables/queryTable${i + 1}.xml" ContentType="${ct('queryTable')}"/>`).join('');
     return X.book(sheets, {
-      title: 'Konténer Forecast – élő', author, parts, types,
+      title: 'Konténer Forecast – élő', author, parts, types, shared: true,
       names: qs.map(([, cols], i) => `<definedName name="ExternalData_${i + 1}" localSheetId="${sheets.indexOf(ds[i])}" hidden="1">'${xml(ds[i].name)}'!$A$1:$${X.colName(cols.length - 1)}$2</definedName>`).join(''),
       wbRels: [{ type: `${REL}/connections`, target: 'connections.xml' }, { type: `${REL}/customXml`, target: '../customXml/item1.xml' }]
     });
