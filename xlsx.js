@@ -60,7 +60,7 @@ ${fmts.length ? `<numFmts count="${fmts.length}">${fmts.map((c, i) => `<numFmt n
   }
 
   // ---------- munkalap ----------
-  function sheetXml(sh, styles) {
+  function sheetXml(sh, styles, sst) {
     const rows = sh.rows.map((row, r) => {
       if (!row) return '';
       const cells = row.map((c, k) => {
@@ -74,6 +74,7 @@ ${fmts.length ? `<numFmts count="${fmts.length}">${fmts.map((c, i) => `<numFmt n
         }
         if (c.v == null || c.v === '') return s ? `<c r="${ref}"${sa}/>` : '';
         if (typeof c.v === 'number' && isFinite(c.v)) return `<c r="${ref}"${sa}><v>${c.v}</v></c>`;
+        if (sst) { const k2 = String(c.v); if (!sst.map.has(k2)) { sst.map.set(k2, sst.list.length); sst.list.push(k2); } return `<c r="${ref}"${sa} t="s"><v>${sst.map.get(k2)}</v></c>`; }
         return `<c r="${ref}"${sa} t="inlineStr"><is><t xml:space="preserve">${xml(c.v)}</t></is></c>`;
       }).join('');
       const ht = sh.heights && sh.heights[r] ? ` ht="${sh.heights[r]}" customHeight="1"` : '';
@@ -136,14 +137,15 @@ ${sh.tables ? `<tableParts count="${sh.tables}">${Array.from({ length: sh.tables
 
   function book(sheets, meta = {}) {
     const styles = Styles();
-    const ws = sheets.map(sh => sheetXml(sh, styles));
+    const sst = meta.shared ? { map: new Map(), list: [] } : null;
+    const ws = sheets.map(sh => sheetXml(sh, styles, sst));
     const names = sheets.map(sh => sh.name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 31));
     const abs = r => r.split(':').map(x => x.replace(/^([A-Z]+)(\d+)$/, (_, c, n) => `$${c}$${n}`)).join(':');
     const defs = (meta.names || '') + sheets.map((sh, i) => (sh.filter ? `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${xml(names[i])}'!${abs(sh.filter)}</definedName>` : '')).join('');
     const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
     const files = [
       ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>${meta.types || ''}</Types>`],
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>${sst ? '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>' : ''}${meta.types || ''}</Types>`],
       ['_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`],
       ['docProps/core.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -153,8 +155,10 @@ ${sh.tables ? `<tableParts count="${sh.tables}">${Array.from({ length: sh.tables
       ['xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView/></bookViews><sheets>${names.map((n, i) => `<sheet name="${xml(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>${defs ? `<definedNames>${defs}</definedNames>` : ''}<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>`],
       ['xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${(meta.wbRels || []).map((r, i) => `<Relationship Id="rId${sheets.length + 2 + i}" Type="${r.type}" Target="${r.target}"/>`).join('')}</Relationships>`],
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${(meta.wbRels || []).map((r, i) => `<Relationship Id="rId${sheets.length + 2 + i}" Type="${r.type}" Target="${r.target}"/>`).join('')}${sst ? `<Relationship Id="rId${sheets.length + 2 + (meta.wbRels || []).length}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>` : ''}</Relationships>`],
       ...(meta.parts || []),
+      ...(sst ? [['xl/sharedStrings.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sst.list.length}" uniqueCount="${sst.list.length}">${sst.list.map(t => `<si><t xml:space="preserve">${xml(t)}</t></si>`).join('')}</sst>`]] : []),
       ...ws.map((x, i) => [`xl/worksheets/sheet${i + 1}.xml`, x]),
       ['xl/styles.xml', styles.toXml()]
     ];
