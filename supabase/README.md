@@ -37,9 +37,9 @@ bejelentkezés nélkül megnyílik a `foto.html`. Ezen csak az adott konténer f
 
 # Supabase: élő Excel
 
-Az `excel-feed` függvény a **mai nap** konténereit és fuvarleveleit adja CSV-ben. Az élő Excelben (`live-xlsx.js`) két Power Query-lekérdezés
-húzza le, megnyitáskor és ötpercenként frissül, az „Összesítő” lap pedig ezekből számol. Gomb még nincs: a bejelentkezett appban
-a konzolból indítható (`kfLiveExcel()`).
+Az `excel-feed` függvény a **mai nap** (`r=day`) vagy az adott hét (`r=week`, hétfőtől vasárnapig) konténereit és fuvarleveleit adja CSV-ben. Az élő Excelben (`live-xlsx.js`) két Power Query-lekérdezés
+húzza le, megnyitáskor és ötpercenként frissül, az „Összesítő” lap pedig ezekből számol. A bejelentkezett appban
+a heti összesítő „Élő Excel” gombjáról (aktuális hét) vagy a konzolból indítható (`kfLiveExcel('day')` a mai nap, `kfLiveExcel('week')` az aktuális hét).
 
 ## Telepítés (egyszer)
 

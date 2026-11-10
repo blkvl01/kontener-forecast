@@ -60,8 +60,14 @@ export const PDD_COLS = [
   ['sto', 'Betárolva'], ['arr', 'Konténer megérkezett'], ['state', 'Konténer állapota']
 ];
 
-export function dayRows(data, day, now, prio = []) {
-  const list = Object.values(data.containers).filter(c => c.state === 'active' && c.day === day).sort(byArrival);
+// A hét hétfője (ÉÉÉÉ-HH-NN) és vasárnapja annak a napnak, amelyik a megadott dátumra esik.
+const shiftDay = (day, n) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+export const weekOf = day => { const m = shiftDay(day, -dowIdx(day)); return [m, shiftDay(m, 6)]; };
+
+// from..to (mindkettő benne van); egy napnál from = to. Több napnál nap szerint, azon belül érkezés szerint rendez.
+export function dayRows(data, from, now, prio = [], to = from) {
+  const list = Object.values(data.containers).filter(c => c.state === 'active' && c.day >= from && c.day <= to)
+    .sort((a, b) => (a.day !== b.day ? (a.day < b.day ? -1 : 1) : byArrival(a, b)));
   const ct = [], pd = [];
   const mins = (a, b) => (a && b ? Math.round(Math.max(0, minutesBetween(a, b))) : '');
   for (const c of list) {

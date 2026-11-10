@@ -1,5 +1,5 @@
 // Élő Excel: olyan .xlsx, amelyben két Power Query-lekérdezés (Konténerek, Fuvarlevelek) az excel-feed függvényből
-// húzza a mai napot, megnyitáskor és ötpercenként frissül, az „Összesítő” lap pedig ezekből számol.
+// húzza a mai napot vagy az aktuális hetet (range: 'day' | 'week'), megnyitáskor és ötpercenként frissül, az „Összesítő” lap pedig ezekből számol.
 // Használat: KFLive.build({ feedUrl: 'https://…/functions/v1/excel-feed?t=…', author }) → Blob.
 // A lekérdezések (M-kód) a „Frissítés” lapon is olvashatók: ha az Excel nem fogadná el a beágyazottakat, ott másolhatók be
 // (Adatok → Adatok lekérése → Más forrásból → Üres lekérdezés → Speciális szerkesztő).
@@ -27,10 +27,10 @@
   ];
   const MT = { d: 'type date', t: 'type datetime', i: 'Int64.Type', s: 'type text' };
 
-  function mCode(name, cols, base, token, sheet) {
+  function mCode(name, cols, base, token, sheet, range) {
     const types = cols.map(([, h, t]) => `{"${mq(h)}", ${MT[t]}}`).join(', ');
     return `${name} = let
-    Forras = Csv.Document(Web.Contents("${mq(base)}", [Query = [t = "${mq(token)}", sheet = "${sheet}"]]), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+    Forras = Csv.Document(Web.Contents("${mq(base)}", [Query = [t = "${mq(token)}", sheet = "${sheet}", r = "${range}"]]), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
     Fejlec = Table.PromoteHeaders(Forras, [PromoteAllScalars = true]),
     Uresek = Table.ReplaceValue(Fejlec, "", null, Replacer.ReplaceValue, Table.ColumnNames(Fejlec)),
     Tipusok = Table.TransformColumnTypes(Uresek, {${types}}, "en-US")
@@ -64,12 +64,13 @@ in
   }
   const b64 = bytes => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
 
-  function build({ feedUrl, author }) {
+  function build({ feedUrl, author, range = 'day' }) {
+    if (range !== 'week') range = 'day';
     const u = new URL(feedUrl);
     const token = u.searchParams.get('t') || '';
     const base = u.origin + u.pathname;
     const qs = [['Kontenerek', KC, 'containers'], ['Fuvarlevelek', PC, 'pdd']];
-    const ms = qs.map(([n, c, s]) => mCode(n, c, base, token, s));
+    const ms = qs.map(([n, c, s]) => mCode(n, c, base, token, s, range));
     const mAll = ms.map(m => `shared ${m}`).join('\r\n\r\n');
 
     const dataSheet = ([name, cols], i) => {
@@ -83,7 +84,7 @@ in
     const int = { font: { b: true, sz: 14 }, fmt: '#,##0', h: 'left' };
     const sum = {
       name: 'Összesítő', cols: [30, 14, 3, 60], tabSelected: true, heights: { 0: 24 }, rows: [
-        [{ v: 'Konténer Forecast · mai nap', s: { font: { b: true, sz: 16 } } }],
+        [{ v: range === 'week' ? 'Konténer Forecast · aktuális hét' : 'Konténer Forecast · mai nap', s: { font: { b: true, sz: 16 } } }],
         [{ v: 'Az adatok megnyitáskor és ötpercenként frissülnek (Adatok → Összes frissítése). Frissítéshez az internet kell.', s: G }],
         null,
         K('Konténer', 'COUNTA(Kontenerek[Konténer])', int),
@@ -133,5 +134,5 @@ in
     });
   }
 
-  window.KFLive = { build, mCode: (base, token) => ({ Kontenerek: mCode('Kontenerek', KC, base, token, 'containers'), Fuvarlevelek: mCode('Fuvarlevelek', PC, base, token, 'pdd') }) };
+  window.KFLive = { build, mCode: (base, token, range = 'day') => ({ Kontenerek: mCode('Kontenerek', KC, base, token, 'containers', range), Fuvarlevelek: mCode('Fuvarlevelek', PC, base, token, 'pdd', range) }) };
 })();

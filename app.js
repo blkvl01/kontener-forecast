@@ -1126,7 +1126,7 @@
     return `
       <section class="wk-foot" aria-label="Heti összesítő">
         <div class="wk-title"><b>${isoWeek(S.week)}. hét összesen</b><span>${weekRange(S.week)}</span>
-          <div class="wk-acts"><button type="button" class="wk-btn" data-action="export"${flat.length ? '' : ' disabled'}>${IC.xls}Excel</button></div>
+          <div class="wk-acts"><button type="button" class="wk-btn" data-action="export"${flat.length ? '' : ' disabled'}>${IC.xls}Excel</button><button type="button" class="wk-btn" data-action="live" title="Magától frissülő Excel az aktuális hétről">${IC.xls}Élő Excel</button></div>
         </div>
         <div class="wk-kpis">
           ${kpi('Konténer', num(flat.length, 'int', 200), delta(flat.length, prev.length, fmtInt, !U), 0, !U)}
@@ -1342,7 +1342,7 @@
     toast(`${list.length} konténer, ${pddTot} fuvarlevél exportálva`);
   }
 
-  // Élő Excel (gomb nélkül, egyelőre a konzolból: kfLiveExcel()): a mai napot Power Query húzza az excel-feed függvényből.
+  // Élő Excel (a heti összesítő gombja, a konzolból kfLiveExcel('day'|'week')): a mai napot vagy az aktuális hetet Power Query húzza az excel-feed függvényből.
   // A link a belépett taghoz kötött; a tagság megszűnésével a fájl is leáll.
   let liveLib = null;
   const loadLive = () => (liveLib ||= new Promise((res, rej) => {
@@ -1353,15 +1353,16 @@
     sc.onerror = () => { liveLib = null; rej(new Error('live')); };
     document.head.appendChild(sc);
   }));
-  async function exportLive() {
+  async function exportLive(range = 'week') {
+    range = range === 'day' ? 'day' : 'week';
     try {
       await loadXlsx();
       const L = await loadLive();
       const { url } = await edgeFn('excel-feed', 'link');
-      const blob = L.build({ feedUrl: url, author: ME && ME.name });
+      const blob = L.build({ feedUrl: url, author: ME && ME.name, range });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `kontener-elo-${iso(new Date())}.xlsx`;
+      a.download = `kontener-elo-${range === 'week' ? 'het' : 'nap'}-${iso(new Date())}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -1370,6 +1371,7 @@
     } catch (e) { toast(e && e.message && e.message !== 'live' ? e.message : 'Az élő Excel most nem érhető el'); }
   }
   window.kfLiveExcel = exportLive;
+  let liveBusy = false;
 
   function weekView() {
     const days = [...Array(7)].map((_, i) => addDays(S.week, i));
@@ -4395,6 +4397,7 @@
         break;
       case 'px': S.px = el.dataset.v && S.px !== el.dataset.v ? el.dataset.v : null; render(); break;
       case 'export': exportWeek(); break;
+      case 'live': if (!liveBusy) { liveBusy = true; exportLive('week').finally(() => { liveBusy = false; }); } break;
       case 'prev': nav(-1); break;
       case 'next': nav(1); break;
       case 'today': goToday(); break;

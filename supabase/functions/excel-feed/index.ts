@@ -3,7 +3,8 @@
 // Gépen (bejelentkezett tag, Authorization: a felhasználó tokenje), POST:
 //   { action: 'link' }  → { url }   a tag személyes feed-linkje (a végén a lap neve és a nap kerül)
 // Excelből (bejelentkezés nélkül), GET:
-//   ?t=<token>&sheet=containers|pdd&d=YYYY-MM-DD  → CSV (UTF-8)
+//   ?t=<token>&sheet=containers|pdd&d=YYYY-MM-DD&r=day|week  → CSV (UTF-8)
+//   r=day (alap): a d napja (alapból a mai); r=week: annak a hétnek hétfőtől vasárnapig, amelyikbe d esik
 //
 // A token = <email base64url>.<HMAC>. Nem tárolódik. Minden lekérésnél ellenőrzi, hogy az e-mail még tagja-e
 // (members tábla), ezért a tag eltávolítása azonnal megszünteti a linkjét. A titok cseréje mindenkiét.
@@ -15,7 +16,7 @@
 // (ellenőrzés: ./supabase/functions/excel-feed/check-derive.sh).
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
-import { CONTAINER_COLS, PDD_COLS, dayRows, toCsv } from './rows.js';
+import { CONTAINER_COLS, PDD_COLS, dayRows, toCsv, weekOf } from './rows.js';
 
 const SB_URL = Deno.env.get('SUPABASE_URL')!;
 const SRK = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -123,8 +124,11 @@ Deno.serve(async req => {
     const now = fmt.format(new Date()).replace(' ', 'T');
     const dp = url.searchParams.get('d') || now.slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dp)) throw new HttpError(400, 'Hibás dátum.');
+    const r = url.searchParams.get('r') || 'day';
+    if (!['day', 'week'].includes(r)) throw new HttpError(400, 'Ismeretlen tartomány.');
+    const [from, to] = r === 'week' ? weekOf(dp) : [dp, dp];
     const { data, prio } = await derive();
-    const rows = dayRows(data, dp, now, prio);
+    const rows = dayRows(data, from, now, prio, to);
     const csv = sheet === 'pdd' ? toCsv(PDD_COLS, rows.pdd) : toCsv(CONTAINER_COLS, rows.containers);
     return new Response(csv, { headers: { ...CORS, 'Content-Type': 'text/csv; charset=utf-8', 'Cache-Control': 'no-store' } });
   } catch (e) {
