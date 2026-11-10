@@ -16,7 +16,7 @@
   const KC = [
     ['date', 'Dátum', 'd'], ['dow', 'Nap', 's'], ['id', 'Konténer', 's'], ['prio', 'Prioritás', 's'], ['fwd', 'Szállító', 's'], ['plate', 'Rendszám', 's'],
     ['t1', 'T1 / MRN', 's'], ['phone', 'Sofőr telefon', 's'], ['npdd', 'Fuvarlevél (db)', 'i'], ['ctns', 'Colli', 'i'], ['kg', 'Súly (kg)', 'i'],
-    ['state', 'Állapot', 's'], ['ramp', 'Rámpa', 'i'], ['seen', 'Pre-alert', 't'], ['truck', 'Rendszám + T1', 't'], ['eta', 'ETA', 't'],
+    ['state', 'Állapot', 's'], ['ramp', 'Rámpa', 's'], ['seen', 'Pre-alert', 't'], ['truck', 'Rendszám + T1', 't'], ['eta', 'ETA', 't'],
     ['arr', 'Megérkezett', 't'], ['dev', 'Eltérés az ETA-tól (perc)', 'i'], ['req', 'Nyitáskérés', 't'], ['appr', 'Nyitható', 't'], ['open', 'Nyitás', 't'],
     ['rel', 'Elengedve', 't'], ['sto1', 'Betárolás kezdete', 't'], ['sto', 'Betárolva', 't'], ['d1', 'Nyitáskérés → nyitható (perc)', 'i'],
     ['d2', 'Nyitható → nyitás (perc)', 'i'], ['d3', 'Nyitás → betárolva (perc)', 'i'], ['dt', 'Átfutás: érkezés → betárolva (perc)', 'i'], ['note', 'Megjegyzés', 's']
@@ -25,15 +25,22 @@
     ['date', 'Dátum', 'd'], ['id', 'Konténer', 's'], ['no', 'Fuvarlevél', 's'], ['px', 'Prefix', 's'], ['ctns', 'Colli', 'i'], ['kg', 'Súly (kg)', 'i'],
     ['sto', 'Betárolva', 't'], ['arr', 'Konténer megérkezett', 't'], ['state', 'Konténer állapota', 's']
   ];
-  const MT = { d: 'type date', t: 'type datetime', i: 'Int64.Type', s: 'type text' };
+  // Hibatűrő átalakítás: egy váratlan érték üres cella lesz, nem dönti el az egész lekérdezést.
+  const TF = {
+    d: 'each try Date.FromText(_, [Format = "yyyy-MM-dd", Culture = "en-US"]) otherwise null, type nullable date',
+    t: `each try DateTime.FromText(_, [Format = "yyyy-MM-dd'T'HH:mm:ss", Culture = "en-US"]) otherwise (try DateTime.FromText(_, [Culture = "en-US"]) otherwise null), type nullable datetime`,
+    i: 'each try Int64.From(Number.FromText(_, "en-US")) otherwise null, Int64.Type',
+    s: 'each _, type text'
+  };
 
   function mCode(name, cols, base, token, sheet, range) {
-    const types = cols.map(([, h, t]) => `{"${mq(h)}", ${MT[t]}}`).join(', ');
+    const tf = cols.map(([, h, t]) => `{"${mq(h)}", ${TF[t]}}`).join(',\r\n        ');
     return `${name} = let
     Forras = Csv.Document(Web.Contents("${mq(base)}", [Query = [t = "${mq(token)}", sheet = "${sheet}", r = "${range}"]]), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
     Fejlec = Table.PromoteHeaders(Forras, [PromoteAllScalars = true]),
     Uresek = Table.ReplaceValue(Fejlec, "", null, Replacer.ReplaceValue, Table.ColumnNames(Fejlec)),
-    Tipusok = Table.TransformColumnTypes(Uresek, {${types}}, "en-US")
+    Tipusok = Table.TransformColumns(Uresek, {
+        ${tf}})
 in
     Tipusok;`;
   }
