@@ -139,7 +139,7 @@ ${sh.tables ? `<tableParts count="${sh.tables}">${Array.from({ length: sh.tables
     const ws = sheets.map(sh => sheetXml(sh, styles));
     const names = sheets.map(sh => sh.name.replace(/[\\/?*[\]:]/g, ' ').slice(0, 31));
     const abs = r => r.split(':').map(x => x.replace(/^([A-Z]+)(\d+)$/, (_, c, n) => `$${c}$${n}`)).join(':');
-    const defs = sheets.map((sh, i) => (sh.filter ? `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${xml(names[i])}'!${abs(sh.filter)}</definedName>` : '')).join('');
+    const defs = (meta.names || '') + sheets.map((sh, i) => (sh.filter ? `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">'${xml(names[i])}'!${abs(sh.filter)}</definedName>` : '')).join('');
     const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
     const files = [
       ['[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
