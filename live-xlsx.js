@@ -120,9 +120,9 @@ in
       const si = sheets.indexOf(ds[i]) + 1;
       parts.push(
         [`xl/worksheets/_rels/sheet${si}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/table" Target="../tables/table${k}.xml"/></Relationships>`],
-        [`xl/tables/table${k}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<table xmlns="${NS}" id="${k}" name="${n}" displayName="${n}" ref="${ref}" tableType="queryTable" totalsRowShown="0" connectionId="${k}"><autoFilter ref="${ref}"/><tableColumns count="${cols.length}">${cols.map(([, h], j) => `<tableColumn id="${j + 1}" uniqueName="${j + 1}" name="${xml(h)}" queryTableFieldId="${j + 1}"/>`).join('')}</tableColumns><tableStyleInfo name="TableStyleLight1" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/></table>`],
+        [`xl/tables/table${k}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<table xmlns="${NS}" id="${k}" name="${n}" displayName="${n}" ref="${ref}" tableType="queryTable" totalsRowShown="0" connectionId="${k}"><autoFilter ref="${ref}"/><tableColumns count="${cols.length}">${cols.map(([, h], j) => `<tableColumn id="${j + 1}" name="${xml(h)}" queryTableFieldId="${j + 1}"/>`).join('')}</tableColumns><tableStyleInfo name="TableStyleLight1" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/></table>`],
         [`xl/tables/_rels/table${k}.xml.rels`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/queryTable" Target="../queryTables/queryTable${k}.xml"/></Relationships>`],
-        [`xl/queryTables/queryTable${k}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<queryTable xmlns="${NS}" name="Query - ${n}" connectionId="${k}" autoFormatId="16" applyNumberFormats="0" applyBorderFormats="0" applyFontFormats="0" applyPatternFormats="0" applyAlignmentFormats="0" applyWidthHeightFormats="0"><queryTableRefresh nextId="${cols.length + 1}"><queryTableFields count="${cols.length}">${cols.map(([, h], j) => `<queryTableField id="${j + 1}" name="${xml(h)}" tableColumnId="${j + 1}"/>`).join('')}</queryTableFields></queryTableRefresh></queryTable>`]
+        [`xl/queryTables/queryTable${k}.xml`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<queryTable xmlns="${NS}" name="ExternalData_${k}" connectionId="${k}" autoFormatId="16" applyNumberFormats="0" applyBorderFormats="0" applyFontFormats="0" applyPatternFormats="0" applyAlignmentFormats="0" applyWidthHeightFormats="0"><queryTableRefresh nextId="${cols.length + 1}"><queryTableFields count="${cols.length}">${cols.map(([, h], j) => `<queryTableField id="${j + 1}" name="${xml(h)}" tableColumnId="${j + 1}"/>`).join('')}</queryTableFields></queryTableRefresh></queryTable>`]
       );
     });
     const ct = t => `application/vnd.openxmlformats-officedocument.spreadsheetml.${t}+xml`;
@@ -130,6 +130,7 @@ in
       + qs.map((_, i) => `<Override PartName="/xl/tables/table${i + 1}.xml" ContentType="${ct('table')}"/><Override PartName="/xl/queryTables/queryTable${i + 1}.xml" ContentType="${ct('queryTable')}"/>`).join('');
     return X.book(sheets, {
       title: 'Konténer Forecast – élő', author, parts, types,
+      names: qs.map(([, cols], i) => `<definedName name="ExternalData_${i + 1}" localSheetId="${sheets.indexOf(ds[i])}" hidden="1">'${xml(ds[i].name)}'!$A$1:$${X.colName(cols.length - 1)}$2</definedName>`).join(''),
       wbRels: [{ type: `${REL}/connections`, target: 'connections.xml' }, { type: `${REL}/customXml`, target: '../customXml/item1.xml' }]
     });
   }
