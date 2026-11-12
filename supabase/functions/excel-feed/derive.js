@@ -3,6 +3,17 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
   const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
   const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
   const FIX_KEYS = ['plate', 't1', 'driver', 'phone'];
+  // Nap ISO-alakra: 2026-11-13, 2026/11/13, 2026.11.13., 13/11/2026, 13.11.2026. Ami nem nap, az üres.
+  const toDay = v => {
+    const s = String(v || '').trim();
+    if (DAY_RE.test(s)) return s;
+    let y, mo, d, r;
+    if ((r = /^(\d{4})[./-](\d{1,2})[./-](\d{1,2})\.?$/.exec(s))) [, y, mo, d] = r;
+    else if ((r = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})\.?$/.exec(s))) [, d, mo, y] = r;
+    else return '';
+    if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) return '';
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  };
   const C = {};
   const feed = [];
   const files = {};
@@ -35,7 +46,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     const flushEta = () => {
       for (const e of m.etas || []) {
         if (!e || !e.container) continue;
-        const date = DAY_RE.test(e.date || '') ? e.date : '';
+        const date = toDay(e.date);
         if (e.time && TIME_RE.test(e.time)) {
           mailEta[e.container] = { time: e.time, date, for: (C[e.container] && C[e.container].date) || date, at };
         } else if (e.time === null) {
@@ -47,11 +58,31 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     };
     // Szállítónként külön terv: egy levél csak a saját szállítója konténereit veheti le a listáról.
     // A dátum nélküli tétel (csak sofőr/T1/ETA frissítés) a konténer meglévő napján marad.
-    const src = ((m.containers || []).find(c => c && c.src) || {}).src || 'jz';
-    const conts = (m.containers || []).filter(c => c && c.id && (c.date || C[c.id]))
-      .map(c => (c.date ? c : { ...c, date: C[c.id].date }));
+    const src = ((m.containers || []).find(c => c && c.src) || {}).src || m.src || 'jz';
+    const dates = [...new Set((m.dates || []).map(toDay).filter(Boolean))];
+    // Új konténer dátum nélkül (pl. „T1/driver info” táblázat, a nap a levél elején vagy az ETA-soroknál áll):
+    // a napja a levélből jön: az ugyanebben a levélben adott ETA napja, különben a levél egyetlen napja.
+    // Korábban ezek kimaradtak, így az ilyen formájú pre-alert nem került be a forecastba.
+    const etaDay = {};
+    for (const e of m.etas || []) { const d = e && e.container && toDay(e.date); if (d) etaDay[e.container] = d; }
+    const etaDays = [...new Set(Object.values(etaDay))];
+    const mailDay = dates.length === 1 ? dates[0] : !dates.length && etaDays.length === 1 ? etaDays[0] : '';
+    const items = (m.containers || []).filter(c => c && c.id).map(c => ({ ...c, date: toDay(c.date) }));
+    // Csak az ETA-sorokban szereplő, még ismeretlen konténer (nappal) is bejelentés: felvesszük.
+    const listed = new Set(items.map(c => c.id));
+    for (const e of m.etas || []) {
+      if (e && e.container && etaDay[e.container] && !listed.has(e.container) && !C[e.container]) {
+        items.push({ id: e.container, date: etaDay[e.container] });
+        listed.add(e.container);
+      }
+    }
+    const conts = items.map(c => {
+      if (c.date) return c;
+      if (C[c.id]) return { ...c, date: C[c.id].date };
+      const d = etaDay[c.id] || mailDay;
+      return d ? { ...c, date: d } : null;
+    }).filter(Boolean);
     if (!conts.length) { flushEta(); continue; }
-    const dates = (m.dates || []).filter(Boolean);
     dates.forEach(d => forecastDates.add(d));
     const listedAll = new Set(conts.map(c => c.id));
     const byDate = {};

@@ -1656,24 +1656,37 @@
     const ci = STAGES.indexOf(cur);
     const now = nowIso();
     const op = openedAt(c);
-    const un = op ? isoAdd(op, UNPACK_MIN) : '';
+    const endTs = [st.stored && st.stored.at, st.released && st.released.at].filter(Boolean).sort()[0] || '';
+    // A bontás nem kap levelet, a „nyitjuk” + 15 perc a becsült kezdete. Ha az elengedés / betárolás ennél hamarabb
+    // megjött, a bontás már lezajlott: kész, de pontos ideje nincs (különben az elengedésnél későbbi időt mutatna).
+    const un0 = op ? isoAdd(op, UNPACK_MIN) : '';
+    const un = un0 && endTs && endTs < un0 ? '' : un0;
     const at = {
       request: (st.request && st.request.at) || c.arrived_at || '',
       approved: st.approved ? st.approved.at : '', opened: op, unpack: un && un <= now ? un : '',
       released: st.released ? st.released.at : '', stored: st.stored ? st.stored.at : ''
     };
+    // Levélsorrend-ellenőrzés: ha egy későbbi lépés levele korábban jött, mint ez, a két idő ellentmond egymásnak.
+    // Az idő marad (a levél ideje), de jelölve, és az időköz nem lesz negatív.
+    const odd = {};
+    STAGES.forEach((k, i) => {
+      if (!at[k]) return;
+      const nx = STAGES.slice(i + 1).find(k2 => at[k2] && at[k2] < at[k]);
+      if (nx) odd[k] = nx;
+    });
     let prev = null, last = -1;
     const items = STAGES.map((k, i) => {
       // Betárolva elengedés nélkül: az elengedés kimarad (áthúzva). Nyitásról levél nélkül (később igazolva): kész, idő nélkül.
       const skip = k === 'released' && cur === 'stored' && !at.released;
       const done = !skip && (!!at[k] || (ci >= 0 && i <= ci && k !== 'released') || (k === 'released' && cur === 'released'));
-      const dur = at[k] && prev ? fmtDur(minutesBetween(prev, at[k])) : '';
-      if (at[k]) prev = at[k];
+      const dur = at[k] && prev && at[k] >= prev ? fmtDur(minutesBetween(prev, at[k])) : '';
+      if (at[k] && (!prev || at[k] > prev)) prev = at[k];
       if (done) last = i;
       // A bontás ideje előre látszik (halványan), amíg a 15 perc le nem telik.
       const plan = !at[k] && k === 'unpack' && un ? `~${hm(un)}` : '';
+      const tip = odd[k] ? ` title="${esc(`A(z) „${STAGE_LABEL[odd[k]]}” levél korábban jött (${hm(at[odd[k]])}), mint ez a lépés.`)}"` : '';
       return `
-        <li class="${done ? 'done' : ''}${i === ci ? ' cur' : ''}${skip ? ' skip' : ''}" style="--i:${i}">
+        <li class="${done ? 'done' : ''}${i === ci ? ' cur' : ''}${skip ? ' skip' : ''}${odd[k] ? ' odd' : ''}" style="--i:${i}"${tip}>
           <span class="sp-dot" aria-hidden="true"></span>
           <span class="sp-lab">${esc(STAGE_LABEL[k])}</span>
           <span class="sp-at">${at[k] ? esc(hm(at[k])) : plan ? `<span class="sp-plan">${esc(plan)}</span>` : '—'}</span>
