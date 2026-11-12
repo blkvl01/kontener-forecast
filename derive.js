@@ -232,6 +232,14 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
   const byT1 = {};
   all.forEach(x => { if (x.t1) byT1[x.t1.replace(/\s/g, '').toUpperCase()] = x; });
   const fold = s => String(s || '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  // A levél lépése a feldolgozó szerint, a szöveg alapján javítva. „Kirakodás engedélyezve” = nyitható
+  // (a feldolgozó elengedésnek vette, pl. UETU7755187, 7:38). Ha a levél az elengedést is kimondja, marad.
+  const stageOf = a => {
+    const st = a.stage || 'request';
+    const t = fold(`${a.subject || ''} ${a.snippet || ''}`);
+    if (st === 'released' && /kirakodas\w*\s+(is\s+)?engedelyez/.test(t) && !/elenged/.test(t)) return 'approved';
+    return st;
+  };
   const arr = (arrivals || []).slice().sort((a, b) => (a.received < b.received ? -1 : 1));
   for (const a of arr) {
     const hits = new Set();
@@ -244,7 +252,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
         if (near.length === 1) hits.add(near[0]);
       }
     }
-    const st = a.stage || 'request';
+    const st = stageOf(a);
     hits.forEach(x => {
       if (!x.auto_arrival || a.received < x.auto_arrival.at) x.auto_arrival = { at: a.received, sender: a.sender || '' };
       x.stages = x.stages || {};
