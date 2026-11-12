@@ -100,7 +100,7 @@ async function derive() {
     arrived: !!r.arrived, arrived_at: toLocal(r.arrived_at), ramp: r.ramp || null, ramp_set: toLocal(r.ramp_set),
     note: r.note || '', updated_by: r.updated_by || '', updated_at: toLocal(r.updated_at),
     plate: r.plate || '', t1: r.t1 || '', driver: r.driver || '', phone: r.phone || '',
-    auto_dismissed: !!r.auto_dismissed, site: r.site || ''
+    auto_dismissed: !!r.auto_dismissed, site: r.site || '', pdd: Array.isArray(r.pdd) ? r.pdd : []
   }]));
   const ARR = arr.map(r => ({ ...r, received: toLocal(r.received) }));
   const STO = sto.map(r => ({ ...r, stored_at: toLocal(r.stored_at) }));

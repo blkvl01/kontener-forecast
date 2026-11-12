@@ -212,6 +212,15 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       x.fixed[k] = x[k] || '';
       x[k] = man[k];
     }
+    // Kézi fuvarlevelek (beillesztett táblázatból): erősebbek a levélbelinél. A darab és a súly ezekből jön,
+    // ha a levél nem adta meg.
+    const mp = (Array.isArray(man.pdd) ? man.pdd : []).filter(p => p && p.no);
+    if (mp.length) {
+      x.pdd_manual = true;
+      x.pdd = mp.map(p => ({ no: String(p.no), ctns: +p.ctns || 0, kg: +p.kg || 0 }));
+      if (!x.ctns) x.ctns = x.pdd.reduce((t, p) => t + p.ctns, 0);
+      if (!x.kg) x.kg = Math.round(x.pdd.reduce((t, p) => t + p.kg, 0) * 100) / 100;
+    }
   }
 
   // Nyitáskérő levelek párosítása: MRN, konténerszám, végül egy karakter eltérés
