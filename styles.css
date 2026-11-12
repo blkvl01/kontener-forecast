@@ -2494,3 +2494,7 @@ button.rp-b:active{transform:scale(.97)}
 .park .pk-lab{flex:1 1 auto;min-width:0}
 .park .pk-go{padding:5px 9px}
 .pk-mv{padding:0 7px}
+#wb-list .pl-row{grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;align-items:start}
+#wb-list .pl-row b{white-space:nowrap;font-size:12px}
+.wb-nos{display:block;margin-top:3px;font-size:11.5px;color:var(--muted);line-height:1.45}
+.wb-help{margin:0 0 10px;font-size:12.5px;color:var(--muted)}

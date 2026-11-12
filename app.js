@@ -136,7 +136,8 @@
     note: r.note || '', updated_by: r.updated_by || '', updated_at: toLocal(r.updated_at),
     plate: r.plate || '', t1: r.t1 || '', driver: r.driver || '', phone: r.phone || '',
     auto_dismissed: !!r.auto_dismissed,
-    site: r.site || ''
+    site: r.site || '',
+    pdd: Array.isArray(r.pdd) ? r.pdd : []
   });
   const normArr = r => ({ ...r, received: toLocal(r.received) });
 
@@ -595,7 +596,7 @@
 
   function editing() {
     const a = document.activeElement;
-    if ($('#settings').open || $('#paste').open || $('#people').open || $('#rpick').open || DRAG) return true;
+    if ($('#settings').open || $('#paste').open || $('#wb').open || $('#people').open || $('#rpick').open || DRAG) return true;
     if (a && a.id === 'q') return false;
     return !!(a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && a.closest('#view, #drawer'));
   }
@@ -977,7 +978,8 @@
       <div class="period-label">${label}</div>
       <button type="button" class="ibtn" data-action="next" aria-label="${S.view === 'week' ? 'Következő hét' : 'Következő hónap'}">${IC.right}</button>
       <button type="button" class="tbtn" data-action="today">Ma</button>${`
-      <button type="button" class="tbtn tbtn-ic" data-action="paste" aria-label="ETA beillesztése" title="ETA beillesztése"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M12 11v6M9 14h6"/></svg><span>ETA beillesztése</span></button>`}`;
+      <button type="button" class="tbtn tbtn-ic" data-action="paste" aria-label="ETA beillesztése" title="ETA beillesztése"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M12 11v6M9 14h6"/></svg><span>ETA beillesztése</span></button>
+      <button type="button" class="tbtn tbtn-ic" data-action="wb" aria-label="Fuvarlevelek beillesztése" title="Fuvarlevelek beillesztése"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 12h5M10 16h5"/></svg><span>Fuvarlevelek</span></button>`}`;
   }
 
   function renderSync() {
@@ -3205,6 +3207,81 @@
     return out;
   }
 
+  // ---------- fuvarlevelek beillesztése ----------
+  // A beszállító táblázata (pl. NEP pre-alert: Reference number, Container number, Ctns, Weight) kimásolva,
+  // akár soronként tabulátorral, akár cellánként új sorban. A sorrend a táblázatból derül ki: ha az első konténerszám
+  // az első fuvarlevél előtt áll, a fuvarlevél az előtte lévő konténeré, különben az utána következőé (a fuvarlevél
+  // „sorában”). Az összevont konténer-cella csak az első sorban áll: a konténer a következőig érvényes.
+  // A fuvarlevél után álló első egész szám a darab, az első tizedes szám a súly.
+  function parseWaybills(text) {
+    const toks = String(text || '').replace(/([A-Za-z]{4})[ \u00a0](\d{7})(?!\d)/g, '$1$2')
+      .split(/[\s\u00a0|;]+/).map(t => t.replace(/^[^\w]+|[^\w.,]+$|[.,]+$/g, '')).filter(Boolean);
+    const isWb = t => /^[A-Za-z0-9]{1,6}TM\d{9,15}$/.test(t);
+    const isCt = t => /^[A-Z]{4}\d{7}$/.test(t.toUpperCase()) && !isWb(t);
+    const fw = toks.findIndex(isWb), fc = toks.findIndex(isCt);
+    if (fw < 0 || fc < 0) return [];
+    const ctFirst = fc < fw;
+    const by = {};
+    let cur = '';
+    for (let i = 0; i < toks.length; i++) {
+      if (isCt(toks[i])) { if (ctFirst) cur = toks[i].toUpperCase(); continue; }
+      if (!isWb(toks[i])) continue;
+      let j = i + 1;
+      while (j < toks.length && !isWb(toks[j])) j++;
+      const seg = toks.slice(i + 1, j);
+      if (!ctFirst) { const c = seg.find(isCt); if (c) cur = c.toUpperCase(); }
+      if (!cur) continue;
+      // Csak a következő konténerszámig (konténer-előre sorrendnél az már a következő sor).
+      const k = ctFirst ? seg.findIndex(isCt) : -1;
+      const nums = (k >= 0 ? seg.slice(0, k) : seg).filter(t => !isCt(t) && /^\d+(?:[.,]\d+)?$/.test(t));
+      const dec = nums.find(n => /[.,]/.test(n));
+      const ints = nums.filter(n => !/[.,]/.test(n));
+      const list = by[cur] = by[cur] || [];
+      if (!list.some(p => p.no.toUpperCase() === toks[i].toUpperCase())) {
+        list.push({ no: toks[i], ctns: ints.length ? +ints[0] : 0, kg: dec ? +dec.replace(',', '.') : ints.length > 1 ? +ints[1] : 0 });
+      }
+    }
+    return Object.entries(by).map(([container, pdd]) => ({ container, pdd }));
+  }
+  function openWaybills() {
+    $('#wb-text').value = '';
+    renderWaybills();
+    $('#wb').showModal();
+    setTimeout(() => $('#wb-text').focus(), 30);
+  }
+  function renderWaybills() {
+    const items = parseWaybills($('#wb-text').value);
+    $('#wb-save').disabled = !items.length;
+    $('#wb-list').innerHTML = items.map(it => {
+      const c = S.data.containers[it.container];
+      const on = c && c.state === 'active';
+      const n = it.pdd.reduce((t, p) => t + p.ctns, 0);
+      const kg = it.pdd.reduce((t, p) => t + p.kg, 0);
+      // Ellenőrzés: a levélben kapott darabszámmal egyezik-e.
+      const diff = on && c.ctns && n && Math.abs(c.ctns - n) > 0 ? ` · levélben ${fmtInt(c.ctns)}` : '';
+      return `<div class="pl-row"><span>${esc(it.container)}<small class="wb-nos">${it.pdd.map(p => esc(p.no)).join('<br>')}</small></span>`
+        + `<span class="pl-day ${on ? '' : 'unk'}">${on ? esc(`${DOW[dowIdx(c.day)]}, ${short(c.day)}`) : 'nincs a tervben'}${esc(diff)}</span>`
+        + `<b>${it.pdd.length} db · ${fmtInt(n)} colli · ${esc(fmtT(kg))}</b></div>`;
+    }).join('');
+  }
+  async function saveWaybills() {
+    const items = parseWaybills($('#wb-text').value);
+    if (!items.length) return;
+    const rows = items.map(it => ({ container: it.container, pdd: it.pdd }));
+    const { data, error } = await sb.from('manual').upsert(rows, { onConflict: 'container' }).select();
+    if (error) {
+      console.error(error);
+      toast(/pdd/.test(error.message || '') ? 'Hiányzik a pdd oszlop: futtasd a 20261112150000_manual_pdd.sql fájlt' : 'A mentés nem sikerült');
+      return;
+    }
+    data.forEach(r => { MAN[r.container] = normMan(r); });
+    rebuild();
+    $('#wb').close();
+    render();
+    const n = items.reduce((t, it) => t + it.pdd.length, 0);
+    toast(`${n} fuvarlevél, ${items.length} konténer`);
+  }
+
   // ---------- prioritás ----------
   const canPrio = () => ME && ME.role === 'admin';
   const prioSum = () => {
@@ -4535,6 +4612,9 @@
       }
       case 'paste': $('#paste-text').value = ''; pasteSeen = new Set(); renderPaste(); $('#paste').showModal(); setTimeout(() => $('#paste-text').focus(), 30); break;
       case 'paste-close': $('#paste').close(); break;
+      case 'wb': openWaybills(); break;
+      case 'wb-close': $('#wb').close(); break;
+      case 'wb-save': await saveWaybills(); break;
       case 'prio': openPrio(); break;
       case 'prio-close': $('#prio').close(); break;
       case 'prio-save': await savePrio(); break;
@@ -4665,6 +4745,7 @@
     const el = e.target;
     if (el.id === 'q') { renderSearch(); return; }
     if (el.id === 'paste-text') { renderPaste(); return; }
+    if (el.id === 'wb-text') { renderWaybills(); return; }
     if (el.id === 'prio-text') { renderPrio(); return; }
   });
 
@@ -4742,6 +4823,9 @@
     if (S.pending) { rebuild(); render(); }
   });
   $('#paste').addEventListener('close', () => {
+    if (S.pending) { rebuild(); render(); }
+  });
+  $('#wb').addEventListener('close', () => {
     if (S.pending) { rebuild(); render(); }
   });
 

@@ -12,9 +12,9 @@
 <link rel="preload" href="fonts/barlow-latin-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/barlow-condensed-latin-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/red-hat-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=20261112140000">
-<link rel="stylesheet" href="tour.css?v=20261112140000">
-<script src="boot-role.js?v=20261112140000"></script>
+<link rel="stylesheet" href="styles.css?v=20261112150000">
+<link rel="stylesheet" href="tour.css?v=20261112150000">
+<script src="boot-role.js?v=20261112150000"></script>
 </head>
 <body>
 <svg class="kf-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
@@ -182,6 +182,23 @@
   </div>
 </dialog>
 
+<dialog id="wb" class="settings" aria-labelledby="wb-title">
+  <div class="settings-inner">
+    <div class="settings-head">
+      <h2 id="wb-title">Fuvarlevelek beillesztése</h2>
+      <button type="button" class="x-btn" data-action="wb-close" aria-label="Bezárás"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <p class="wb-help">Másold ki a levélből a táblázatot (fuvarlevélszám, konténer, darab, súly), és illeszd be ide. A konténer meglévő kézi fuvarlevelei lecserélődnek.</p>
+    <label class="sr" for="wb-text">Fuvarlevél-táblázat</label>
+    <textarea id="wb-text" class="paste-text" rows="9" spellcheck="false" placeholder="Road&#9;OyTM202610177307&#9;NEPU4584990&#9;368&#9;8745.14"></textarea>
+    <div class="paste-list" id="wb-list"></div>
+    <div class="settings-actions">
+      <button type="button" class="btn-ghost sm" data-action="wb-close">Mégse</button>
+      <button type="button" class="btn-primary sm" data-action="wb-save" id="wb-save" disabled>Rögzítés</button>
+    </div>
+  </div>
+</dialog>
+
 <dialog id="paste" class="settings" aria-labelledby="paste-title">
   <div class="settings-inner">
     <div class="settings-head">
@@ -213,10 +230,10 @@
   </div>
 </dialog>
 
-<script src="vendor/supabase.min.js?v=20261112140000"></script>
-<script src="config.js?v=20261112140000"></script>
-<script src="derive.js?v=20261112140000"></script>
-<script src="tour.js?v=20261112140000"></script>
-<script src="app.js?v=20261112140000"></script>
+<script src="vendor/supabase.min.js?v=20261112150000"></script>
+<script src="config.js?v=20261112150000"></script>
+<script src="derive.js?v=20261112150000"></script>
+<script src="tour.js?v=20261112150000"></script>
+<script src="app.js?v=20261112150000"></script>
 </body>
 </html>
