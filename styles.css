@@ -541,6 +541,7 @@ button{cursor:pointer}
 .steps li.cur .sp-lab{color:var(--ink)}
 .steps li.skip .sp-lab{text-decoration:line-through}
 .sp-plan{color:var(--faint)}
+.steps li.odd .sp-at{color:var(--late);text-decoration:underline dotted;text-underline-offset:3px;cursor:help}
 .rp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:8px}
 .rp{height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border:1px solid oklch(0.86 0.008 255);border-radius:10px;background:var(--surface);color:var(--ink);transition:background-color .15s var(--ease),border-color .15s var(--ease)}
 .rp b{font-size:17px;font-weight:600}
