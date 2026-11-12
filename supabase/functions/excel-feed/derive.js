@@ -76,11 +76,21 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
         listed.add(e.container);
       }
     }
+    // Ha a levélben egyáltalán nincs nap (a feldolgozó nem ismerte fel, pl. NEP: „2026/11/13” a szöveg elején),
+    // az új konténer a levél utáni napra kerül, „becsült nap” jelöléssel: a pre-alert a szállítás előtti napon jön.
+    // Ha később érkezik levél valódi nappal, az átírja (nem számít áthelyezésnek).
+    const nextDay = (() => {
+      const d = new Date(`${String(at).slice(0, 10)}T12:00:00`);
+      if (isNaN(d)) return '';
+      d.setDate(d.getDate() + 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
     const conts = items.map(c => {
       if (c.date) return c;
-      if (C[c.id]) return { ...c, date: C[c.id].date };
+      if (C[c.id]) return { ...c, date: C[c.id].date, keepDay: true };
       const d = etaDay[c.id] || mailDay;
-      return d ? { ...c, date: d } : null;
+      if (d) return { ...c, date: d };
+      return !dates.length && !etaDays.length && nextDay ? { ...c, date: nextDay, guess: true } : null;
     }).filter(Boolean);
     if (!conts.length) { flushEta(); continue; }
     dates.forEach(d => forecastDates.add(d));
@@ -100,6 +110,12 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
 
     for (const c of conts) {
       let x = C[c.id];
+      // Becsült nap: az első valódi napot hozó levél csendben javítja (nem áthelyezés).
+      if (x && x.date_guess && !c.guess && !c.keepDay) {
+        if (x.date !== c.date) x.history.push({ at, kind: 'dated', from: x.date, to: c.date });
+        x.date = c.date;
+        x.date_guess = false;
+      }
       // Ha a nyitást már kérték, az utólag küldött forecast nem viszi át másik napra: a konténer marad, csak jelölve.
       let keep = false;
       if (x && x.state === 'active' && x.date !== c.date) {
@@ -118,9 +134,10 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       if (!x) {
         x = C[c.id] = {
           id: c.id, date: c.date, state: 'active', first_seen: at, src, fwd: c.fwd || (src === 'jz' ? 'Voltoo' : ''),
+          date_guess: !!c.guess,
           plate: '', t1: '', driver: '', phone: '', pdd: [], kg: 0, ctns: 0,
           port: c.port || '', customs: c.customs || '',
-          history: [{ at, kind: 'first', date: c.date }],
+          history: [{ at, kind: 'first', date: c.date, guess: !!c.guess }],
           moved_from: null, moved_at: null, removed_from: null, removed_at: null
         };
         ev.added.push({ id: c.id, to: c.date });
