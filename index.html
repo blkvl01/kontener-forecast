@@ -12,9 +12,10 @@
 <link rel="preload" href="fonts/barlow-latin-600.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/barlow-condensed-latin-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/red-hat-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=20261112150000">
-<link rel="stylesheet" href="tour.css?v=20261112150000">
-<script src="boot-role.js?v=20261112150000"></script>
+<link rel="stylesheet" href="styles.css?v=20261113113718">
+<link rel="stylesheet" href="tour.css?v=20261113113718">
+<link rel="stylesheet" href="devpanel.css">
+<script src="boot-role.js?v=20261113113718"></script>
 </head>
 <body>
 <svg class="kf-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
@@ -121,6 +122,14 @@
     <section class="set-sec" id="ramp-sec" style="--i:3" hidden>
       <div class="set-h"><h3>Rámpák</h3></div>
       <p class="set-note" id="ramp-info"></p>
+    </section>
+
+    <section class="set-sec" id="dev-sec" style="--i:4" hidden>
+      <div class="set-h"><h3>Fejlesztői menü</h3></div>
+      <button type="button" class="team-card" data-action="dev">
+        <span class="team-nums">Konténerek, státuszok, levelek, napló</span>
+        <span class="team-go">Megnyitás<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></span>
+      </button>
     </section>
 
     <section class="set-sec" id="sync-sec" style="--i:4" hidden>
@@ -230,10 +239,11 @@
   </div>
 </dialog>
 
-<script src="vendor/supabase.min.js?v=20261112150000"></script>
-<script src="config.js?v=20261112150000"></script>
-<script src="derive.js?v=20261112150000"></script>
-<script src="tour.js?v=20261112150000"></script>
-<script src="app.js?v=20261112150000"></script>
+<script src="vendor/supabase.min.js?v=20261113113718"></script>
+<script src="config.js?v=20261113113718"></script>
+<script src="derive.js?v=20261113113718"></script>
+<script src="tour.js?v=20261113113718"></script>
+<script src="app.js?v=20261113113718"></script>
+<script src="devpanel.js"></script>
 </body>
 </html>

@@ -137,7 +137,8 @@
     plate: r.plate || '', t1: r.t1 || '', driver: r.driver || '', phone: r.phone || '',
     auto_dismissed: !!r.auto_dismissed,
     site: r.site || '',
-    pdd: Array.isArray(r.pdd) ? r.pdd : []
+    pdd: Array.isArray(r.pdd) ? r.pdd : [],
+    override: r.override || null
   });
   const normArr = r => ({ ...r, received: toLocal(r.received) });
 
@@ -529,8 +530,10 @@
         }
         scheduleRender();
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'storage_events' }, p => {
-        if (!STO.some(s => s.id === p.new.id)) STO.push({ ...p.new, stored_at: toLocal(p.new.stored_at) });
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'storage_events' }, p => {
+        const id = (p.new && p.new.id) || (p.old && p.old.id);
+        STO = STO.filter(s => s.id !== id);
+        if (p.eventType !== 'DELETE') STO.push({ ...p.new, stored_at: toLocal(p.new.stored_at) });
         scheduleRender();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'photos' }, p => {
@@ -584,6 +587,27 @@
     if (f !== GL_WAS) { GL_WAS = f; scheduleRender(); }
   }
   setInterval(() => { glCheck().catch(() => {}); }, 60000);
+
+  // Fejlesztői menü (devpanel.js): admin-only hozzáférés az adatokhoz és a nézethez.
+  window.KFApp = {
+    sb, esc, toast, toLocal, normMan, phase, stageText: c => stageText(c),
+    me: () => ME,
+    data: () => S.data,
+    raw: () => ({ MSGS, MAN, ARR, STO, SYNC, PRIO, GL, GLST }),
+    members: () => MEMBERS,
+    today: () => S.today,
+    reload: () => loadAll(),
+    setMan(row) { if (row) MAN[row.container] = normMan(row); rebuild(); render(); },
+    dropMan(id) { delete MAN[id]; rebuild(); render(); },
+    openSheet(id) { if (S.data && S.data.containers[id]) openDrawer(id); }
+  };
+  document.addEventListener('keydown', e => {
+    if (e.ctrlKey && e.shiftKey && (e.key === 'D' || e.key === 'd') && ME && ME.role === 'admin' && window.KFDev) {
+      e.preventDefault();
+      if ($('#settings').open) $('#settings').close();
+      window.KFDev.open();
+    }
+  });
 
   async function upsertManual(row) {
     const { data, error } = await sb.from('manual').upsert(row, { onConflict: 'container' }).select().single();
@@ -4431,6 +4455,7 @@
     const admin = ME.role === 'admin';
     $('#users-sec').hidden = !admin;
     $('#ramp-sec').hidden = !admin;
+    $('#dev-sec').hidden = !admin || !window.KFDev;
     $('#ramp-info').textContent = `${RAMPS} használható a ${RAMP_SLOTS} helyből: ${RAMP_TXT}. Nem tud kamion állni: 1 és 9 (Joloda), 2, valamint a vak 7, 8, 10, 13, 14, 18, 19, 23.`;
     $('#prio-sec').hidden = !canPrio();
     $('#prio-sum').innerHTML = prioSum();
@@ -4621,6 +4646,7 @@
       case 'paste-save': await savePaste(); break;
       case 'settings-close': $('#settings').close(); break;
       case 'people': openPeople(); break;
+      case 'dev': $('#settings').close(); if (window.KFDev) window.KFDev.open(); break;
       case 'people-close': $('#people').close(); break;
       case 'people-filter': peopleFilter = el.dataset.f; renderPeople(); break;
       case 'logout': await sb.auth.signOut(); location.reload(); break;

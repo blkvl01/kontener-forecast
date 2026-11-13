@@ -202,6 +202,39 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     flushEta();
   }
 
+  // Fejlesztői menü (admin): kézi felvétel és felülírás. Erősebb a leveleknél, amíg vissza nem állítják automatikusra.
+  for (const id of Object.keys(manual || {})) {
+    const o = manual[id] && manual[id].override;
+    if (!o || typeof o !== 'object') continue;
+    const at = o.at || '';
+    if (o.create && !C[id] && DAY_RE.test(o.date || '')) {
+      C[id] = {
+        id, date: o.date, state: 'active', first_seen: at || `${o.date}T00:00:00`, src: o.src || 'jz', fwd: o.fwd || '',
+        plate: '', t1: '', driver: '', phone: '', pdd: [], kg: 0, ctns: 0, port: '', customs: '',
+        history: [{ at: at || `${o.date}T00:00:00`, kind: 'first', date: o.date }],
+        moved_from: null, moved_at: null, removed_from: null, removed_at: null
+      };
+    }
+    const x = C[id];
+    if (!x) continue;
+    x.ov = o;
+    x.manual_created = !!o.create;
+    if (DAY_RE.test(o.date || '') && o.date !== x.date) {
+      x.history.push({ at: at || x.last_seen || x.first_seen, kind: 'moved', from: x.date, to: o.date });
+      x.date = o.date;
+      x.late_mod = null;
+    }
+    if (o.state === 'removed' && x.state !== 'removed') {
+      x.state = 'removed'; x.removed_from = x.date; x.removed_at = at;
+      x.history.push({ at: at || x.last_seen || x.first_seen, kind: 'removed', from: x.date });
+    } else if (o.state === 'active' && x.state === 'removed') {
+      x.state = 'active'; x.removed_from = x.removed_at = null;
+    }
+    for (const k of ['src', 'fwd', 'port', 'customs']) if (typeof o[k] === 'string' && o[k]) x[k] = o[k];
+    for (const k of ['kg', 'ctns']) if (typeof o[k] === 'number' && o[k] >= 0) x[k] = o[k];
+    if (Array.isArray(o.pdd)) x.pdd = o.pdd.filter(p => p && p.no).map(p => ({ no: String(p.no), ctns: p.ctns || 0, kg: p.kg || 0 }));
+  }
+
   // Kézi pótlás / javítás (rendszám, MRN, sofőr, telefon): a kézi érték az erősebb, a levélbeli megmarad mellette.
   for (const x of Object.values(C)) {
     const man = manual[x.id];
@@ -215,7 +248,7 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     // Kézi fuvarlevelek (beillesztett táblázatból): erősebbek a levélbelinél. A darab és a súly ezekből jön,
     // ha a levél nem adta meg.
     const mp = (Array.isArray(man.pdd) ? man.pdd : []).filter(p => p && p.no);
-    if (mp.length) {
+    if (mp.length && !(x.ov && Array.isArray(x.ov.pdd))) {
       x.pdd_manual = true;
       x.pdd = mp.map(p => ({ no: String(p.no), ctns: +p.ctns || 0, kg: +p.kg || 0 }));
       if (!x.ctns) x.ctns = x.pdd.reduce((t, p) => t + p.ctns, 0);
@@ -294,6 +327,15 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       x.stages = x.stages || {};
       x.stages.stored = { at: x.storage.last, sender: 'Betárolás' };
     }
+    // Kézi mérföldkő: időpont = megtörtént, false = nem történt meg (a levél ellenére sem).
+    const os = x.ov && x.ov.stages;
+    if (os && typeof os === 'object') {
+      x.stages = x.stages || {};
+      for (const k of ['request', 'approved', 'opened', 'released', 'stored']) {
+        if (os[k] === false) delete x.stages[k];
+        else if (typeof os[k] === 'string' && os[k]) x.stages[k] = { at: os[k], sender: 'Kézi' };
+      }
+    }
   });
 
   for (const x of Object.values(C)) {
@@ -326,6 +368,15 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     x.opened_implied = !st.opened && (st.request || st.approved || x.arrived)
       ? [st.released && st.released.at, x.storage && x.storage.first, x.customs_ok && x.customs_ok.at].filter(Boolean).sort()[0] || ''
       : '';
+    const ov = x.ov || {};
+    if (ov.arrived === false) { x.arrived = x.arrived_auto = false; x.arrived_at = ''; }
+    else if (typeof ov.arrived === 'string' && ov.arrived) { x.arrived = true; x.arrived_auto = false; x.arrived_at = ov.arrived; }
+    if (ov.stages && ov.stages.opened === false) x.opened_implied = '';
+    if (ov.eta === false) { x.eta_time = x.eta_date = ''; x.eta_stale = false; }
+    else if (ov.eta && TIME_RE.test(ov.eta.time || '')) {
+      x.eta_time = ov.eta.time; x.eta_date = DAY_RE.test(ov.eta.date || '') ? ov.eta.date : x.date;
+      x.eta_set = ov.at || x.eta_set; x.eta_stale = false;
+    }
     if (x.opened_implied && (x.stage === 'approved' || x.stage === 'request' || !x.stage)) x.stage = 'opened';
     x.ramp = man.ramp || null;
     x.site = man.site || '';
