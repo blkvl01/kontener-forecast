@@ -34,6 +34,8 @@
 .dev .dv-body{flex:1 1 auto;min-height:0;display:flex}
 .dev .dv-nav{flex:0 0 192px;display:flex;flex-direction:column;gap:2px;padding:12px 10px;background:var(--surface);border-right:1px solid var(--line);overflow-y:auto}
 .dev .dv-tab{position:relative;display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:0 10px 0 14px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:13.5px;font-weight:500;text-align:left;transition:background-color .16s var(--ease),color .16s var(--ease)}
+.dev .dv-ng{margin:14px 0 4px;padding:0 14px;font-family:var(--cond);font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.dev .dv-tab.raw{height:32px;font-size:12.5px}
 .dev .dv-tab:hover{background:var(--surface-2);color:var(--ink)}
 .dev .dv-tab.on{background:var(--ink);color:oklch(0.98 0.004 255);font-weight:600}
 .dev .dv-tab.on .dv-cn{background:oklch(0.32 0.02 255);color:oklch(0.9 0.008 255)}
@@ -49,6 +51,9 @@
 .dev .dv-lw{flex:1 1 auto;min-height:0;overflow:auto;background:var(--surface)}
 .dev .dv-ed{flex:0 0 440px;width:440px;display:flex;flex-direction:column;min-height:0;background:var(--ground);border-left:1px solid var(--line)}
 .dev .dv-page{flex:1 1 auto;overflow:auto;padding:20px}
+.dev .dv-ph{max-width:1100px;margin:28px 0 12px;font-family:var(--cond);font-size:18px;font-weight:600;letter-spacing:.02em}
+.dev .dv-tr2 .dv-q{flex:1 1 220px;width:auto;height:38px;font-size:14px}
+.dev .dv-cid{font-weight:600;margin-right:6px}
 
 /* eszköztár */
 .dev .dv-in{width:100%;height:32px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit;font-size:13px;transition:border-color .16s var(--ease),box-shadow .16s var(--ease)}
@@ -158,23 +163,33 @@
 .dev .dv-warn{margin:-4px 0 10px;padding:6px 10px;border-radius:8px;background:oklch(0.97 0.03 85);border:1px solid oklch(0.85 0.09 85);color:oklch(0.4 0.1 75);font-size:12.5px}
 .dev .dv-dz{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding-bottom:6px}
 
-/* mérföldkövek */
-.dev .dv-ms{list-style:none;margin:0;padding:0}
-.dev .dv-m{position:relative;display:flex;gap:12px;padding-bottom:14px}
-.dev .dv-m:last-child{padding-bottom:4px}
-.dev .dv-m::before{content:"";position:absolute;left:7px;top:18px;bottom:-2px;width:2px;background:var(--line)}
-.dev .dv-m:last-child::before{display:none}
-.dev .dv-m.on::before{background:var(--orange-line)}
-.dev .dv-pt{flex:0 0 16px;height:16px;margin-top:2px;border-radius:50%;border:2px solid var(--line);background:var(--surface);z-index:1}
-.dev .dv-m.on .dv-pt{background:var(--orange);border-color:var(--orange)}
-.dev .dv-m.none .dv-pt{border-style:dashed;background:var(--surface-2)}
-.dev .dv-mb{flex:1 1 auto;min-width:0}
-.dev .dv-mh{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:5px}
-.dev .dv-mh b{font-weight:600;font-size:13.5px}
-.dev .dv-m.off:not(.man) .dv-mh b{color:var(--muted)}
-.dev .dv-ma{font-size:11.5px;color:var(--faint)}
-.dev .dv-mc{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.dev .dv-mc .dv-in{width:auto;flex:0 1 170px}
+/* státusz lépcső */
+.dev .dv-steps{list-style:none;margin:0;padding:0}
+.dev .dv-sr{position:relative;display:grid;grid-template-columns:150px minmax(0,1fr);align-items:center;gap:4px 10px;min-height:40px}
+.dev .dv-sr::before{content:"";position:absolute;left:13px;top:28px;height:calc(100% - 16px);width:2px;background:var(--line)}
+.dev .dv-sr:last-child::before{display:none}
+.dev .dv-sr.done::before{background:var(--orange-line)}
+.dev .dv-sb{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px 0 6px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:13.5px;font-weight:500;text-align:left;transition:background-color .14s var(--ease),color .14s var(--ease)}
+.dev .dv-sb:hover{background:var(--surface);color:var(--ink)}
+.dev .dv-sr.done .dv-sb{color:var(--ink)}
+.dev .dv-sr.cur .dv-sb{background:var(--surface);color:var(--ink);font-weight:700;box-shadow:0 0 0 1px var(--line)}
+.dev .dv-pt{position:relative;z-index:1;flex:0 0 16px;width:16px;height:16px;border-radius:50%;border:2px solid var(--line);background:var(--surface)}
+.dev .dv-sr.done .dv-pt{border-color:var(--orange);background:var(--orange)}
+.dev .dv-sr.cur .dv-pt{box-shadow:0 0 0 4px oklch(0.72 0.165 52 / .22)}
+.dev .dv-sr .dv-in{width:auto;max-width:190px}
+.dev .dv-src{grid-column:2;margin-top:-2px;font-size:11.5px;color:var(--faint)}
+
+/* egyszerű sor: felirat, mező(k), visszaállítás */
+.dev .dv-fr2{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.dev .dv-fr2 .dv-fl{flex:0 0 76px;padding:0}
+.dev .dv-fr2 .dv-in{flex:1 1 0;min-width:0}
+.dev .dv-fr2 .dv-seg{flex:0 1 auto}
+.dev .dv-was{margin:-4px 0 10px 84px;font-size:11.5px;color:var(--faint)}
+.dev .dv-sec .dv-sw{margin-top:4px}
+.dev .dv-more2{margin-top:6px;border-top:1px solid var(--line-soft)}
+.dev .dv-more2>summary{padding:12px 0;cursor:pointer;font-weight:600;color:var(--steel-text);list-style-position:inside}
+.dev .dv-more2>summary:hover{color:var(--ink)}
+.dev .dv-edf.idle{display:none}
 
 /* kapcsoló */
 .dev .dv-sw{display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-weight:500}
@@ -257,4 +272,6 @@
   .dev .dv-cards{grid-template-columns:1fr}
   .dev .dv-g3{grid-template-columns:1fr 1fr}
   .dev .dv-dl .dv-in{width:130px}
+  .dev .dv-ng{margin:0;padding:0 4px 0 10px;align-self:center;border-left:1px solid var(--line)}
+  .dev .dv-sr{grid-template-columns:130px minmax(0,1fr)}
 }
