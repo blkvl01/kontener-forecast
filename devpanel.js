@@ -12,7 +12,10 @@
   const STAGES = [['arrived', 'Megérkezett'], ['request', 'Nyitás megkérve'], ['approved', 'Nyitható'], ['opened', 'Nyitás'], ['released', 'Elengedve'], ['stored', 'Betárolva']];
   const ARR_ST = [['request', 'Nyitás megkérve'], ['approved', 'Nyitható'], ['opened', 'Nyitás'], ['released', 'Elengedve'], ['other', 'Egyéb']];
   const PH_CH = [['plan', 'Tervben'], ['request', 'Nyitás megkérve'], ['approved', 'Nyitható'], ['opened', 'Nyitás alatt / Bontás'], ['released', 'Elengedve'], ['stored', 'Betárolva'], ['removed', 'Levéve']];
-  const SRCS = [['jz', 'JZ'], ['dmt', 'DMT'], ['nep', 'NEP']];
+  const SRCS = [['jz', 'Voltoo'], ['dmt', 'DMtrans'], ['nep', 'Neptune']];
+  const SRC_NAME = Object.fromEntries(SRCS);
+  const TBL_L = { manual: 'Konténer', messages: 'Pre-alert', arrivals: 'Nyitás levél', storage_events: 'Betárolás', app_settings: 'Beállítás', sync_status: 'Szinkron', glabs_ramps: 'Glabs rámpa' };
+  const ACT_L = { insert: 'Új', update: 'Módosítás', delete: 'Törlés', restore: 'Visszaállítás' };
   const LOG_TBLS = ['manual', 'messages', 'arrivals', 'storage_events', 'app_settings', 'sync_status', 'glabs_ramps'];
   const MAX_ROWS = 400;
   const KNOWN_C = ['id', 'date', 'src', 'fwd', 'kg', 'ctns', 'plate', 't1', 'driver', 'phone', 'pdd'];
@@ -60,6 +63,7 @@
   };
   const jstr = v => JSON.stringify(v, null, 2);
   const ICON_X = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  const ICON_RESET = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>';
   const ICON_BACK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>';
 
   function say(msg, bad) {
@@ -147,9 +151,11 @@
   }
 
   // ---------- kis HTML-építők ----------
-  const fld = (l, c, cls = '') => `<label class="dv-f ${cls}"><span>${l}</span>${c}</label>`;
+  // Gombcsoportot nem tehetünk <label>-be: a feliratra kattintás az első gombot nyomná meg.
+  const fld = (l, c, cls = '') => (c.includes('dv-seg') ? `<div class="dv-f ${cls}"><span>${l}</span>${c}</div>` : `<label class="dv-f ${cls}"><span>${l}</span>${c}</label>`);
   const txt = (p, v, o = '') => `<input class="dv-in" data-p="${p}" value="${esc(v)}" ${o}>`;
-  const sel = (p, opts, v, o = '') => `<select class="dv-in" data-p="${p}" ${o}>${opts.map(([k, l]) => `<option value="${esc(k)}"${String(k) === String(v) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+  // Néhány rögzített érték közül választó gombsor (natív legördülő helyett).
+  const sel = (p, opts, v, o = '') => `<div class="dv-seg" role="radiogroup" ${o}>${opts.map(([k, l]) => { const on = String(k) === String(v ?? ''); return `<button type="button" role="radio" class="${on ? 'on' : ''}" aria-checked="${on}" data-dv="setp" data-p="${p}" data-v="${esc(k)}">${esc(l)}</button>`; }).join('')}</div>`;
   const seg = (act, key, opts, cur) => `<div class="dv-seg" role="group">${opts.map(([v, l]) => `<button type="button" class="${v === cur ? 'on' : ''}" aria-pressed="${v === cur}" data-dv="${act}" data-k="${key}" data-v="${v}">${l}</button>`).join('')}</div>`;
   const sec = (title, body, aside = '') => `<section class="dv-sec"><h3><span>${title}</span>${aside}</h3>${body}</section>`;
   const askBtn = (label, run, arg, o = {}) => `<button type="button" class="${o.cls || 'dv-danger'}" data-dv="ask" data-run="${run}" data-arg="${esc(arg == null ? '' : arg)}" data-msg="${esc(o.msg || 'Biztosan törlöd?')}" data-yes="${esc(o.yes || 'Törlés')}">${label}</button>`;
@@ -164,7 +170,7 @@
     const tb = rows.map(r => `<tr class="${r.id === o.sel ? 'sel' : ''}${r.cls ? ` ${r.cls}` : ''}" data-dv="pick" data-id="${esc(r.id)}" tabindex="0">${r.tds.map((t, i) => `<td class="${cols[i].c || ''}">${t}</td>`).join('')}</tr>`).join('');
     return `<table class="dv-t"><thead><tr>${th}</tr></thead><tbody>${tb}</tbody></table>`;
   }
-  const moreNote = (n, total) => (total > n ? `<div class="dv-more">+${total - n} további, szűkítsd a szűrőt</div>` : '');
+  const moreNote = (n, total) => (total > n ? `<div class="dv-more">+${total - n} sor nem látszik</div>` : '');
 
   // ---------- vázlat (draft) és piszkos állapot ----------
   const snap = d => JSON.stringify([d.f, d.ov, d.cols, d.prio, d.jm ? [d.jc, d.je] : 0]);
@@ -200,13 +206,22 @@
       <button type="button" class="dv-tbtn" data-dv="refresh">Frissítés</button>
       <button type="button" class="dv-x" data-dv="close" aria-label="Bezárás">${ICON_X}</button></header>
       <div class="dv-guard" id="dv-guard" role="alert" hidden></div>
-      <div class="dv-body"><nav class="dv-nav" role="tablist" aria-orientation="vertical" aria-label="Fejlesztői menü fülek"></nav><section class="dv-main" id="dv-main"></section></div>
+      <div class="dv-body"><nav class="dv-nav" role="tablist" aria-orientation="vertical" aria-label="Fejlesztői menü fülek"></nav><section class="dv-main" id="dv-main" role="tabpanel"></section></div>
       <div class="dv-toasts" id="dv-toasts" aria-live="polite"></div>`;
     document.body.appendChild(dlg);
     dlg.addEventListener('click', onClick);
     dlg.addEventListener('input', onInput);
     dlg.addEventListener('keydown', onKey);
     dlg.addEventListener('cancel', e => { e.preventDefault(); close(); });
+    // A főoldal adatai (realtime, más gépek mentései) frissítik a konténerlistát, ha nincs nem mentett szerkesztés.
+    document.addEventListener('kf:data', () => {
+      if (!dlg.open || S.tab !== 'cont' || isDirty() || saving || dlg.querySelector('.dv-confirm')) return;
+      const a = document.activeElement;
+      if (a && dlg.contains(a) && a.closest('.dv-ed') && /^(INPUT|TEXTAREA)$/.test(a.tagName)) return;
+      const d = S.draft;
+      if (d && d.kind === 'cont') S.draft = C()[d.id] ? mkCont(d.id) : null;
+      renderList(); if (!d || d.kind === 'cont') renderEditor(); renderNav();
+    });
     dlg.addEventListener('close', () => { if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (_) { /* nincs teendő */ } } });
   }
 
@@ -251,6 +266,7 @@
 
   function renderMain() {
     const m = $('#dv-main'), t = S.tab;
+    m.setAttribute('aria-labelledby', `dv-t-${t}`);
     if (t === 'set') { m.innerHTML = '<div class="dv-page" id="dv-page"></div>'; renderSet(); loadSet(); return; }
     if (t === 'sys') { m.innerHTML = '<div class="dv-page" id="dv-page"></div>'; renderSys(); loadSys(); return; }
     m.innerHTML = `<div class="dv-split"><div class="dv-lp"><div class="dv-tb">${toolbar(t)}</div><div class="dv-lw" id="dv-list"></div></div><aside class="dv-ed" id="dv-ed" aria-label="Szerkesztő"></aside></div>`;
@@ -296,12 +312,13 @@
     if (t === 'msg') return `${q('Keresés: tárgy, konténer')}<div class="dv-tr2">${cnt}<span class="dv-sp"></span><button type="button" class="btn-primary sm" data-dv="newmsg">Új levél</button></div>`;
     if (t === 'arr') {
       return `${q('Keresés: tárgy, feladó, konténer, MRN')}<div class="dv-chips" role="group">${[['', 'Mind'], ...ARR_ST].map(([k, l]) => `<button type="button" class="dv-chip${S.af.stage === k ? ' on' : ''}" aria-pressed="${S.af.stage === k}" data-dv="stagechip" data-k="${k}">${l}</button>`).join('')}</div>
-        <div class="dv-tr2">${cnt}<span class="dv-sp"></span><button type="button" class="btn-primary sm" data-dv="newarr">Új sor</button></div>`;
+        <div class="dv-tr2">${cnt}<span class="dv-sp"></span><button type="button" class="btn-primary sm" data-dv="newarr">Új nyitás levél</button></div>`;
     }
     if (t === 'sto') return `${q('Keresés: AWB, konténer')}<div class="dv-tr2">${cnt}<span class="dv-sp"></span><button type="button" class="btn-ghost sm" data-dv="newbulk">Tömeges felvitel</button><button type="button" class="btn-primary sm" data-dv="newsto">Új betárolás</button></div>`;
     // log
-    return `<div class="dv-tr2"><label class="dv-dl">Tábla<select class="dv-in" data-p="lf.tbl" data-after="log">${[['', 'Mind'], ...LOG_TBLS.map(x => [x, x])].map(([k, l]) => `<option value="${k}"${S.lf.tbl === k ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
-      <label class="dv-dl grow">Kulcs<input type="search" class="dv-in" placeholder="Kulcs szövege" data-p="lf.key" data-after="log" value="${esc(S.lf.key)}"></label>${cnt}</div>`;
+    return `<input type="search" class="dv-in dv-q" placeholder="Keresés: konténer, levél vagy sor azonosítója" data-p="lf.key" data-after="log" value="${esc(S.lf.key)}" aria-label="Keresés">
+      <div class="dv-chips" role="group" aria-label="Szűrés hely szerint">${[['', 'Mind'], ...LOG_TBLS.map(x => [x, TBL_L[x]])].map(([k, l]) => `<button type="button" class="dv-chip${S.lf.tbl === k ? ' on' : ''}" aria-pressed="${S.lf.tbl === k}" data-dv="logchip" data-k="${k}">${l}</button>`).join('')}</div>
+      <div class="dv-tr2">${cnt}</div>`;
   }
 
   // ---------- listák ----------
@@ -389,8 +406,8 @@
     },
     log() {
       const arr = S.rows.log || [];
-      const cols = [{ h: 'Idő' }, { h: 'Ki', c: 'grow' }, { h: 'Tábla' }, { h: 'Kulcs', c: 'mono' }, { h: 'Művelet' }];
-      const rows = arr.map(l => ({ id: String(l.id), tds: [`<span class="mono">${esc(dm(l.at))}</span>`, `<span class="dv-ell">${esc(l.by || '')}</span>`, esc(l.tbl), esc(l.key), `<span class="dv-pill ac-${esc(l.action)}">${esc(l.action)}</span>`] }));
+      const cols = [{ h: 'Idő' }, { h: 'Ki', c: 'grow' }, { h: 'Hol' }, { h: 'Azonosító', c: 'mono' }, { h: 'Művelet' }];
+      const rows = arr.map(l => ({ id: String(l.id), tds: [`<span class="mono">${esc(dm(l.at))}</span>`, `<span class="dv-ell">${esc(l.by || '')}</span>`, esc(TBL_L[l.tbl] || l.tbl), esc(l.key), `<span class="dv-pill ac-${esc(l.action)}">${esc(ACT_L[l.action] || l.action)}</span>`] }));
       const more = S.logMore ? '<div class="dv-morebar"><button type="button" class="btn-ghost sm" data-dv="logmore">Több</button></div>' : '';
       return { html: table(cols, rows, { sel: curId() }) + more, n: arr.length, total: arr.length };
     }
@@ -411,9 +428,9 @@
     const old = ed.querySelector('.dv-edb'), st = old ? old.scrollTop : 0;
     const d = S.draft;
     let html = '', open = false;
-    if (S.tab === 'log') { open = !!S.sel.log; html = open ? logEd() : empty('Válassz egy naplósort'); }
+    if (S.tab === 'log') { open = !!S.sel.log; html = open ? logEd() : empty('Nincs kijelölt naplósor'); }
     else if (d && d.tab === S.tab) { open = true; html = ED[d.kind](d); }
-    else html = empty('Válassz egy sort, vagy hozz létre újat');
+    else html = empty('Nincs kijelölt sor');
     ed.innerHTML = html;
     const sp = $('.dv-split'); if (sp) sp.classList.toggle('has-ed', open);
     const nb = ed.querySelector('.dv-edb'); if (nb) nb.scrollTop = st;
@@ -434,6 +451,7 @@
       cols: { plate: man.plate || '', t1: man.t1 || '', driver: man.driver || '', phone: man.phone || '', site: man.site || '', ramp: man.ramp ? String(man.ramp) : '', note: man.note || '' },
       prio: (K.raw().PRIO || []).includes(id)
     };
+    d.cols0 = { ...d.cols };
     return setSnap(d);
   }
   const msGet = (d, k) => (k === 'arrived' ? d.ov.arrived : (d.ov.stages || {})[k]);
@@ -458,18 +476,16 @@
     if (!c) return edFrame(esc(d.id), '', empty('Ez a konténer már nem létezik'), '');
     const fr = (label, key, ctrl, autoVal) => {
       const has = key in ov, shown = has && String(autoVal ?? '') !== String(ov[key] ?? '');
-      const canReset = !(key === 'date' && ov.create);
-      return `<div class="dv-fr" data-key="${key}" data-av="${esc(autoVal ?? '')}"><span class="dv-fl">${label}</span><div class="dv-fc">${ctrl}<span class="dv-auto"${shown ? '' : ' hidden'}>auto: ${esc(autoVal === '' || autoVal == null ? '—' : autoVal)}</span></div>
-        <button type="button" class="dv-rs" data-dv="reset" data-k="${key}" title="Vissza automatikusra" aria-label="${label}: vissza automatikusra"${has && canReset ? '' : ' hidden'}>↺</button></div>`;
+      return `<div class="dv-fr" data-key="${key}" data-av="${esc(autoVal ?? '')}"><span class="dv-fl">${label}</span><div class="dv-fc">${ctrl}<span class="dv-auto"${shown ? '' : ' hidden'}>Auto: ${esc(autoVal === '' || autoVal == null ? '—' : autoVal)}</span></div>
+        <button type="button" class="dv-rs" data-dv="reset" data-k="${key}" title="Vissza automatikusra" aria-label="${label}: vissza automatikusra"${has ? '' : ' hidden'}>${ICON_RESET}</button></div>`;
     };
     const a = k => (A ? A[k] : '');
     // --- Terv
     const stateCur = ov.state || '';
     const terv = sec('Terv', `
       ${fr('Nap', 'date', `<input type="date" class="dv-in" data-ov="date" value="${esc(ov.date ?? (A ? A.date : c.date))}">`, a('date'))}
-      ${fr('Állapot', 'state', seg('state', 'state', [['', 'Automatikus'], ['active', 'Aktív'], ['removed', 'Levéve']], stateCur), A ? A.state : '')}
-      ${fr('Szállító', 'src', `<select class="dv-in" data-ov="src">${[['', `Automatikus`], ...SRCS].map(([k, l]) => `<option value="${k}"${(ov.src || '') === k ? ' selected' : ''}>${l}</option>`).join('')}</select>`, upper(a('src')))}
-      ${fr('Fwd', 'fwd', `<input class="dv-in" data-ov="fwd" placeholder="${esc(a('fwd'))}" value="${esc(ov.fwd || '')}">`, a('fwd'))}
+      ${fr('Állapot', 'state', seg('state', 'state', [['', 'Auto'], ['active', 'Aktív'], ['removed', 'Levéve']], stateCur), A ? ({ active: 'Aktív', removed: 'Levéve' }[A.state] || '') : '')}
+      ${fr('Szállító', 'src', seg('ovsrc', 'src', [['', 'Auto'], ...SRCS], ov.src || ''), SRC_NAME[a('src')] || a('fwd') || '')}
       ${fr('Súly kg', 'kg', `<input class="dv-in" type="number" min="0" step="any" data-ty="n" data-ov="kg" placeholder="${esc(a('kg'))}" value="${esc(ov.kg ?? '')}">`, a('kg'))}
       ${fr('Colli', 'ctns', `<input class="dv-in" type="number" min="0" step="1" data-ty="n" data-ov="ctns" placeholder="${esc(a('ctns'))}" value="${esc(ov.ctns ?? '')}">`, a('ctns'))}
       ${pddBlock(d, A, c)}`);
@@ -487,8 +503,8 @@
     const eta = sec('ETA', `<div class="dv-mc">${seg('eta', 'eta', [['auto', 'Auto'], ['man', 'Kézi'], ['none', 'Nincs']], em)}
       ${em === 'man' ? `<input type="date" class="dv-in" data-eta="date" aria-label="ETA nap" value="${esc(ov.eta.date || '')}"><input type="time" step="60" class="dv-in" data-eta="time" aria-label="ETA idő" value="${esc(ov.eta.time || '')}">` : ''}</div>
       <dl class="dv-kv"><dt>Automatikus</dt><dd class="mono">${A && A.eta_time ? `${esc(A.eta_date)} ${esc(A.eta_time)}${A.eta_stale ? ' (elavult)' : ''}` : '—'}</dd>
-      <dt>Kézi sor</dt><dd class="mono">${man.eta_time ? `${esc(man.eta_date)} ${esc(man.eta_time)}` : '—'}</dd>
-      <dt>Hatályos</dt><dd class="mono">${c.eta_time ? `${esc(c.eta_date)} ${esc(c.eta_time)}` : '—'}</dd></dl>`);
+      <dt>Adatlapon</dt><dd class="mono">${man.eta_time ? `${esc(man.eta_date)} ${esc(man.eta_time)}` : '—'}</dd>
+      <dt>Érvényes</dt><dd class="mono">${c.eta_time ? `${esc(c.eta_date)} ${esc(c.eta_time)}` : '—'}</dd></dl>`);
     // --- Kamion
     const col = (k, l, extra = '') => fld(l + (c.fixed && c.fixed[k] ? ` <small class="dv-faint">levél: ${esc(c.fixed[k])}</small>` : ''), `<input class="dv-in" data-p="draft.cols.${k}" ${extra} value="${esc(d.cols[k])}">`);
     const truck = sec('Kamion', `<div class="dv-g2">${col('plate', 'Rendszám')}${col('t1', 'MRN (T1)')}${col('driver', 'Sofőr')}${col('phone', 'Telefon', 'inputmode="tel"')}
@@ -500,6 +516,7 @@
     // --- Előzmények
     const hist = (c.history || []).slice().reverse().map(h => `<li><span class="mono">${esc(dm(h.at))}</span><span>${histTxt(h)}</span></li>`).join('');
     const R = K.raw(), t1 = String(c.t1 || '').replace(/\s/g, '').toUpperCase();
+    const stL = s => (ARR_ST.find(x => x[0] === (s || 'request')) || [0, s])[1];
     const msgs = (R.MSGS || []).filter(m => (m.containers || []).some(x => x && x.id === d.id)).sort((x, y) => (x.received < y.received ? 1 : -1)).slice(0, 10);
     const arrs = (R.ARR || []).filter(x => (x.containers || []).some(i => upper(i) === d.id) || (t1 && (x.mrns || []).some(m => upper(m).replace(/\s/g, '') === t1))).sort((x, y) => (x.received < y.received ? 1 : -1)).slice(0, 10);
     const pn = new Set((c.pdd || []).map(p => upper(p.no)));
@@ -507,17 +524,18 @@
     const srcRow = (tab, id, at, text) => `<li><span class="mono">${esc(dm(at))}</span><span class="dv-ell">${text}</span><button type="button" class="dv-lnk" data-dv="go" data-tab="${tab}" data-id="${esc(id)}">Megnyit</button></li>`;
     const hs = sec('Előzmények', `<ul class="dv-list">${hist || '<li class="dv-faint">Nincs</li>'}</ul>
       <h4>Pre-alert levelek</h4><ul class="dv-list">${msgs.map(m => srcRow('msg', m.id, m.received, esc(m.subject || ''))).join('') || '<li class="dv-faint">Nincs</li>'}</ul>
-      <h4>Nyitás levelek</h4><ul class="dv-list">${arrs.map(x => srcRow('arr', x.id, x.received, `${esc(x.stage || 'request')} · ${esc(x.subject || '')}`)).join('') || '<li class="dv-faint">Nincs</li>'}</ul>
+      <h4>Nyitás levelek</h4><ul class="dv-list">${arrs.map(x => srcRow('arr', x.id, x.received, `${esc(stL(x.stage))} · ${esc(x.subject || '')}`)).join('') || '<li class="dv-faint">Nincs</li>'}</ul>
       <h4>Betárolás</h4><ul class="dv-list">${stos.map(s => srcRow('sto', s.id, s.stored_at, `${esc(s.awb)} · ${esc(s.ctns ?? '')} colli`)).join('') || '<li class="dv-faint">Nincs</li>'}</ul>`);
-    const raw = sec('Nyers adat', `<details class="dv-det"><summary>Kézi sor (manual)</summary><pre class="dv-pre">${esc(jstr(man))}</pre></details>
-      <details class="dv-det"><summary>Levezetett objektum</summary><pre class="dv-pre">${esc(jstr(c))}</pre></details>`);
-    const danger = sec('Veszélyes műveletek', `<div class="dv-dz">
-      ${c.ov ? askBtn('Minden kézi felülírás törlése', 'clearov', d.id, { msg: 'Biztosan törlöd az összes felülírást?' }) : ''}
-      ${c.manual_created ? askBtn('Kézi konténer törlése', 'delcont', d.id, { msg: 'Biztosan törlöd a kézi konténert?' }) : ''}
+    const raw = sec('Nyers adat', `<details class="dv-det"><summary>Kézi adatok</summary><pre class="dv-pre">${esc(jstr(man))}</pre></details>
+      <details class="dv-det"><summary>Számított állapot</summary><pre class="dv-pre">${esc(jstr(c))}</pre></details>`);
+    const danger = sec('Törlés', `<div class="dv-dz">
+      ${c.ov && Object.keys(c.ov).some(k => !['create', 'at', 'by'].includes(k)) ? askBtn('Minden kézi felülírás törlése', 'clearov', d.id, { msg: 'Biztosan törlöd az összes felülírást?' }) : ''}
+      ${c.ov && c.ov.create ? askBtn('Kézi felvétel törlése', 'delcont', d.id, { msg: 'Biztosan törlöd a kézi felvételt?' }) : ''}
       ${!c.ov ? '<span class="dv-faint">Nincs kézi felülírás</span>' : ''}</div>`);
-    const by = man.updated_by ? `${esc(man.updated_by)} · ${esc(dm(man.updated_at))}` : 'Nincs kézi szerkesztés';
+
+    const by = man.updated_by ? `<span class="dv-faint">Módosította: ${esc(man.updated_by)} · ${esc(dm(man.updated_at))}</span>` : '';
     const head = `<div class="dv-edid mono">${esc(d.id)}</div>`;
-    const sub = `<div class="dv-edsub">${pill(c)}${c.ov ? '<span class="dv-tag">KÉZI</span>' : ''}<button type="button" class="dv-lnk" data-dv="sheet" data-id="${esc(d.id)}">Adatlap megnyitása</button><span class="dv-faint">Utoljára: ${by}</span></div>`;
+    const sub = `<div class="dv-edsub">${pill(c)}${c.ov ? '<span class="dv-tag">KÉZI</span>' : ''}<button type="button" class="dv-lnk" data-dv="sheet" data-id="${esc(d.id)}">Adatlap megnyitása</button>${by}</div>`;
     return edFrame(head, sub, terv + ms + eta + truck + prio + hs + raw + danger, FOOT());
   }
 
@@ -554,7 +572,6 @@
   async function saveCont(d) {
     const ov = clone(d.ov), cols = d.cols;
     if (ov.date !== undefined && !DAY.test(ov.date)) return bad('Hibás nap');
-    if (ov.create && !ov.date) return bad('A naphoz érték kell');
     for (const k of ['kg', 'ctns']) if (k in ov && !(typeof ov[k] === 'number' && ov[k] >= 0)) return bad(`Hibás ${k === 'kg' ? 'súly' : 'colli'}`);
     if (ov.fwd !== undefined) { ov.fwd = String(ov.fwd).trim(); if (!ov.fwd) delete ov.fwd; }
     if (ov.eta && typeof ov.eta === 'object' && (!DAY.test(ov.eta.date || '') || !HM.test(ov.eta.time || ''))) return bad('Az ETA-hoz nap és HH:MM idő kell');
@@ -564,15 +581,24 @@
     let ramp = null;
     if (String(cols.ramp).trim() !== '') { ramp = Number(cols.ramp); if (!Number.isInteger(ramp) || ramp < 1 || ramp > 99) return bad('A rámpa 1 és 99 közötti szám'); }
     if (cols.note.length > 2000) return bad('A megjegyzés legfeljebb 2000 karakter');
-    const strip = o => { const x = { ...o }; delete x.at; delete x.by; return JSON.stringify(x); };
-    if (strip(ov) !== strip(d.ov0)) { ov.at = nowLocal(); ov.by = K.me().email; }
-    else if (d.ov0.at) { ov.at = d.ov0.at; ov.by = d.ov0.by; }
     let fresh;
     try { fresh = await getRow('manual', d.id); } catch (e) { return bad('Nem olvasható a sor'); }
+    // Csak a ténylegesen átírt kulcsok mennek ki: amit közben más mentett (adatlap, másik admin), megmarad.
+    const js = v => JSON.stringify(v);
+    const merged = { ...((fresh && fresh.override) || {}) };
+    let ovChanged = false;
+    for (const k of new Set([...Object.keys(ov), ...Object.keys(d.ov0)])) {
+      if (k === 'at' || k === 'by' || js(ov[k]) === js(d.ov0[k])) continue;
+      ovChanged = true;
+      if (k in ov) merged[k] = ov[k]; else delete merged[k];
+    }
+    if (ovChanged) { merged.at = nowLocal(); merged.by = K.me().email; }
     const base = { ...(fresh || {}) }; delete base.updated_by; delete base.updated_at;
-    const row = { ...base, container: d.id, plate: nz(cols.plate), t1: nz(cols.t1), driver: nz(cols.driver), phone: nz(cols.phone), site: cols.site || null, note: nz(cols.note), ramp };
-    if (ramp !== ((fresh && fresh.ramp) || null)) row.ramp_set = ramp ? new Date().toISOString() : null;
-    row.override = Object.keys(ov).some(k => k !== 'at' && k !== 'by') ? ov : null;
+    const row = { ...base, container: d.id };
+    const colVal = { plate: nz(cols.plate), t1: nz(cols.t1), driver: nz(cols.driver), phone: nz(cols.phone), site: cols.site || null, note: nz(cols.note), ramp };
+    for (const k of Object.keys(colVal)) if (String(cols[k]) !== String(d.cols0[k])) row[k] = colVal[k];
+    if ('ramp' in row && row.ramp !== ((fresh && fresh.ramp) || null)) row.ramp_set = row.ramp ? new Date().toISOString() : null;
+    row.override = Object.keys(merged).some(k => k !== 'at' && k !== 'by') ? merged : null;
     const r = await write('manual', d.id, fresh ? 'update' : 'insert', fresh, row);
     if (!r.ok) return false;
     const was = (K.raw().PRIO || []).includes(d.id);
@@ -605,7 +631,7 @@
       ${fld('Konténerszám', `<input class="dv-in mono" data-ty="u" data-p="draft.f.id" data-after="newid" maxlength="11" placeholder="ABCD1234567" value="${esc(f.id)}">`)}
       <div class="dv-warn" id="dv-newwarn" role="status" hidden></div>
       <div class="dv-g2">${fld('Nap', `<input type="date" class="dv-in" data-p="draft.f.date" value="${esc(f.date)}">`)}${fld('Szállító', sel('draft.f.src', SRCS, f.src))}
-      ${fld('Fwd', txt('draft.f.fwd', f.fwd))}${fld('Súly kg', `<input class="dv-in" type="number" min="0" step="any" data-p="draft.f.kg" value="${esc(f.kg)}">`)}${fld('Colli', `<input class="dv-in" type="number" min="0" step="1" data-p="draft.f.ctns" value="${esc(f.ctns)}">`)}</div>`)
+      ${fld('Súly kg', `<input class="dv-in" type="number" min="0" step="any" data-p="draft.f.kg" value="${esc(f.kg)}">`)}${fld('Colli', `<input class="dv-in" type="number" min="0" step="1" data-p="draft.f.ctns" value="${esc(f.ctns)}">`)}</div>`)
       + sec('PDD', `${f.pdd.map((p, i) => `<div class="dv-pr"><input class="dv-in mono" placeholder="PDD szám" aria-label="PDD szám" data-p="draft.f.pdd.${i}.no" value="${esc(p.no)}"><input class="dv-in" type="number" min="0" placeholder="Colli" aria-label="Colli" data-p="draft.f.pdd.${i}.ctns" value="${esc(p.ctns)}"><input class="dv-in" type="number" min="0" step="any" placeholder="Kg" aria-label="Kg" data-p="draft.f.pdd.${i}.kg" value="${esc(p.kg)}">${rmBtn('draft.f.pdd', i)}</div>`).join('')}
         <button type="button" class="dv-lnk" data-dv="radd" data-path="draft.f.pdd" data-tpl="pdd">+ PDD sor</button>`)
       + sec('ETA', `<label class="dv-sw"><input type="checkbox" data-ty="b" data-p="draft.f.etaOn" data-rr="1"${f.etaOn ? ' checked' : ''}><span class="dv-swt" aria-hidden="true"></span><span>Van ETA</span></label>
@@ -618,11 +644,11 @@
     if (!CID.test(id)) return bad('A konténerszám 4 betű és 7 számjegy');
     if (C()[id]) return bad('Ez a konténer már létezik, szerkeszd a listából');
     if (!DAY.test(f.date)) return bad('A nap kötelező');
-    const ov = { create: true, date: f.date, src: f.src };
-    if (f.fwd.trim()) ov.fwd = f.fwd.trim();
-    for (const k of ['kg', 'ctns']) if (String(f[k]).trim() !== '') { const n = Number(f[k]); if (!(n >= 0)) return bad('Hibás szám'); ov[k] = n; }
+    const cr = { date: f.date, src: f.src, fwd: SRC_NAME[f.src] || '' };
+    for (const k of ['kg', 'ctns']) if (String(f[k]).trim() !== '') { const n = Number(f[k]); if (!(n >= 0)) return bad(k === 'kg' ? 'Hibás súly' : 'Hibás colli'); cr[k] = n; }
     const pdd = f.pdd.filter(p => String(p.no).trim()).map(p => ({ no: String(p.no).trim(), ctns: Number(p.ctns) || 0, kg: Number(p.kg) || 0 }));
-    if (pdd.length) ov.pdd = pdd;
+    if (pdd.length) cr.pdd = pdd;
+    const ov = { create: cr };
     if (f.etaOn) { if (!DAY.test(f.etaDate) || !HM.test(f.etaTime)) return bad('Az ETA-hoz nap és HH:MM idő kell'); ov.eta = { date: f.etaDate, time: f.etaTime }; }
     ov.at = nowLocal(); ov.by = K.me().email;
     let fresh = null;
@@ -646,7 +672,7 @@
     const other = ['eta_date', 'eta_time', 'note', 'ramp', 'plate', 't1', 'driver', 'phone', 'site'].some(k => base[k]) || base.arrived || base.auto_dismissed || (Array.isArray(base.pdd) ? base.pdd.length : base.pdd);
     const r = whole && !other
       ? await write('manual', id, 'delete', fresh, null)
-      : await write('manual', id, 'update', fresh, { ...base, override: null });
+      : await write('manual', id, 'update', fresh, { ...base, override: !whole && base.override && base.override.create ? { create: base.override.create, at: nowLocal(), by: K.me().email } : null });
     if (!r.ok) return;
     S.draft = C()[id] ? mkCont(id) : null;
     renderList(); renderEditor(); renderNav();
@@ -687,8 +713,8 @@
     const cards = f.containers.map((r, i) => {
       const P = `draft.f.containers.${i}`;
       return `<div class="dv-cc"><div class="dv-cch"><b class="mono">${esc(r.id || 'Új konténer')}</b>${rmBtn('draft.f.containers', i)}</div>
-        <div class="dv-g3">${fld('Konténer', `<input class="dv-in mono" data-ty="u" data-p="${P}.id" value="${esc(r.id)}">`)}${fld('Nap', `<input type="date" class="dv-in" data-p="${P}.date" value="${esc(r.date)}">`)}${fld('Src', sel(`${P}.src`, [['', '—'], ...SRCS.map(([k]) => [k, k])], r.src))}
-        ${fld('Fwd', txt(`${P}.fwd`, r.fwd))}${fld('Kg', `<input class="dv-in" type="number" min="0" step="any" data-p="${P}.kg" value="${esc(r.kg)}">`)}${fld('Colli', `<input class="dv-in" type="number" min="0" data-p="${P}.ctns" value="${esc(r.ctns)}">`)}
+        <div class="dv-g3">${fld('Konténer', `<input class="dv-in mono" data-ty="u" data-p="${P}.id" value="${esc(r.id)}">`)}${fld('Nap', `<input type="date" class="dv-in" data-p="${P}.date" value="${esc(r.date)}">`)}${fld('Szállító', sel(`${P}.src`, [['', '—'], ...SRCS], r.src))}
+        ${fld('Szállító neve', txt(`${P}.fwd`, r.fwd))}${fld('Kg', `<input class="dv-in" type="number" min="0" step="any" data-p="${P}.kg" value="${esc(r.kg)}">`)}${fld('Colli', `<input class="dv-in" type="number" min="0" data-p="${P}.ctns" value="${esc(r.ctns)}">`)}
         ${fld('Rendszám', txt(`${P}.plate`, r.plate))}${fld('T1', txt(`${P}.t1`, r.t1))}${fld('Sofőr', txt(`${P}.driver`, r.driver))}${fld('Telefon', txt(`${P}.phone`, r.phone))}</div>
         ${fld('PDD <small class="dv-faint">soronként: szám:colli:kg</small>', `<textarea class="dv-in mono" rows="2" spellcheck="false" data-p="${P}.pdd">${esc(r.pdd)}</textarea>`)}</div>`;
     }).join('');
@@ -701,13 +727,12 @@
       ? `<textarea class="dv-in mono dv-json" rows="6" spellcheck="false" data-p="draft.je" data-after="json" aria-label="ETA-k JSON">${esc(d.je)}</textarea><div class="dv-jm" id="dv-jm-e"></div>`
       : `${etas || '<div class="dv-faint">Nincs ETA</div>'}<button type="button" class="dv-lnk" data-dv="radd" data-path="draft.f.etas" data-tpl="eta">+ ETA</button>`;
     const body = sec('Levél', `${fld('Tárgy', txt('draft.f.subject', f.subject))}
-      <div class="dv-g2">${fld('Érkezett', `<input type="datetime-local" step="60" class="dv-in" data-p="draft.f.received" value="${esc(f.received)}">`)}${fld('Típus', sel('draft.f.kind', [['mail', 'mail'], ['quoted', 'quoted']], f.kind))}</div>
-      ${fld('Napok <small class="dv-faint">vesszővel</small>', `<input class="dv-in mono" data-p="draft.f.dates" placeholder="2026-11-14, 2026-11-15" value="${esc(f.dates)}">`)}
-      <p class="dv-note mono">${manual ? 'Kézi levél: a szinkron soha nem írja felül.' : 'Szinkronizált levél: a következő szinkron felülírhatja.'}</p>`)
+      <div class="dv-g2">${fld('Érkezett', `<input type="datetime-local" step="60" class="dv-in" data-p="draft.f.received" value="${esc(f.received)}">`)}${fld('Típus', sel('draft.f.kind', [['mail', 'Levél'], ['quoted', 'Idézett']], f.kind))}</div>
+      ${fld('Napok <small class="dv-faint">vesszővel</small>', `<input class="dv-in mono" data-p="draft.f.dates" placeholder="2026-11-14, 2026-11-15" value="${esc(f.dates)}">`)}`)
       + sec(`Konténerek <small class="dv-faint">${d.jm ? '' : f.containers.length}</small>`, conts, tog)
       + sec('ETA-k', et)
-      + (d.isNew ? '' : sec('Veszélyes műveletek', `<div class="dv-dz">${askBtn('Levél törlése', 'delmsg', d.id)}</div>`));
-    const sub = `<div class="dv-edsub"><span class="mono dv-faint">${esc(d.id)}</span>${d.isNew ? '<span class="dv-tag">ÚJ</span>' : ''}</div>`;
+      + (d.isNew ? '' : sec('Törlés', `<div class="dv-dz">${askBtn('Levél törlése', 'delmsg', d.id)}</div>`));
+    const sub = `<div class="dv-edsub"><span class="mono dv-faint">${esc(d.id)}</span>${d.isNew ? '<span class="dv-tag">ÚJ</span>' : manual ? '<span class="dv-tag">KÉZI</span>' : '<span class="dv-tag sy">SZINKRON</span>'}</div>`;
     return edFrame(d.isNew ? 'Új levél' : 'Pre-alert levél', sub, body, FOOT(d.isNew ? '' : '<button type="button" class="btn-ghost sm" data-dv="copymsg">Másolat új kézi levélként</button>'));
   }
   function msgOut(d) {
@@ -761,8 +786,8 @@
       ${fld('Feladó', txt('draft.f.sender', f.sender))}${fld('Tárgy', txt('draft.f.subject', f.subject))}
       <div class="dv-g2">${fld('Konténerek <small class="dv-faint">soronként</small>', `<textarea class="dv-in mono" rows="4" spellcheck="false" data-p="draft.f.containers">${esc(f.containers)}</textarea>`)}${fld('MRN-ek <small class="dv-faint">soronként</small>', `<textarea class="dv-in mono" rows="4" spellcheck="false" data-p="draft.f.mrns">${esc(f.mrns)}</textarea>`)}</div>
       ${fld('Részlet', `<textarea class="dv-in" rows="4" data-p="draft.f.snippet">${esc(f.snippet)}</textarea>`)}`)
-      + (d.isNew ? '' : sec('Veszélyes műveletek', `<div class="dv-dz">${askBtn('Sor törlése', 'delarr', d.id)}</div>`));
-    return edFrame(d.isNew ? 'Új nyitás sor' : 'Nyitás levél', `<div class="dv-edsub"><span class="mono dv-faint">${esc(d.id)}</span>${d.isNew ? '<span class="dv-tag">ÚJ</span>' : ''}</div>`, body, FOOT());
+      + (d.isNew ? '' : sec('Törlés', `<div class="dv-dz">${askBtn('Levél törlése', 'delarr', d.id)}</div>`));
+    return edFrame(d.isNew ? 'Új nyitás levél' : 'Nyitás levél', `<div class="dv-edsub"><span class="mono dv-faint">${esc(d.id)}</span>${d.isNew ? '<span class="dv-tag">ÚJ</span>' : ''}</div>`, body, FOOT());
   }
   async function saveArr(d) {
     if (!d.f.received) return bad('Az érkezés ideje kötelező');
@@ -789,7 +814,7 @@
       <div class="dv-note" id="dv-stomatch">${c ? `Konténer: <button type="button" class="dv-lnk mono" data-dv="go" data-tab="cont" data-id="${esc(c.id)}">${esc(c.id)}</button>` : 'Nincs hozzá konténer'}</div>
       ${fld('Betárolva', `<input type="datetime-local" step="60" class="dv-in" data-p="draft.f.stored_at" value="${esc(f.stored_at)}">`)}
       <div class="dv-g2">${fld('Colli', `<input class="dv-in" type="number" min="0" step="1" data-p="draft.f.ctns" value="${esc(f.ctns)}">`)}${fld('Kg', `<input class="dv-in" type="number" min="0" step="any" data-p="draft.f.kg" value="${esc(f.kg)}">`)}</div>`)
-      + (d.isNew ? '' : sec('Veszélyes műveletek', `<div class="dv-dz">${askBtn('Betárolás törlése', 'delsto', d.id)}</div>`));
+      + (d.isNew ? '' : sec('Törlés', `<div class="dv-dz">${askBtn('Betárolás törlése', 'delsto', d.id)}</div>`));
     return edFrame(d.isNew ? 'Új betárolás' : 'Betárolás', `<div class="dv-edsub"><span class="mono dv-faint">${esc(d.id)}</span>${d.isNew ? '<span class="dv-tag">ÚJ</span>' : ''}</div>`, body, FOOT());
   }
   function stoRow(d) {
@@ -815,11 +840,15 @@
   }
   const newBulk = () => ({ tab: 'sto', kind: 'bulk', id: 'bulk', isNew: true, snap: '', f: { lines: '', stored_at: toInp(new Date().toISOString()) } });
   function ED_bulk(d) {
-    const n = d.f.lines.split('\n').filter(l => l.trim()).length;
+    const n = bulkInfo(d.f.lines);
     const body = sec('Tömeges felvitel', `${fld('AWB-k <small class="dv-faint">soronként: AWB [colli [kg]]</small>', `<textarea class="dv-in mono" rows="10" spellcheck="false" data-p="draft.f.lines" data-after="bulkn">${esc(d.f.lines)}</textarea>`)}
       ${fld('Betárolva (mindegyikre)', `<input type="datetime-local" step="60" class="dv-in" data-p="draft.f.stored_at" value="${esc(d.f.stored_at)}">`)}
-      <p class="dv-note mono" id="dv-bulkn">${n} sor</p>`);
+      <p class="dv-note mono" id="dv-bulkn">${n}</p>`);
     return edFrame('Tömeges betárolás', '', body, FOOT());
+  }
+  function bulkInfo(txt) {
+    const pm = pddMap(), aw = txt.split('\n').map(l => l.trim().split(/[\s;,\t]+/)[0]).filter(Boolean);
+    return `${aw.length} sor · ${aw.filter(a => pm[upper(a)]).length} konténerhez tartozik`;
   }
   async function saveBulk(d) {
     if (!d.f.stored_at) return bad('A betárolás ideje kötelező');
@@ -912,17 +941,18 @@
     const glOk = gl.last_ok && (Date.now() - new Date(gl.last_ok)) < 180000;
     const kv = (k, v) => `<dt>${k}</dt><dd class="mono">${v}</dd>`;
     const ts = t => (t ? `${esc(full(t))} <span class="dv-faint">(${ago(t)})</span>` : '—');
-    const N = ['Pre-alert levelek', 'Kézi sorok', 'Nyitás levelek', 'Betárolások'];
+    const N = ['Pre-alert levelek', 'Kézi adatsorok', 'Nyitás levelek', 'Betárolások'];
+    const st = ok => `<span class="dv-stx ${ok ? 'ok' : 'bad'}"><i class="dv-st" aria-hidden="true"></i>${ok ? 'Rendben' : 'Figyelni kell'}</span>`;
     const ramps = (s.glr || []).map(r => `<tr><td class="mono">${esc(r.ramp)}</td><td class="mono">${esc((r.plates || []).join(', ')) || '—'}</td><td>${esc(r.stage || '—')}</td><td class="mono">${esc(r.called_at ? dm(r.called_at) : '—')}</td><td class="mono">${esc(r.seen_at ? dm(r.seen_at) : '—')}</td><td class="act">${askBtn('Törlés', 'delramp', r.ramp, { cls: 'dv-danger sm' })}</td></tr>`).join('');
     pg.innerHTML = `<div class="dv-cards">
-      <section class="dv-card"><h3><i class="dv-st ${syOk ? 'ok' : 'bad'}"></i>Outlook szinkron</h3><dl class="dv-kv">${kv('Utolsó siker', ts(sy.last_ok))}${kv('Intervallum', sy.interval_min ? `${esc(sy.interval_min)} perc` : '—')}${kv('Frissítve', ts(sy.updated_at))}</dl>
+      <section class="dv-card"><h3>Outlook szinkron${st(syOk)}</h3><dl class="dv-kv">${kv('Utolsó siker', ts(sy.last_ok))}${kv('Intervallum', sy.interval_min ? `${esc(sy.interval_min)} perc` : '—')}${kv('Frissítve', ts(sy.updated_at))}</dl>
         ${sy.error ? `<pre class="dv-err">${esc(sy.error)}</pre>` : '<div class="dv-faint">Nincs hiba</div>'}
-        <div class="dv-cf"><button type="button" class="btn-ghost sm" data-dv="syncerr"${sy.error ? '' : ' disabled'}>Hiba törlése</button><button type="button" class="btn-ghost sm" data-dv="syncnow">Utolsó siker most</button></div></section>
-      <section class="dv-card"><h3><i class="dv-st ${glOk ? 'ok' : 'bad'}"></i>Glabs</h3><dl class="dv-kv">${kv('Utolsó siker', ts(gl.last_ok))}${kv('Utolsó próba', ts(gl.last_try))}${kv('Belépési hiba', ts(gl.login_fail_at))}${kv('Rámpák', esc(gl.ramps ?? '—'))}</dl>
+        <div class="dv-cf"><button type="button" class="btn-ghost sm" data-dv="syncerr"${sy.error ? '' : ' disabled'}>Hiba törlése</button><button type="button" class="btn-ghost sm" data-dv="syncnow">Sikeresnek jelölés</button></div></section>
+      <section class="dv-card"><h3>Glabs${st(glOk)}</h3><dl class="dv-kv">${kv('Utolsó siker', ts(gl.last_ok))}${kv('Utolsó próba', ts(gl.last_try))}${kv('Belépési hiba', ts(gl.login_fail_at))}${kv('Rámpák', esc(gl.ramps ?? '—'))}</dl>
         ${gl.error ? `<pre class="dv-err">${esc(gl.error)}</pre>` : '<div class="dv-faint">Nincs hiba</div>'}</section>
       <section class="dv-card wide"><h3>Glabs rámpák <small class="dv-faint">${(s.glr || []).length} db</small></h3>
         ${ramps ? `<div class="dv-tw"><table class="dv-t flat"><thead><tr><th>Rámpa</th><th>Rendszámok</th><th>Szakasz</th><th>Hívva</th><th>Látva</th><th></th></tr></thead><tbody>${ramps}</tbody></table></div>` : '<div class="dv-faint">Üres</div>'}</section>
-      <section class="dv-card wide"><h3>Adatok</h3><div class="dv-counters">${N.map((l, i) => `<div><b class="mono">${s.n[i] ?? '—'}</b><span>${l}</span></div>`).join('')}</div>
+      <section class="dv-card wide"><h3>Adatok</h3><dl class="dv-kv">${N.map((l, i) => `<dt>${l}</dt><dd class="mono">${s.n[i] ?? '—'}</dd>`).join('')}</dl>
         <div class="dv-cf"><button type="button" class="btn-ghost sm" data-dv="reloadall">Teljes újratöltés</button><button type="button" class="btn-primary sm" data-dv="export">Export JSON</button></div></section></div>`;
   }
   async function sysPatch(patch) {
@@ -954,11 +984,10 @@
     const keys = [...new Set([...Object.keys(o), ...Object.keys(n)])].filter(k => JSON.stringify(o[k]) !== JSON.stringify(n[k]));
     const val = v => (v === undefined ? '<span class="dv-faint">—</span>' : v !== null && typeof v === 'object' ? `<pre>${esc(jstr(v))}</pre>` : `<span class="mono">${esc(v === null ? 'null' : v)}</span>`);
     const diff = keys.map(k => `<div class="dv-df"><div class="dv-dk mono">${esc(k)}</div>${b ? `<div class="dv-dv old">${val(o[k])}</div>` : ''}${a ? `<div class="dv-dv new">${val(n[k])}</div>` : ''}</div>`).join('') || '<div class="dv-faint">Nincs eltérés</div>';
-    const body = sec('Változás', `<dl class="dv-kv">${[['Idő', full(r.at)], ['Ki', r.by], ['Tábla', r.tbl], ['Kulcs', r.key], ['Művelet', r.action]].map(([k, v]) => `<dt>${k}</dt><dd class="mono">${esc(v)}</dd>`).join('')}</dl>`)
+    const body = sec('Változás', `<dl class="dv-kv">${[['Idő', full(r.at)], ['Ki', r.by], ['Hol', TBL_L[r.tbl] || r.tbl], ['Azonosító', r.key], ['Művelet', ACT_L[r.action] || r.action]].map(([k, v]) => `<dt>${k}</dt><dd class="mono">${esc(v)}</dd>`).join('')}</dl>`)
       + sec('Mezők', `<div class="dv-diff">${diff}</div>`)
-      + sec('Visszaállítás', `<div class="dv-dz">${askBtn('Visszaállítás erre (előző állapot)', 'restore', r.id, { cls: 'btn-ghost sm', msg: 'Biztosan visszaállítod?', yes: 'Visszaállítás' })}</div>
-        <p class="dv-note">${b ? (a ? 'A sor a „before” állapotra áll vissza.' : 'A törölt sor újra létrejön.') : 'A létrehozott sor törlődik.'}</p>`);
-    return edFrame(`${esc(r.tbl)} · <span class="mono">${esc(r.key)}</span>`, `<div class="dv-edsub"><span class="dv-pill ac-${esc(r.action)}">${esc(r.action)}</span></div>`, body, '<span class="dv-sp"></span>');
+      + sec('Visszaállítás', `<div class="dv-dz">${askBtn(b ? (a ? 'Módosítás előtti állapot visszaállítása' : 'Törölt sor visszaállítása') : 'Létrehozott sor törlése', 'restore', r.id, { cls: 'btn-ghost sm', msg: 'Biztosan?', yes: b ? 'Visszaállítás' : 'Törlés' })}</div>`);
+    return edFrame(`${esc(TBL_L[r.tbl] || r.tbl)} · <span class="mono">${esc(r.key)}</span>`, `<div class="dv-edsub"><span class="dv-pill ac-${esc(r.action)}">${esc(ACT_L[r.action] || r.action)}</span></div>`, body, '<span class="dv-sp"></span>');
   }
   async function restore(id) {
     const r = (S.rows.log || []).find(x => String(x.id) === String(id));
@@ -1009,7 +1038,14 @@
     go(async () => {
       hideGuard(); S.draft = null; S.sel.log = null; S.tab = tab;
       renderNav(); renderMain();
-      if (tab === 'cont') { S.q.cont = ''; S.draft = mkCont(id); renderMain(); return; }
+      if (tab === 'cont') {
+        S.q.cont = '';
+        const c = C()[id], dd = c && c.day;
+        if (dd && S.cf.from && dd < S.cf.from) S.cf.from = dd;
+        if (dd && S.cf.to && dd > S.cf.to) S.cf.to = dd;
+        if (c && S.cf.ph.length && !S.cf.ph.includes(phKey(c))) S.cf.ph = [];
+        S.draft = mkCont(id); renderMain(); return;
+      }
       await load(tab);
       if (!(S.rows[tab] || []).some(r => r.id === id)) {
         const t = { msg: 'messages', arr: 'arrivals', sto: 'storage_events' }[tab];
@@ -1057,7 +1093,7 @@
       else w.hidden = true;
     },
     stomatch(el) { const c = pddMap()[upper(el.value)], n = $('#dv-stomatch'); n.innerHTML = c ? `Konténer: <button type="button" class="dv-lnk mono" data-dv="go" data-tab="cont" data-id="${esc(c.id)}">${esc(c.id)}</button>` : 'Nincs hozzá konténer'; },
-    bulkn() { const n = $('#dv-bulkn'); if (n) n.textContent = `${S.draft.f.lines.split('\n').filter(l => l.trim()).length} sor`; },
+    bulkn() { const n = $('#dv-bulkn'); if (n) n.textContent = bulkInfo(S.draft.f.lines); },
     chips() { const c = $('#dv-chips'); if (c) c.innerHTML = chipsHtml(S.set.prio); const p = $('#dv-pn'); if (p) p.textContent = `${new Set(parsePrio(S.set.prio)).size} db`; AFTER.setd(); },
     setd() {
       const s = S.set; if (!s || !s.row) return;
@@ -1095,7 +1131,7 @@
   function syncFr(row) {
     if (!row || !S.draft) return;
     const k = row.dataset.key, has = k in S.draft.ov;
-    const rs = row.querySelector('.dv-rs'); if (rs) rs.hidden = !has || (k === 'date' && S.draft.ov.create);
+    const rs = row.querySelector('.dv-rs'); if (rs) rs.hidden = !has;
     const au = row.querySelector('.dv-auto'); if (au) au.hidden = !(has && String(row.dataset.av) !== String(S.draft.ov[k] ?? ''));
   }
 
@@ -1153,7 +1189,18 @@
       else if (!d.ov.eta || typeof d.ov.eta !== 'object') d.ov.eta = { date: (A && A.eta_date) || (c && c.day) || K.today(), time: (A && A.eta_time) || '08:00' };
       renderEditor();
     },
-    reset: t => { const d = S.draft, k = t.dataset.k; delete d.ov[k]; renderEditor(); },
+    reset: t => { const d = S.draft, k = t.dataset.k; delete d.ov[k]; if (k === 'src') delete d.ov.fwd; renderEditor(); },
+    ovsrc: t => { const d = S.draft, v = t.dataset.v; if (v) { d.ov.src = v; d.ov.fwd = SRC_NAME[v]; } else { delete d.ov.src; delete d.ov.fwd; } renderEditor(); },
+    setp: t => {
+      setP(t.dataset.p, t.dataset.v);
+      t.parentElement.querySelectorAll('button').forEach(b => { const on = b === t; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+      updateDirty();
+    },
+    logchip: t => {
+      S.lf.tbl = t.dataset.k;
+      dlg.querySelectorAll('[data-dv="logchip"]').forEach(b => { const on = b.dataset.k === S.lf.tbl; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+      AFTER.log();
+    },
     pddov: () => { const d = S.draft, c = C()[d.id]; d.ov.pdd = clone(c.pdd || []).map(p => ({ no: p.no, ctns: p.ctns, kg: p.kg })); renderEditor(); },
     radd: t => { const a = getP(t.dataset.path); if (Array.isArray(a)) a.push(TPL[t.dataset.tpl]()); renderEditor(); updateDirty(); },
     rrm: t => { const a = getP(t.dataset.path); if (Array.isArray(a)) a.splice(Number(t.dataset.i), 1); renderEditor(); updateDirty(); },

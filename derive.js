@@ -177,7 +177,9 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
       x.last_seen = at;
     }
 
-    for (const d of dates) {
+    // KĂ©zi (fejlesztĹ‘i menĂĽs) levĂ©l csak hozzĂˇad Ă©s frissĂ­t: a levĂ©telre a kontĂ©ner sajĂˇt â€žLevĂ©veâ€ť Ăˇllapota szolgĂˇl.
+    const partial = String(m.id || '').startsWith('admin-');
+    for (const d of partial ? [] : dates) {
       for (const id of before[d]) {
         if (listedAll.has(id)) continue;
         const x = C[id];
@@ -207,18 +209,20 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     const o = manual[id] && manual[id].override;
     if (!o || typeof o !== 'object') continue;
     const at = o.at || '';
-    if (o.create && !C[id] && DAY_RE.test(o.date || '')) {
+    // KĂ©zi felvĂ©tel: csak addig Ă©l, amĂ­g levĂ©l nem hozza a kontĂ©nert; utĂˇna a levĂ©l adatai szĂˇmĂ­tanak.
+    const cr = o.create && typeof o.create === 'object' ? o.create : null;
+    if (cr && !C[id] && DAY_RE.test(cr.date || '')) {
       C[id] = {
-        id, date: o.date, state: 'active', first_seen: at || `${o.date}T00:00:00`, src: o.src || 'jz', fwd: o.fwd || '',
-        plate: '', t1: '', driver: '', phone: '', pdd: [], kg: 0, ctns: 0, port: '', customs: '',
-        history: [{ at: at || `${o.date}T00:00:00`, kind: 'first', date: o.date }],
-        moved_from: null, moved_at: null, removed_from: null, removed_at: null
+        id, date: cr.date, state: 'active', first_seen: at || `${cr.date}T00:00:00`, src: cr.src || 'jz', fwd: cr.fwd || '',
+        plate: '', t1: '', driver: '', phone: '', kg: +cr.kg || 0, ctns: +cr.ctns || 0, port: '', customs: '',
+        pdd: (Array.isArray(cr.pdd) ? cr.pdd : []).filter(p => p && p.no).map(p => ({ no: String(p.no), ctns: +p.ctns || 0, kg: +p.kg || 0 })),
+        history: [{ at: at || `${cr.date}T00:00:00`, kind: 'first', date: cr.date }],
+        moved_from: null, moved_at: null, removed_from: null, removed_at: null, manual_created: true
       };
     }
     const x = C[id];
     if (!x) continue;
     x.ov = o;
-    x.manual_created = !!o.create;
     if (DAY_RE.test(o.date || '') && o.date !== x.date) {
       x.history.push({ at: at || x.last_seen || x.first_seen, kind: 'moved', from: x.date, to: o.date });
       x.date = o.date;
@@ -373,7 +377,8 @@ window.KFDerive = function derive(messages, manual, arrivals, stored) {
     else if (typeof ov.arrived === 'string' && ov.arrived) { x.arrived = true; x.arrived_auto = false; x.arrived_at = ov.arrived; }
     if (ov.stages && ov.stages.opened === false) x.opened_implied = '';
     if (ov.eta === false) { x.eta_time = x.eta_date = ''; x.eta_stale = false; }
-    else if (ov.eta && TIME_RE.test(ov.eta.time || '')) {
+    // KĂ©zi ETA: a levĂ©lnĂ©l erĹ‘sebb, de az adatlapon kĂ©sĹ‘bb beĂ­rt ETA felĂĽlĂ­rja.
+    else if (ov.eta && TIME_RE.test(ov.eta.time || '') && !((manual[x.id] || {}).eta_set > (ov.at || ''))) {
       x.eta_time = ov.eta.time; x.eta_date = DAY_RE.test(ov.eta.date || '') ? ov.eta.date : x.date;
       x.eta_set = ov.at || x.eta_set; x.eta_stale = false;
     }

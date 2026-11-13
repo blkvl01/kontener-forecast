@@ -35,7 +35,8 @@
 .dev .dv-nav{flex:0 0 192px;display:flex;flex-direction:column;gap:2px;padding:12px 10px;background:var(--surface);border-right:1px solid var(--line);overflow-y:auto}
 .dev .dv-tab{position:relative;display:flex;align-items:center;gap:8px;width:100%;height:36px;padding:0 10px 0 14px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:13.5px;font-weight:500;text-align:left;transition:background-color .16s var(--ease),color .16s var(--ease)}
 .dev .dv-tab:hover{background:var(--surface-2);color:var(--ink)}
-.dev .dv-tab.on{background:var(--orange-soft);color:var(--ink);font-weight:600;box-shadow:inset 3px 0 0 var(--orange)}
+.dev .dv-tab.on{background:var(--ink);color:oklch(0.98 0.004 255);font-weight:600}
+.dev .dv-tab.on .dv-cn{background:oklch(0.32 0.02 255);color:oklch(0.9 0.008 255)}
 .dev .dv-tl{flex:1 1 auto;white-space:nowrap}
 .dev .dv-cn{font-style:normal;font-family:var(--mono);font-size:11px;min-width:22px;padding:1px 6px;border-radius:99px;background:var(--ground);color:var(--muted);text-align:center}
 .dev .dv-cn.err{background:var(--err);color:#fff}
@@ -92,13 +93,15 @@
 .dev .dv-t .num{text-align:right;font-variant-numeric:tabular-nums}
 .dev .dv-t tbody tr{cursor:pointer;transition:background-color .12s var(--ease)}
 .dev .dv-t tbody tr:hover{background:var(--surface-2)}
-.dev .dv-t tbody tr.sel{background:var(--orange-soft);box-shadow:inset 3px 0 0 var(--orange)}
+.dev .dv-t tbody tr.sel{background:var(--orange-soft)}
+.dev .dv-t tbody tr.sel td:first-child{font-weight:600;color:var(--ink)}
 .dev .dv-t tbody tr.rm td{color:var(--faint);text-decoration:line-through}
 .dev .dv-t tbody tr.rm td .dv-pill{text-decoration:none}
 .dev .dv-t.flat tbody tr{cursor:default}
 .dev .dv-t.flat td.act{text-align:right}
 .dev .dv-sub{display:block;font-size:11px;color:var(--faint);line-height:1.2}
 .dev .dv-ell{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dev .dv-tag.sy{border-color:oklch(0.82 0.04 235);background:var(--steel-soft);color:var(--steel-text)}
 .dev .dv-tag{display:inline-block;padding:1px 6px;border:1px solid var(--orange-line);border-radius:5px;background:var(--orange-soft);color:var(--orange-text);font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.04em}
 .dev .dv-more{padding:10px 16px;color:var(--muted);font-size:12px;font-family:var(--mono)}
 .dev .dv-morebar{padding:12px 16px}
@@ -139,12 +142,12 @@
 .dev .dv-fl{padding-top:7px;font-size:12px;color:var(--muted);font-weight:500}
 .dev .dv-fc{min-width:0;display:flex;flex-direction:column;gap:3px}
 .dev .dv-auto{font-size:11.5px;color:var(--faint);font-family:var(--mono);overflow-wrap:anywhere}
-.dev .dv-rs{width:28px;height:32px;border:0;border-radius:7px;background:transparent;color:var(--orange-text);font-size:16px}
+.dev .dv-rs{width:28px;height:32px;display:grid;place-items:center;border:0;border-radius:7px;background:transparent;color:var(--orange-text)}
 .dev .dv-rs:hover{background:var(--orange-soft)}
 .dev .dv-pr{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,.8fr) minmax(0,.8fr) 28px;gap:6px;align-items:center;margin-bottom:6px}
 .dev .dv-pr.ro{grid-template-columns:1.6fr .8fr .8fr;font-size:12.5px;padding:4px 0}
 .dev .dv-pa{display:flex;gap:6px}
-.dev .dv-seg{display:inline-flex;padding:2px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);align-self:flex-start}
+.dev .dv-seg{display:inline-flex;flex-wrap:wrap;padding:2px;border:1px solid var(--line);border-radius:9px;background:var(--surface-2);align-self:flex-start}
 .dev .dv-seg button{height:26px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-size:12.5px;font-weight:500;white-space:nowrap;transition:background-color .16s var(--ease),color .16s var(--ease)}
 .dev .dv-seg button:hover{color:var(--ink)}
 .dev .dv-seg button.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:0 1px 2px oklch(0.2 0.02 255 / .14),0 0 0 1px var(--line)}
@@ -210,15 +213,12 @@
 .dev .dv-pcs{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;min-height:24px}
 .dev .dv-pc{padding:2px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface-2);font-size:11.5px}
 .dev .dv-pc.bad{border-color:oklch(0.82 0.08 25);background:oklch(0.97 0.02 25);color:oklch(0.45 0.16 25)}
-.dev .dv-st{width:9px;height:9px;border-radius:50%;background:var(--err)}
-.dev .dv-st.ok{background:var(--ok)}
+.dev .dv-stx{display:inline-flex;align-items:center;gap:6px;margin-left:auto;font-family:var(--sans);font-size:12px;font-weight:600;letter-spacing:0;color:oklch(0.48 0.16 25)}
+.dev .dv-stx.ok{color:var(--ok-text)}
+.dev .dv-st{width:8px;height:8px;border-radius:50%;background:currentColor}
 .dev .dv-err{margin:10px 0 0;padding:8px 10px;max-height:160px;overflow:auto;border:1px solid oklch(0.85 0.07 25);border-radius:8px;background:oklch(0.97 0.02 25);color:oklch(0.42 0.15 25);font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;overflow-wrap:anywhere}
 .dev .dv-tw{overflow:auto;border:1px solid var(--line);border-radius:8px}
 .dev .dv-tw .dv-t th{position:static}
-.dev .dv-counters{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
-.dev .dv-counters div{padding:10px 12px;border:1px solid var(--line-soft);border-radius:8px;background:var(--surface-2)}
-.dev .dv-counters b{display:block;font-size:20px;font-weight:600}
-.dev .dv-counters span{color:var(--muted);font-size:12px}
 
 /* napló: különbség */
 .dev .dv-diff{display:flex;flex-direction:column;gap:8px}
@@ -248,7 +248,6 @@
   .dev .dv-body{flex-direction:column}
   .dev .dv-nav{flex:0 0 auto;flex-direction:row;gap:4px;padding:8px 10px;border-right:0;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
   .dev .dv-tab{width:auto;flex:0 0 auto;padding:0 12px}
-  .dev .dv-tab.on{box-shadow:inset 0 -3px 0 var(--orange)}
   .dev .dv-split{position:relative}
   .dev .dv-ed{position:absolute;inset:0;width:auto;flex:none;border-left:0;z-index:4;display:none}
   .dev .dv-split.has-ed .dv-ed{display:flex}

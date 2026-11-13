@@ -146,6 +146,7 @@
     const d = window.KFDerive(MSGS, MAN, ARR, STO);
     d.now = nowIso();
     S.data = d;
+    document.dispatchEvent(new Event('kf:data'));
     S.today = d.now.slice(0, 10);
     if (!S.sel) {
       S.sel = S.today;
